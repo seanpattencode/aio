@@ -1,1 +1,0 @@
-{"job": "llm_processor", "time": "immediate", "kwargs": {"prompt": "Test prompt"}}

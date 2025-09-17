@@ -2,10 +2,8 @@
 import datetime
 import importlib.util
 import json
-import logging
 import os
 import sqlite3
-import subprocess
 import sys
 import threading
 import time
@@ -13,29 +11,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.absolute()
-COMMON_DIR = ROOT_DIR / "Common"
 PROGRAMS_DIR = ROOT_DIR / "Programs"
-RESULTS_DIR = COMMON_DIR / "Results"
-LOGS_DIR = COMMON_DIR / "Logs"
-STATE_DB = COMMON_DIR / "orchestrator.db"
-TRIGGER_DIR = COMMON_DIR / "Triggers"
-TRIGGER_PROCESSED_DIR = COMMON_DIR / "TriggersProcessed"
+STATE_DB = ROOT_DIR / "orchestrator.db"
 
 DEVICE_ID = os.environ.get("DEVICE_ID", str(os.getpid()))
 DEVICE_TAGS = set(os.environ.get("DEVICE_TAGS", "").split(",")) if os.environ.get("DEVICE_TAGS") else set()
 
-for dir_path in [COMMON_DIR, PROGRAMS_DIR, RESULTS_DIR, LOGS_DIR, TRIGGER_DIR, TRIGGER_PROCESSED_DIR]:
-    dir_path.mkdir(parents=True, exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(LOGS_DIR / f"orchestrator_{DEVICE_ID}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+PROGRAMS_DIR.mkdir(parents=True, exist_ok=True)
 
 SCHEDULED_JOBS = [
     {
@@ -44,7 +26,6 @@ SCHEDULED_JOBS = [
         "function": "run_server",
         "type": "always",
         "tags": ["browser"],
-        "docker": True,
         "retries": 999
     },
     {
@@ -53,7 +34,6 @@ SCHEDULED_JOBS = [
         "function": "monitor_stocks",
         "type": "always",
         "tags": ["gpu"],
-        "docker": True,
         "retries": 999
     },
     {
@@ -62,8 +42,7 @@ SCHEDULED_JOBS = [
         "function": "generate_morning_report",
         "type": "daily",
         "time": "09:00",
-        "tags": [],
-        "docker": False
+        "tags": []
     },
     {
         "name": "random_check",
@@ -72,8 +51,7 @@ SCHEDULED_JOBS = [
         "type": "random_daily",
         "after_time": "14:00",
         "before_time": "18:00",
-        "tags": [],
-        "docker": True
+        "tags": []
     },
     {
         "name": "backup_data",
@@ -82,7 +60,6 @@ SCHEDULED_JOBS = [
         "type": "interval",
         "interval_minutes": 60,
         "tags": ["storage"],
-        "docker": True,
         "retries": 3
     },
     {
@@ -90,8 +67,7 @@ SCHEDULED_JOBS = [
         "file": "llm_tasks.py",
         "function": "process_llm_queue",
         "type": "trigger",
-        "tags": ["gpu"],
-        "docker": True
+        "tags": ["gpu"]
     },
     {
         "name": "idle_baseline",
@@ -99,7 +75,6 @@ SCHEDULED_JOBS = [
         "function": "run_idle",
         "type": "idle",
         "tags": [],
-        "docker": False,
         "priority": -1
     }
 ]
@@ -120,15 +95,33 @@ class JobState:
                 )
             """)
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS history (
+                CREATE TABLE IF NOT EXISTS logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    job_name TEXT NOT NULL,
-                    device TEXT NOT NULL,
-                    success INTEGER NOT NULL,
-                    duration_ms REAL NOT NULL,
-                    timestamp REAL NOT NULL
+                    timestamp REAL NOT NULL,
+                    level TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    device TEXT NOT NULL
                 )
             """)
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS triggers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_name TEXT NOT NULL,
+                    args TEXT NOT NULL,
+                    kwargs TEXT NOT NULL,
+                    created REAL NOT NULL,
+                    processed REAL
+                )
+            """)
+
+    def log(self, level, message):
+        with self.lock:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO logs (timestamp, level, message, device) VALUES (?, ?, ?, ?)",
+                    (time.time(), level, message, DEVICE_ID)
+                )
+        print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [{level}] {message}")
 
     def update_job(self, job_name, status):
         with self.lock:
@@ -142,19 +135,34 @@ class JobState:
                         last_update=excluded.last_update
                 """, (job_name, status, DEVICE_ID, time.time()))
 
-    def log_completion(self, job_name, success, duration_ms):
-        with self.lock:
-            with self.conn:
-                self.conn.execute("""
-                    INSERT INTO history (job_name, device, success, duration_ms, timestamp)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (job_name, DEVICE_ID, int(success), duration_ms, time.time()))
-
     def get_last_run(self, job_name):
         with self.lock:
             cursor = self.conn.execute("SELECT last_update FROM jobs WHERE job_name = ?", (job_name,))
             row = cursor.fetchone()
             return row["last_update"] if row else None
+
+    def add_trigger(self, job_name, args=None, kwargs=None):
+        with self.lock:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO triggers (job_name, args, kwargs, created) VALUES (?, ?, ?, ?)",
+                    (job_name, json.dumps(args or []), json.dumps(kwargs or {}), time.time())
+                )
+
+    def get_pending_triggers(self):
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT id, job_name, args, kwargs FROM triggers WHERE processed IS NULL"
+            )
+            return cursor.fetchall()
+
+    def mark_trigger_processed(self, trigger_id):
+        with self.lock:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE triggers SET processed = ? WHERE id = ?",
+                    (time.time(), trigger_id)
+                )
 
 state = JobState()
 
@@ -194,7 +202,6 @@ def should_run_interval_job(job, last_run):
 def load_and_call_function(file_path, function_name, *args, **kwargs):
     script_path = PROGRAMS_DIR / file_path
     if not script_path.exists():
-        script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text(f'''
 def {function_name}(*args, **kwargs):
     print(f"{function_name} called")
@@ -213,10 +220,10 @@ def run_job(job, *args, **kwargs):
     start_time = time.time()
     try:
         result = load_and_call_function(job["file"], job["function"], *args, **kwargs)
-        logger.info(f"Job {job['name']} completed with result: {result}")
+        state.log("INFO", f"Job {job['name']} completed with result: {result}")
         return True, (time.time() - start_time) * 1000
     except Exception as e:
-        logger.error(f"Job {job['name']} failed: {e}")
+        state.log("ERROR", f"Job {job['name']} failed: {e}")
         return False, (time.time() - start_time) * 1000
 
 def run_job_with_retry(job, *args, **kwargs):
@@ -224,7 +231,6 @@ def run_job_with_retry(job, *args, **kwargs):
     for attempt in range(max_retries):
         state.update_job(job["name"], "running")
         success, duration_ms = run_job(job, *args, **kwargs)
-        state.log_completion(job["name"], success, duration_ms)
 
         if success:
             state.update_job(job["name"], "completed")
@@ -248,7 +254,7 @@ class JobScheduler:
 
         def job_wrapper():
             try:
-                logger.info(f"Starting job: {job['name']}")
+                state.log("INFO", f"Starting job: {job['name']}")
                 run_job_with_retry(job, *args, **kwargs)
             finally:
                 self.running_jobs.pop(job["name"], None)
@@ -286,36 +292,25 @@ class JobScheduler:
             if should_run:
                 self.start_job(job)
 
-    def check_trigger_folder(self):
-        if not TRIGGER_DIR.exists():
-            return
-
-        for trigger_folder in TRIGGER_DIR.iterdir():
-            if not trigger_folder.is_dir():
-                continue
-
-            for trigger_file in trigger_folder.glob("*.txt"):
-                try:
-                    trigger_data = json.loads(trigger_file.read_text())
-                    job = next((j for j in SCHEDULED_JOBS if j["name"] == trigger_data.get("job")), None)
-
-                    if job and trigger_data.get("time", "immediate") == "immediate":
-                        self.start_job(job, *trigger_data.get("args", []), **trigger_data.get("kwargs", {}))
-                except Exception as e:
-                    logger.error(f"Error processing trigger {trigger_file}: {e}")
-
-            processed_path = TRIGGER_PROCESSED_DIR / f"{trigger_folder.name}_{int(time.time())}"
-            __import__('shutil').move(str(trigger_folder), str(processed_path))
+    def check_triggers(self):
+        triggers = state.get_pending_triggers()
+        for trigger in triggers:
+            job = next((j for j in SCHEDULED_JOBS if j["name"] == trigger["job_name"]), None)
+            if job:
+                args = json.loads(trigger["args"])
+                kwargs = json.loads(trigger["kwargs"])
+                self.start_job(job, *args, **kwargs)
+                state.mark_trigger_processed(trigger["id"])
 
     def run(self):
-        logger.info(f"Orchestrator started on device {DEVICE_ID} with tags {DEVICE_TAGS}")
+        state.log("INFO", f"Orchestrator started on device {DEVICE_ID} with tags {DEVICE_TAGS}")
 
         while not self.stop_event.is_set():
             try:
                 self.check_scheduled_jobs()
-                self.check_trigger_folder()
+                self.check_triggers()
             except Exception as e:
-                logger.error(f"Scheduler error: {e}")
+                state.log("ERROR", f"Scheduler error: {e}")
 
             time.sleep(1)
 
@@ -328,7 +323,7 @@ def main():
     try:
         scheduler.run()
     except KeyboardInterrupt:
-        logger.info("Shutting down orchestrator")
+        state.log("INFO", "Shutting down orchestrator")
         scheduler.stop()
 
 if __name__ == "__main__":
