@@ -14,10 +14,44 @@ A strong preference for python but not more than that.
 It should run in a single command.
 Don't add more rules than these.
 
-How to run:
+## Quick Start
 
-run orchestrator
+### Requirements
+- Python 3.7+
+- Docker (optional, for containerized deployment)
 
+### Run Locally
+```bash
+python orchestrator.py
+```
 
+### Run with Docker
+```bash
+# Build image
+docker build -t aios-orchestrator .
 
+# Run container
+docker run -d --name aios \
+  -v $(pwd)/Programs:/app/Programs \
+  -e DEVICE_TAGS=gpu,storage,browser \
+  aios-orchestrator
+```
+
+### Environment Variables
+- `DEVICE_ID`: Unique device identifier (default: process ID)
+- `DEVICE_TAGS`: Comma-separated capabilities (e.g., "gpu,storage,browser")
+
+### Files
+- `orchestrator.py`: Main orchestrator (329 lines)
+- `orchestrator.db`: SQLite database for state, logs, and triggers
+- `Programs/`: Directory for job scripts
+
+### Adding Jobs
+Edit the `SCHEDULED_JOBS` list in orchestrator.py to add new jobs with types:
+- `always`: Continuously running
+- `daily`: Runs at specified time
+- `interval`: Fixed interval execution
+- `random_daily`: Random time within window
+- `trigger`: Database-triggered execution
+- `idle`: Runs when system is idle
 
