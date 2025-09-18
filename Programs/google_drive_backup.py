@@ -57,7 +57,7 @@ def init_check():
 
     if not check_auth():
         print("\n" + "="*60)
-        print("GOOGLE DRIVE BACKUP - AUTHENTICATION REQUIRED")
+        print("GOOGLE DRIVE BACKUP - AUTHENTICATION REQUIRED AT http://localhost:5000")
         print("="*60)
         print("Starting web server for authentication...")
         print("1. Open http://localhost:5000 in your browser")
