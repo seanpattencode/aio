@@ -460,7 +460,15 @@ def run_todo_server(*args, **kwargs):
     app = TodoApp()
 
     server = HTTPServer((host, port), TodoRequestHandler)
-    print(f"Todo app server started on http://{host}:{port}")
+
+    # Try to get public IP
+    try:
+        import urllib.request
+        public_ip = urllib.request.urlopen('https://ifconfig.me').read().decode('utf-8').strip()
+        print(f"🌐 Todo app ready! Visit http://{public_ip}:{port} to access")
+    except:
+        print(f"🌐 Todo app ready! Visit http://localhost:{port} to access")
+
     logging.info(f"Todo app serving on {host}:{port}")
 
     try:

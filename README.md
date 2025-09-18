@@ -36,6 +36,21 @@ docker-compose down
 # Open http://localhost:5000 or http://<your-server-ip>:5000
 ```
 
+### ⚠️ IMPORTANT: Clean Restart for Daemon Jobs
+
+**Always use clean-restart instead of regular Docker restart commands:**
+```bash
+python3 manage_jobs.py clean-restart
+```
+
+**Why?** The orchestrator spawns daemon processes (like the todo app) that persist even when the main container is restarted. Regular `docker-compose restart` or `docker restart` commands only restart the main orchestrator process, leaving orphaned child processes running. This causes "Address already in use" errors.
+
+The `clean-restart` command:
+- Cleanly terminates ALL processes inside the container
+- Resets job states in the database
+- Removes and recreates the container for a fresh start
+- Ensures no orphaned processes remain
+
 ### Alternative Docker Run Command
 
 ```bash
@@ -90,6 +105,9 @@ The `manage_jobs.py` script provides comprehensive management capabilities for t
 ```bash
 # Show all available commands
 python3 manage_jobs.py
+
+# IMPORTANT: Clean restart (use this instead of docker-compose restart)
+python3 manage_jobs.py clean-restart                 # Clean restart all services
 
 # System overview
 python3 manage_jobs.py status
@@ -321,18 +339,33 @@ cd docker && docker-compose logs --tail=50
 
 ## Troubleshooting
 
-### Container Won't Start
+### Container Won't Start or Jobs Have Issues
 ```bash
-# Check logs for errors
+# ALWAYS use clean-restart for container issues
+python3 manage_jobs.py clean-restart
+
+# If clean-restart doesn't work, check logs for errors
 docker-compose logs
 
 # Ensure database has correct permissions
 chmod 664 orchestrator.db
 
-# Rebuild container
+# Last resort: Rebuild container from scratch
+docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
 ```
+
+### ⚠️ Common Issue: Address Already in Use
+If you see errors like `[Errno 98] Address already in use`:
+```bash
+# This means orphaned processes from previous runs
+# DO NOT use docker-compose restart
+# Instead, use:
+python3 manage_jobs.py clean-restart
+```
+
+**Why this happens:** Daemon jobs (like `web_server_daemon`) spawn child processes that persist even after the orchestrator restarts. Regular Docker commands only restart the parent process, leaving children running and holding onto ports.
 
 ### Jobs Not Running
 ```bash

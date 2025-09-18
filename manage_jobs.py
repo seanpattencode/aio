@@ -404,6 +404,77 @@ def backup_db(output_path=None):
     backup_stat = Path(output_path).stat()
     print(f"Backup size: {backup_stat.st_size / 1024:.2f} KB")
 
+def clean_restart():
+    """Clean restart of Docker container, ensuring all child processes are terminated"""
+    print("Performing clean restart of AIOS orchestrator...")
+
+    # Check if we're in docker directory
+    docker_dir = Path(__file__).parent / "docker"
+    if not docker_dir.exists():
+        print("Error: docker directory not found")
+        return
+
+    try:
+        # Reset all running jobs in the database first
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("UPDATE jobs SET status = 'idle' WHERE status IN ('running', 'pending')")
+        conn.commit()
+        print("✓ Reset job statuses in database")
+        conn.close()
+
+        # Stop container completely (this kills all processes inside)
+        print("Stopping Docker container...")
+        result = subprocess.run(
+            ["docker-compose", "stop"],
+            cwd=docker_dir,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"Warning: {result.stderr}")
+        else:
+            print("✓ Container stopped")
+
+        # Remove the container to ensure clean state
+        print("Removing container...")
+        result = subprocess.run(
+            ["docker-compose", "rm", "-f"],
+            cwd=docker_dir,
+            capture_output=True,
+            text=True
+        )
+        print("✓ Container removed")
+
+        # Start fresh container
+        print("Starting fresh container...")
+        result = subprocess.run(
+            ["docker-compose", "up", "-d"],
+            cwd=docker_dir,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"Error starting container: {result.stderr}")
+            return
+        print("✓ Container started")
+
+        # Wait a bit for orchestrator to initialize
+        print("Waiting for orchestrator to initialize...")
+        time.sleep(5)
+
+        # Show recent logs to confirm startup
+        print("\nRecent logs:")
+        subprocess.run(
+            ["docker-compose", "logs", "--tail=10"],
+            cwd=docker_dir
+        )
+
+        print("\n✅ Clean restart complete!")
+        print("The orchestrator and all jobs have been cleanly restarted.")
+
+    except Exception as e:
+        print(f"Error during clean restart: {e}")
+
 def main():
     """Main entry point with enhanced command-line interface"""
     if len(sys.argv) < 2:
@@ -431,6 +502,8 @@ def main():
         print("\nDatabase Commands:")
         print("  db-info                 - Show database information")
         print("  backup [path]           - Backup database")
+        print("\nSystem Commands:")
+        print("  clean-restart           - Clean restart (kills all processes)")
         print("\nExamples:")
         print("  python3 manage_jobs.py status")
         print("  python3 manage_jobs.py trigger google_drive_backup")
@@ -504,6 +577,10 @@ def main():
     elif command == "backup":
         output_path = sys.argv[2] if len(sys.argv) > 2 else None
         backup_db(output_path)
+
+    # System commands
+    elif command == "clean-restart":
+        clean_restart()
 
     else:
         print(f"Unknown command: {command}")
