@@ -290,11 +290,12 @@ def main():
 init_db()
 
 # Check Google Drive authentication at startup
-try:
-    from Programs.google_drive_backup import init_check
-    init_check()
-except Exception as e:
-    print(f"Google Drive backup initialization skipped: {e}")
+# Disabled for now to prevent blocking
+# try:
+#     from Programs.google_drive_backup import init_check
+#     init_check()
+# except Exception as e:
+#     print(f"Google Drive backup initialization skipped: {e}")
 
 if __name__ == "__main__":
     main()
