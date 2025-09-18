@@ -1,6 +1,12 @@
 
 def monitor_stocks():
     import time
-    print("Test stock monitor running")
-    time.sleep(0.05)  # Fast test execution
-    return "Monitoring stocks"
+    print("Stock monitor daemon starting...")
+
+    # Simulate monitoring stock prices
+    while True:
+        # Simulate checking stock prices
+        time.sleep(15)  # Check every 15 seconds
+        print("Stock monitor: Checking stock prices...")
+
+    return "Monitor stopped"

@@ -26,32 +26,70 @@ python orchestrator.py
 ```
 
 ### Run with Docker
+
+#### Option 1: Docker Run
 ```bash
 # Build image
-docker build -t aios-orchestrator .
+docker build -t aios-orchestrator -f docker/Dockerfile .
 
 # Run container
 docker run -d --name aios \
   -v $(pwd)/Programs:/app/Programs \
+  -v $(pwd)/orchestrator.db:/app/orchestrator.db \
+  -v $(pwd)/orchestrator.py:/app/orchestrator.py \
   -e DEVICE_TAGS=gpu,storage,browser \
   aios-orchestrator
+```
+
+#### Option 2: Docker Compose
+```bash
+cd docker && docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Project Structure
+```
+AIOS/
+├── orchestrator.py      # Main orchestrator (329 lines)
+├── orchestrator.db      # SQLite database (single file, no WAL)
+├── Programs/            # Job scripts directory
+├── docker/              # Docker configuration
+│   ├── Dockerfile
+│   └── docker-compose.yml
+└── README.md
 ```
 
 ### Environment Variables
 - `DEVICE_ID`: Unique device identifier (default: process ID)
 - `DEVICE_TAGS`: Comma-separated capabilities (e.g., "gpu,storage,browser")
 
-### Files
-- `orchestrator.py`: Main orchestrator (329 lines)
-- `orchestrator.db`: SQLite database for state, logs, and triggers
-- `Programs/`: Directory for job scripts
+### Database
+All data is stored in a single `orchestrator.db` SQLite file:
+- **jobs**: Job status and last run times
+- **logs**: All log messages
+- **triggers**: Job trigger queue
 
-### Adding Jobs
-Edit the `SCHEDULED_JOBS` list in orchestrator.py to add new jobs with types:
-- `always`: Continuously running
-- `daily`: Runs at specified time
+### Job Types
+Edit the `SCHEDULED_JOBS` list in orchestrator.py to add jobs:
+- `always`: Continuously running daemons
+- `daily`: Runs once at specified time
 - `interval`: Fixed interval execution
 - `random_daily`: Random time within window
 - `trigger`: Database-triggered execution
 - `idle`: Runs when system is idle
+
+### Adding a Trigger
+```python
+# Insert trigger into database
+import sqlite3
+conn = sqlite3.connect('orchestrator.db')
+conn.execute("INSERT INTO triggers (job_name, args, kwargs, created) VALUES (?, ?, ?, ?)",
+             ('llm_processor', '[]', '{"prompt": "test"}', time.time()))
+conn.commit()
+```
 

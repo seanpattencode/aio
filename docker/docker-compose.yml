@@ -1,0 +1,20 @@
+services:
+  orchestrator:
+    build: .
+    container_name: aios-orchestrator
+    volumes:
+      # Mount Programs directory and database from parent
+      - ../Programs:/app/Programs
+      - ../orchestrator.db:/app/orchestrator.db
+      - ../orchestrator.py:/app/orchestrator.py:ro
+    environment:
+      - DEVICE_ID=docker-main
+      - DEVICE_TAGS=gpu,storage,browser
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - aios-network
+
+networks:
+  aios-network:
+    driver: bridge
