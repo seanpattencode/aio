@@ -36,7 +36,7 @@ CLIENT_CONFIG = {
     }
 }
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 # HTML templates
 LOGIN_TEMPLATE = """
