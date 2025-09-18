@@ -32,6 +32,7 @@ DEFAULT_JOBS = [
     dict(name="morning_report", file="reports.py", function="generate_morning_report", type="daily", time="09:00"),
     dict(name="random_check", file="health_check.py", function="random_health_check", type="random_daily", after_time="14:00", before_time="18:00"),
     dict(name="backup_data", file="backup.py", function="backup_all", type="interval", interval_minutes=60, tags=["storage"], retries=3),
+    dict(name="google_drive_backup", file="google_drive_backup.py", function="backup_to_drive", type="interval", interval_minutes=120, tags=["storage"], retries=3),
     dict(name="llm_processor", file="llm_tasks.py", function="process_llm_queue", type="trigger", tags=["gpu"]),
     dict(name="idle_baseline", file="idle_task.py", function="run_idle", type="idle", priority=-1),
 ]
