@@ -422,45 +422,26 @@ def clean_restart():
         print("✓ Reset job statuses in database")
         conn.close()
 
-        # First, try to kill all python processes inside the container
-        print("Killing all processes inside container...")
-        try:
-            subprocess.run(
-                ["docker", "exec", "aios-orchestrator", "sh", "-c", "kill -9 -1 2>/dev/null || true"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-        except:
-            pass  # Container might not be running
-
-        # Stop container completely with short timeout to force kill
-        print("Stopping Docker container...")
-        result = subprocess.run(
-            ["docker-compose", "stop", "-t", "1"],
-            cwd=docker_dir,
+        # Kill and remove container using docker directly (faster)
+        print("Stopping container...")
+        subprocess.run(
+            ["docker", "kill", "aios-orchestrator"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=1
         )
-        if result.returncode != 0:
-            print(f"Warning: {result.stderr}")
-        else:
-            print("✓ Container stopped")
-
-        # Remove the container to ensure clean state
-        print("Removing container...")
-        result = subprocess.run(
-            ["docker-compose", "rm", "-f"],
-            cwd=docker_dir,
+        subprocess.run(
+            ["docker", "rm", "-f", "aios-orchestrator"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=1
         )
-        print("✓ Container removed")
+        print("✓ Container stopped and removed")
 
-        # Start fresh container
+        # Start fresh container with docker-compose
         print("Starting fresh container...")
         result = subprocess.run(
-            ["docker-compose", "up", "-d"],
+            ["docker-compose", "up", "-d", "--force-recreate"],
             cwd=docker_dir,
             capture_output=True,
             text=True
@@ -469,17 +450,6 @@ def clean_restart():
             print(f"Error starting container: {result.stderr}")
             return
         print("✓ Container started")
-
-        # Wait a bit for orchestrator to initialize
-        print("Waiting for orchestrator to initialize...")
-        time.sleep(5)
-
-        # Show recent logs to confirm startup
-        print("\nRecent logs:")
-        subprocess.run(
-            ["docker-compose", "logs", "--tail=10"],
-            cwd=docker_dir
-        )
 
         print("\n✅ Clean restart complete!")
         print("The orchestrator and all jobs have been cleanly restarted.")
