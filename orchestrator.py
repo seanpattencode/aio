@@ -1,14 +1,40 @@
 #!/usr/bin/env python3
+"""
+AIOS Orchestrator - Automated Intelligence Operating System
+
+⚠️  IMPORTANT: This application MUST be run using Docker for proper isolation and dependency management.
+⚠️  DO NOT run this directly with Python. Use the Docker instructions in the README.
+⚠️  Running outside Docker may cause security issues, dependency conflicts, and unpredictable behavior.
+"""
+
 import datetime
 import importlib.util
 import json
 import os
 import random
 import sqlite3
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+# Docker environment check and warning
+if not os.path.exists('/.dockerenv') and 'DOCKER_CONTAINER' not in os.environ:
+    print("\n" + "="*80)
+    print("⚠️  WARNING: AIOS Orchestrator should ONLY be run using Docker!")
+    print("="*80)
+    print("Running outside Docker is not supported and may cause:")
+    print("  - Security vulnerabilities")
+    print("  - Dependency conflicts")
+    print("  - Data corruption")
+    print("  - Unpredictable behavior")
+    print("\nPlease use Docker to run this application:")
+    print("  cd docker && docker-compose up -d")
+    print("="*80 + "\n")
+    if '--force' not in sys.argv:
+        print("Add --force flag to bypass this warning (NOT RECOMMENDED)")
+        sys.exit(1)
 
 ROOT_DIR = Path(__file__).parent.resolve()
 PROGRAMS_DIR = ROOT_DIR / "Programs"
