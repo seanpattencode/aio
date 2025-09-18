@@ -422,10 +422,22 @@ def clean_restart():
         print("✓ Reset job statuses in database")
         conn.close()
 
-        # Stop container completely (this kills all processes inside)
+        # First, try to kill all python processes inside the container
+        print("Killing all processes inside container...")
+        try:
+            subprocess.run(
+                ["docker", "exec", "aios-orchestrator", "sh", "-c", "kill -9 -1 2>/dev/null || true"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+        except:
+            pass  # Container might not be running
+
+        # Stop container completely with short timeout to force kill
         print("Stopping Docker container...")
         result = subprocess.run(
-            ["docker-compose", "stop"],
+            ["docker-compose", "stop", "-t", "1"],
             cwd=docker_dir,
             capture_output=True,
             text=True
