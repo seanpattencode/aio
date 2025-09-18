@@ -286,13 +286,14 @@ def generate_html():
 <html>
 <head>
   <title>Todo App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;background:#f5f5f5}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .card{background:#fff;padding:12px;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,.1);margin:10px 0}
     .essential{border-left:4px solid #ff6b6b}
     .small{color:#666;font-size:13px}
-    button{padding:6px 10px;border:0;border-radius:4px;cursor:pointer}
+    button{padding:8px 12px;border:0;border-radius:4px;cursor:pointer;font-size:14px}
     .green{background:#4caf50;color:#fff}.orange{background:#ff9800;color:#fff}.blue{background:#03a9f4;color:#fff}
     .filter{background:#2196f3;color:#fff}.active{background:#0d47a1}
     #logs{background:#333;color:#fff;padding:12px;border-radius:6px;max-height:200px;overflow:auto;font:12px/1.4 monospace}
@@ -301,7 +302,25 @@ def generate_html():
     .menu{display:none;position:absolute;background:#f9f9f9;min-width:140px;box-shadow:0 8px 16px rgba(0,0,0,.2);border-radius:6px;z-index:2}
     .menu button{width:100%;background:none;color:#000;text-align:left;padding:10px}
     .menu button:hover{background:#f1f1f1}
-    .time-editor{position:absolute;background:#fff;border:1px solid #ddd;padding:8px;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+    .time-editor{position:fixed;background:#fff;border:1px solid #ddd;padding:12px;border-radius:6px;box-shadow:0 4px 8px rgba(0,0,0,.2);left:50%;top:50%;transform:translate(-50%,-50%);z-index:10}
+    .add-form{display:flex;gap:10px;flex-wrap:wrap}
+    .add-form input[type="text"]{flex:1 1 200px;min-width:0}
+    @media (max-width:600px){
+      body{padding:10px}
+      h1{font-size:24px;margin:10px 0}
+      .row{gap:8px}
+      button{padding:10px 14px;font-size:14px}
+      .card{padding:10px}
+      .small{font-size:12px}
+      .add-form{flex-direction:column}
+      .add-form input{width:100%;box-sizing:border-box}
+      .add-form button{width:100%}
+      .task-actions{flex-direction:column;width:100%}
+      .task-actions button{width:100%}
+      .dropdown{width:100%}
+      .dropdown button{width:100%}
+      .menu{right:0}
+    }
   </style>
 </head>
 <body>
@@ -314,10 +333,12 @@ def generate_html():
     <button class="filter" onclick="setFilter('essential',this)">Essential</button>
     <button class="filter" onclick="setFilter('all',this)">All</button>
   </div>
-  <div class="card row">
-    <input id="desc" type="text" placeholder="Task description" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:4px">
-    <input id="time" type="time" style="padding:6px;border:1px solid #ddd;border-radius:4px">
-    <button class="green" onclick="addTask()">Add Task</button>
+  <div class="card">
+    <div class="add-form">
+      <input id="desc" type="text" placeholder="Task description" style="padding:8px;border:1px solid #ddd;border-radius:4px">
+      <input id="time" type="time" style="padding:8px;border:1px solid #ddd;border-radius:4px">
+      <button class="green" onclick="addTask()">Add Task</button>
+    </div>
   </div>
   <div id="tasks"></div>
   <div id="logs" class="hidden"></div>
@@ -360,7 +381,7 @@ function render(){
         <span class="small">${t.recurrence_time}</span>
       </div>
       <div class="small">Streak: ${t.streak} | Next: ${new Date(t.next_occurrence).toLocaleString()}</div>
-      <div class="row" style="margin-top:8px">
+      <div class="row task-actions" style="margin-top:8px">
         <button class="green" onclick="complete(${t.id},true)">Complete</button>
         <button class="orange" onclick="complete(${t.id},false)">Not Complete</button>
         <button class="blue" onclick="openTime(${t.id},event)">Edit Time</button>
@@ -408,8 +429,6 @@ function openTime(id,ev){
   const ed = document.createElement('div');
   ed.className='time-editor';
   ed.innerHTML = `<input type="time" id="edit-time" value="${t.recurrence_time}"> <button onclick="saveTime(${id})">Save</button> <button onclick="closeEditor()">Cancel</button>`;
-  ed.style.left = ev.pageX+'px';
-  ed.style.top = ev.pageY+'px';
   document.body.appendChild(ed);
   editor=ed;
   q('#edit-time').focus();
