@@ -19,7 +19,7 @@ def check_auth():
         try:
             with open(TOKEN_FILE, 'r') as f:
                 token = json.load(f)
-                if 'credentials' in str(token):
+                if 'token' in token or 'refresh_token' in token:
                     return True
         except:
             pass
@@ -44,9 +44,60 @@ def start_web_server():
 def backup_to_drive(*args, **kwargs):
     """Main backup function called by orchestrator"""
     if check_auth():
-        print("Google Drive backup: Authenticated and ready")
-        # TODO: Add actual backup logic here
-        return "Google Drive backup completed"
+        try:
+            # Import necessary modules
+            from datetime import datetime
+            from pathlib import Path
+
+            # Change to googleDriveSyncDemo directory to use the app functions
+            import os
+            original_dir = os.getcwd()
+            os.chdir(Path(__file__).parent / 'googleDriveSyncDemo')
+
+            # Import the app functions
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            from googleapiclient.http import MediaFileUpload
+
+            # Load credentials from token.json
+            with open('token.json', 'r') as f:
+                token_data = json.load(f)
+
+            creds = Credentials.from_authorized_user_info(token_data)
+            service = build('drive', 'v3', credentials=creds)
+
+            # Ensure AIOS_Backups folder exists
+            folder_name = 'AIOS_Backups'
+            query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            files = service.files().list(q=query, fields="files(id)", pageSize=1).execute().get('files', [])
+
+            if files:
+                folder_id = files[0]['id']
+            else:
+                folder_metadata = {'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder'}
+                folder = service.files().create(body=folder_metadata, fields='id').execute()
+                folder_id = folder['id']
+                print(f"Created {folder_name} folder in Google Drive")
+
+            # Upload orchestrator.db with timestamp
+            db_path = '../../orchestrator.db'
+            if os.path.exists(db_path):
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                file_metadata = {'name': f'orchestrator_{timestamp}.db', 'parents': [folder_id]}
+                media = MediaFileUpload(db_path, mimetype='application/x-sqlite3')
+                file = service.files().create(body=file_metadata, media_body=media, fields='id,name').execute()
+
+                os.chdir(original_dir)
+                print(f"Database backed up successfully: {file.get('name')}")
+                return f"Backup completed: {file.get('name')}"
+            else:
+                os.chdir(original_dir)
+                print("Database file not found")
+                return "Database file not found"
+
+        except Exception as e:
+            print(f"Backup error: {e}")
+            return f"Backup failed: {e}"
     else:
         print("Google Drive backup: Not authenticated")
         return "Authentication required"
