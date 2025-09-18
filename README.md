@@ -61,7 +61,7 @@ docker run -d --name aios \
 AIOS/
 ├── orchestrator.py          # Main orchestrator (DO NOT RUN DIRECTLY)
 ├── orchestrator.db          # SQLite database (auto-created)
-├── manage_jobs.py           # Job management CLI utility
+├── manage_jobs.py           # Comprehensive management utility (ALL commands)
 ├── requirements.txt         # Python dependencies (for Docker)
 ├── Programs/                # Job scripts directory
 │   ├── google_drive_backup.py
@@ -71,46 +71,108 @@ AIOS/
 │   ├── reports.py
 │   ├── stock_monitor.py
 │   └── web_server.py
-├── docker/                  # Docker configuration
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── manage_jobs_docker.sh
-└── README.md
+└── docker/                  # Docker configuration
+    ├── Dockerfile
+    ├── docker-compose.yml
+    └── manage_jobs_docker.sh
 ```
 
-## Job Management
+## Management Utility
 
-### Managing Jobs from Host System
+The `manage_jobs.py` script provides comprehensive management capabilities for the AIOS system. All functionality is consolidated into this single utility.
 
-While the orchestrator runs in Docker, you can manage jobs from the host system:
+### Quick Command Reference
 
 ```bash
-# List all jobs
-python3 manage_jobs.py list
+# Show all available commands
+python3 manage_jobs.py
 
-# Enable/disable jobs
-python3 manage_jobs.py enable <job_name>
-python3 manage_jobs.py disable <job_name>
+# System overview
+python3 manage_jobs.py status
 
-# Trigger a job immediately
-python3 manage_jobs.py trigger <job_name> [key=value...]
+# Job management
+python3 manage_jobs.py list                          # List all jobs
+python3 manage_jobs.py enable <job_name>             # Enable a job
+python3 manage_jobs.py disable <job_name>            # Disable a job
+python3 manage_jobs.py trigger <job_name> [args...]  # Trigger a job
+python3 manage_jobs.py check <job_name>              # Detailed job info
+python3 manage_jobs.py reset <job_name>              # Reset job state
+python3 manage_jobs.py remove <job_name>             # Remove a job
 
-# Remove a job
-python3 manage_jobs.py remove <job_name>
+# Monitoring
+python3 manage_jobs.py logs                          # View recent logs
+python3 manage_jobs.py logs --job backup --limit 50  # Filtered logs
+python3 manage_jobs.py logs --follow                 # Real-time logs
+python3 manage_jobs.py docker-logs 100               # Docker container logs
+
+# Database
+python3 manage_jobs.py db-info                       # Database statistics
+python3 manage_jobs.py backup                        # Backup database
 ```
 
-### Docker-Aware Management Script
+### System Status Command
 
-For better integration with Docker:
+Get a complete overview of your AIOS system:
 
 ```bash
-# Use the Docker-aware wrapper
+python3 manage_jobs.py status
+```
+
+This shows:
+- Docker container status
+- Number of enabled/disabled jobs
+- Running and failed jobs
+- Pending triggers
+- Recent job executions
+
+### Advanced Log Viewing
+
+The consolidated log viewer supports multiple options:
+
+```bash
+# Filter by job name
+python3 manage_jobs.py logs --job google_drive_backup
+
+# Filter by log level
+python3 manage_jobs.py logs --level ERROR
+
+# Combine filters
+python3 manage_jobs.py logs --job backup --level INFO --limit 100
+
+# Follow logs in real-time (like tail -f)
+python3 manage_jobs.py logs --follow
+```
+
+### Job Inspection
+
+Get detailed information about any job:
+
+```bash
+python3 manage_jobs.py check google_drive_backup
+```
+
+This shows:
+- Complete job configuration
+- Current execution status
+- Recent log entries
+- Trigger history
+
+### Docker Integration
+
+While the orchestrator runs in Docker, the management utility seamlessly integrates:
+
+```bash
+# View Docker container logs directly
+python3 manage_jobs.py docker-logs 50
+
+# The utility automatically checks Docker container status
+python3 manage_jobs.py status
+```
+
+For enhanced Docker integration, use the wrapper script:
+
+```bash
 ./docker/manage_jobs_docker.sh trigger google_drive_backup
-
-# This script will:
-# 1. Execute the job management command
-# 2. Show relevant Docker logs
-# 3. Confirm job execution
 ```
 
 ## Job Types
@@ -197,42 +259,51 @@ python3 manage_jobs.py list
 
 ## Monitoring and Logs
 
-### View Container Logs
+All monitoring functionality is now available through `manage_jobs.py`:
+
+### System Monitoring
 ```bash
-# Real-time logs
-docker-compose logs -f
+# Complete system status overview
+python3 manage_jobs.py status
 
-# Last 100 lines
-docker-compose logs --tail=100
+# Check specific job details
+python3 manage_jobs.py check google_drive_backup
 
-# Filter for specific job
-docker-compose logs | grep "google_drive_backup"
+# View database statistics
+python3 manage_jobs.py db-info
 ```
 
-### Check Job Execution History
+### Log Viewing
 ```bash
-# Create a monitoring script
-cat > check_jobs.py << 'EOF'
-import sqlite3
-from datetime import datetime
+# View recent logs (default: last 20)
+python3 manage_jobs.py logs
 
-conn = sqlite3.connect('orchestrator.db')
-cursor = conn.execute('''
-    SELECT timestamp, level, message
-    FROM logs
-    WHERE message LIKE '%Job%'
-    ORDER BY timestamp DESC
-    LIMIT 20
-''')
+# Filter logs by job
+python3 manage_jobs.py logs --job google_drive_backup
 
-for row in cursor:
-    time = datetime.fromtimestamp(row[0]).strftime('%Y-%m-%d %H:%M:%S')
-    print(f"{time} [{row[1]}] {row[2]}")
+# Filter by log level (ERROR, WARNING, INFO)
+python3 manage_jobs.py logs --level ERROR
 
-conn.close()
-EOF
+# View more logs
+python3 manage_jobs.py logs --limit 100
 
-python3 check_jobs.py
+# Follow logs in real-time
+python3 manage_jobs.py logs --follow
+
+# Combine multiple filters
+python3 manage_jobs.py logs --job backup --level INFO --limit 50
+```
+
+### Docker Container Logs
+```bash
+# View Docker container logs
+python3 manage_jobs.py docker-logs
+
+# View last 100 lines of Docker logs
+python3 manage_jobs.py docker-logs 100
+
+# Alternative: Direct docker-compose (from docker directory)
+cd docker && docker-compose logs --tail=50
 ```
 
 ## Troubleshooting
@@ -252,26 +323,35 @@ docker-compose up -d
 
 ### Jobs Not Running
 ```bash
-# Check if job is enabled
-python3 manage_jobs.py list
+# Check system status
+python3 manage_jobs.py status
 
-# Check device tags match job requirements
-docker-compose exec orchestrator env | grep DEVICE_TAGS
+# Check if specific job is enabled
+python3 manage_jobs.py check <job_name>
+
+# Reset a stuck job
+python3 manage_jobs.py reset <job_name>
 
 # Force trigger a job
 python3 manage_jobs.py trigger <job_name>
+
+# Check device tags in container
+docker exec aios-orchestrator env | grep DEVICE_TAGS
 ```
 
 ### Database Issues
 ```bash
+# Check database health
+python3 manage_jobs.py db-info
+
 # Backup database
-cp orchestrator.db orchestrator.db.backup
+python3 manage_jobs.py backup
 
-# Check database integrity
-sqlite3 orchestrator.db "PRAGMA integrity_check;"
+# Backup to specific location
+python3 manage_jobs.py backup /path/to/backup.db
 
-# Reset job status
-sqlite3 orchestrator.db "DELETE FROM jobs WHERE job_name='<job_name>';"
+# Reset a specific job's state
+python3 manage_jobs.py reset <job_name>
 ```
 
 ### Dependency Errors
@@ -298,18 +378,37 @@ docker exec aios-orchestrator pip list
 
 ## Backup and Recovery
 
-The Google Drive backup job automatically backs up the database:
+### Database Backup
 
 ```bash
-# Trigger manual backup
+# Create local backup with timestamp
+python3 manage_jobs.py backup
+
+# Backup to specific location
+python3 manage_jobs.py backup /backups/aios_backup.db
+
+# Trigger Google Drive backup
 python3 manage_jobs.py trigger google_drive_backup
 
-# Check backup status
-docker-compose logs | grep "Backup completed"
+# Check backup job status
+python3 manage_jobs.py check google_drive_backup
 
+# View backup-related logs
+python3 manage_jobs.py logs --job backup
+```
+
+### Recovery
+
+```bash
 # Restore from backup
 cp /path/to/backup/orchestrator_YYYYMMDD_HHMMSS.db orchestrator.db
-docker-compose restart
+
+# Restart container to load restored database
+cd docker && docker-compose restart
+
+# Verify restoration
+python3 manage_jobs.py status
+python3 manage_jobs.py db-info
 ```
 
 ## Development Guidelines
