@@ -1,0 +1,36 @@
+AIOSE QUICK START GUIDE
+
+PREREQUISITES:
+python3 chatgpt2AIOSE.py install    # Generate systemd service (optional)
+
+BASIC COMMANDS:
+
+# View help
+python3 chatgpt2AIOSE.py -h
+
+# Add a task
+python3 chatgpt2AIOSE.py add <task_name> <command>
+
+# List all tasks
+python3 chatgpt2AIOSE.py list
+
+# Check task status
+python3 chatgpt2AIOSE.py status <task_id_or_name>
+
+# Start a task
+python3 chatgpt2AIOSE.py start <task_id_or_name>
+
+# Stop a task
+python3 chatgpt2AIOSE.py stop <task_id_or_name>
+
+# View statistics
+python3 chatgpt2AIOSE.py stats
+
+# Clean up old tasks
+python3 chatgpt2AIOSE.py cleanup
+
+# Run worker (processes tasks)
+python3 chatgpt2AIOSE.py worker
+
+# Reconcile systemd units
+python3 chatgpt2AIOSE.py reconcile
