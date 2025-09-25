@@ -75,26 +75,62 @@ body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .box-title{{font-weight:bold;margin-bottom:10px;font-size:18px}}
 .box-content{{max-height:200px;overflow-y:auto}}
 .box-item{{padding:5px 0;border-bottom:1px solid {fg}33}}
-button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;margin:5px}}
-input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:80%;margin:10px 0}}
+button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;margin:5px;border-radius:5px}}
+input{{background:{bg2};color:{fg};border:1px solid {fg};padding:12px;width:70%;margin:10px 0;border-radius:5px}}
+.run-box{{background:{bg2};border-radius:10px;padding:20px;margin:20px 0}}
+.run-button{{padding:12px 30px;font-size:16px}}
 .running{{color:#0a0}} .stopped{{color:#a00}}
 a{{color:{fg};text-decoration:underline}}
-.settings-btn{{position:fixed;top:20px;right:20px;cursor:pointer;padding:10px;background:{fg};color:{bg};border-radius:5px}}
-.views-btn{{position:fixed;top:20px;right:120px;cursor:pointer;padding:10px;background:{fg};color:{bg};border-radius:5px}}
-</style></head>
+.menu-btn{{position:fixed;top:20px;cursor:pointer;padding:10px;background:{fg};color:{bg};border-radius:5px}}
+.settings-btn{{right:20px}}
+.views-btn{{right:120px}}
+.dropdown{{display:none;position:fixed;top:60px;background:{bg2};border:1px solid {fg};border-radius:10px;padding:10px;min-width:150px;z-index:1000}}
+.dropdown.views{{right:120px}}
+.dropdown.settings{{right:20px}}
+.dropdown-item{{padding:8px 12px;cursor:pointer;border-radius:5px}}
+.dropdown-item:hover{{background:{bg}}}
+.dropdown.show{{display:block}}
+</style>
+<script>
+function toggleDropdown(type) {{
+  const dropdown = document.getElementById(type + '-dropdown');
+  const other = type === 'views' ? 'settings' : 'views';
+  document.getElementById(other + '-dropdown').classList.remove('show');
+  dropdown.classList.toggle('show');
+}}
+window.onclick = function(e) {{
+  if (!e.target.matches('.menu-btn')) {{
+    document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('show'));
+  }}
+}}
+</script>
+</head>
 <body>
-<div class="views-btn" onclick="location.href='/views'">Views</div>
-<div class="settings-btn" onclick="location.href='/settings'">Settings</div>
+<div class="menu-btn views-btn" onclick="toggleDropdown('views')">Views</div>
+<div class="dropdown views" id="views-dropdown">
+<form action="/views/update" method="POST" id="viewsForm" style="margin:0">
+{''.join(f'<label class="dropdown-item" style="display:block;padding:8px 12px;margin:0;cursor:pointer"><input type="checkbox" name="viewport" value="{vp}" {"checked" if vp in viewports else ""} onchange="document.getElementById(\'viewsForm\').submit()" style="margin:0 5px 0 0;accent-color:{fg};vertical-align:middle;width:14px;height:14px">{i+1}. {vp.title()}</label>' for i, vp in enumerate(['feed', 'processes', 'schedule', 'todo']))}
+</form>
+<div class="dropdown-item" onclick="location.href='/views'" style="font-size:12px;color:{fg}88;border-top:1px solid {fg}33;margin-top:5px;padding-top:10px">Advanced...</div>
+</div>
+<div class="menu-btn settings-btn" onclick="toggleDropdown('settings')">Settings</div>
+<div class="dropdown settings" id="settings-dropdown">
+<form action="/settings/theme" method="POST" style="margin:0"><button type="submit" name="theme" value="{'dark' if is_light else 'light'}" class="dropdown-item" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:transparent;color:{fg};padding:8px 12px">Theme <span>{theme.title()}</span></button></form>
+<form action="/settings/time" method="POST" style="margin:0"><button type="submit" name="format" value="{'24h' if time_format == '12h' else '12h'}" class="dropdown-item" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:transparent;color:{fg};padding:8px 12px">Time <span>{time_format.upper()}</span></button></form>
+<div class="dropdown-item" onclick="location.href='/settings'" style="font-size:12px;color:{fg}88">More...</div>
+</div>
 <div class="container">
 <h1>AIOS Control Center</h1>
 <div class="viewport">
 {"".join(viewport_html)}
 </div>
-<h2>Run Command</h2>
+<div class="run-box">
+<h2 style="margin-top:0">Run Command</h2>
 <form action="/run" method="POST">
 <input name="cmd" placeholder="python3 programs/todo/todo.py list">
-<button type="submit">Run</button>
+<button type="submit" class="run-button">Run</button>
 </form>
+</div>
 </div></body></html>"""
             self.wfile.write(html.encode())
         elif path == '/views':
@@ -225,8 +261,8 @@ button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;m
 <head><title>Settings</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.setting{{background:{bg2};padding:15px;margin:10px 0;border-radius:5px}}
-button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px}}
+.setting{{background:{bg2};padding:15px;margin:10px 0;border-radius:10px}}
+button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px;border-radius:5px}}
 </style></head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
@@ -315,14 +351,14 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
             settings = aios_db.read('settings') or {}
             aios_db.write('settings', {**settings, 'time_format': format_val})
             self.send_response(303)
-            self.send_header('Location', '/settings')
+            self.send_header('Location', '/')
             self.end_headers()
         elif path == '/settings/theme':
             theme_val = data.get('theme', ['dark'])[0]
             settings = aios_db.read('settings') or {}
             aios_db.write('settings', {**settings, 'theme': theme_val})
             self.send_response(303)
-            self.send_header('Location', '/settings')
+            self.send_header('Location', '/')
             self.end_headers()
         elif path == '/views/update':
             selected = data.get('viewport', [])
@@ -331,7 +367,7 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
             settings = aios_db.read('settings') or {}
             aios_db.write('settings', {**settings, 'viewports': selected[:4]})
             self.send_response(303)
-            self.send_header('Location', '/views')
+            self.send_header('Location', '/')
             self.end_headers()
 
 def find_free_port(start=8080):
