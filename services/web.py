@@ -80,6 +80,7 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
 </style></head>
 <body>
 <div class="theme-toggle" onclick="document.cookie='theme=' + (document.cookie.includes('theme=light') ? 'dark' : 'light') + ';path=/'; location.reload()">{'Light' if not is_light else 'Dark'}</div>
+<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
 <h1>Todo Manager</h1>
 <form action="/todo/add" method="POST">
 <input name="task" placeholder="New task...">
