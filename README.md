@@ -27,3 +27,7 @@ python services/web.py start - web interface
 python services/web.py kill - stop server
 python services/web.py status - server info
 python programs/autollm/autollm.py - auto llm
+python services/feed.py add - add message
+python services/feed.py view - view feed
+python services/feed.py list - list messages
+python services/feed.py clear - clear old
