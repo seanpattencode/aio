@@ -57,8 +57,8 @@ def test_ranker():
     run_test('ranker', 'pick')
     return success
 
-def test_setup():
-    return run_test('setup', 'check')
+def test_aios_start():
+    return run_test('aios_start', 'status')
 
 def test_gdrive():
     aios_db.write('gdrive_creds', {'client_id': 'test', 'client_secret': 'test', 'refresh_token': 'test'})
@@ -87,7 +87,7 @@ test_functions = {
     'scraper': test_scraper,
     'planner': test_planner,
     'ranker': test_ranker,
-    'setup': test_setup,
+    'aios_start': test_aios_start,
     'gdrive': test_gdrive,
     'swarm': test_swarm,
     'builder': test_builder,
