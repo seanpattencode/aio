@@ -19,20 +19,50 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            result = subprocess.run("python3 services/service.py list", shell=True, capture_output=True, text=True)
-            services_text = result.stdout
-            schedule = aios_db.read("schedule") or {}
             settings = aios_db.read("settings") or {}
+            viewports = settings.get('viewports', ['feed', 'processes', 'schedule', 'todo'])
             theme = settings.get('theme', 'dark')
             is_light = theme == 'light'
             bg = '#fff' if is_light else '#000'
             fg = '#000' if is_light else '#fff'
             bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-
-            todo_result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
-            tasks = todo_result.stdout.strip().split('\n')[:4] if todo_result.stdout else []
-            messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 4")
             time_format = settings.get("time_format", "12h")
+
+            viewport_data = {}
+
+            if 'todo' in viewports:
+                todo_result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
+                viewport_data['todo'] = {'title': 'Todo', 'items': todo_result.stdout.strip().split('\n')[:4] if todo_result.stdout else []}
+
+            if 'feed' in viewports:
+                messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp ASC LIMIT 4")
+                viewport_data['feed'] = {'title': 'Feed', 'items': messages}
+
+            if 'processes' in viewports:
+                proc_result = subprocess.run("python3 services/processes.py list", shell=True, capture_output=True, text=True)
+                viewport_data['processes'] = {'title': 'Processes', 'items': proc_result.stdout.strip().split('\n')[:4] if proc_result.stdout else []}
+
+            if 'schedule' in viewports:
+                schedule = aios_db.read("schedule") or {}
+                schedule_items = []
+                [[schedule_items.append(f"Daily {t}: {c}")] for t,c in sorted(schedule.get("daily",{}).items())]
+                [[schedule_items.append(f"Hourly :{int(m):02d}: {c}")] for m,c in sorted(schedule.get("hourly",{}).items(), key=lambda x: int(x[0]))]
+                viewport_data['schedule'] = {'title': 'Schedule', 'items': schedule_items[:4]}
+
+            viewport_html = []
+            for vp_name in viewports[:4]:
+                if vp_name not in viewport_data:
+                    continue
+                data = viewport_data[vp_name]
+                if vp_name == 'feed':
+                    items_html = "".join(f'<div class="box-item">{datetime.fromisoformat(m[1]).strftime("%I:%M %p" if time_format == "12h" else "%H:%M")} - {m[0]}</div>' for m in data["items"]) if data["items"] else '<div style="color:#888">No messages</div>'
+                else:
+                    items_html = "".join(f'<div class="box-item">{item}</div>' for item in data["items"]) if data["items"] else f'<div style="color:#888">No {data["title"].lower()}</div>'
+
+                viewport_html.append(f'''<div class="box" onclick="location.href='/{vp_name}'">
+<div class="box-title">{data["title"]}</div>
+<div class="box-content">{items_html}</div>
+</div>''')
 
             html = f"""<html>
 <head><title>AIOS Control Center</title>
@@ -45,45 +75,116 @@ body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .box-title{{font-weight:bold;margin-bottom:10px;font-size:18px}}
 .box-content{{max-height:200px;overflow-y:auto}}
 .box-item{{padding:5px 0;border-bottom:1px solid {fg}33}}
-.service{{background:{bg2};padding:10px;margin:10px 0;border-radius:5px}}
 button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;margin:5px}}
 input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:80%;margin:10px 0}}
 .running{{color:#0a0}} .stopped{{color:#a00}}
 a{{color:{fg};text-decoration:underline}}
 .settings-btn{{position:fixed;top:20px;right:20px;cursor:pointer;padding:10px;background:{fg};color:{bg};border-radius:5px}}
+.views-btn{{position:fixed;top:20px;right:120px;cursor:pointer;padding:10px;background:{fg};color:{bg};border-radius:5px}}
 </style></head>
 <body>
+<div class="views-btn" onclick="location.href='/views'">Views</div>
 <div class="settings-btn" onclick="location.href='/settings'">Settings</div>
 <div class="container">
 <h1>AIOS Control Center</h1>
 <div class="viewport">
-<div class="box" onclick="location.href='/todo'">
-<div class="box-title">Todo</div>
-<div class="box-content">{"".join(f'<div class="box-item">{t}</div>' for t in tasks) if tasks else '<div style="color:#888">No tasks</div>'}</div>
+{"".join(viewport_html)}
 </div>
-<div class="box" onclick="location.href='/feed'">
-<div class="box-title">Feed</div>
-<div class="box-content">{"".join(f'<div class="box-item">{datetime.fromisoformat(m[1]).strftime("%I:%M %p" if time_format == "12h" else "%H:%M")} - {m[0]}</div>' for m in messages) if messages else '<div style="color:#888">No messages</div>'}</div>
-</div>
-</div>
-<h2>Services</h2>
-<pre>{services_text}</pre>
-<h2>Schedule</h2>
-<div>Daily: {", ".join(f"{t}: {c}" for t,c in schedule.get("daily",{}).items())}</div>
-<div>Hourly: {", ".join(f":{m:02d}: {c}" for m,c in schedule.get("hourly",{}).items())}</div>
 <h2>Run Command</h2>
 <form action="/run" method="POST">
 <input name="cmd" placeholder="python3 programs/todo/todo.py list">
 <button type="submit">Run</button>
 </form>
-<div id="output"></div>
 </div></body></html>"""
+            self.wfile.write(html.encode())
+        elif path == '/views':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            settings = aios_db.read("settings") or {}
+            current_viewports = settings.get('viewports', ['feed', 'processes', 'schedule', 'todo'])
+            all_viewports = ['feed', 'processes', 'schedule', 'todo']
+            theme = settings.get('theme', 'dark')
+            is_light = theme == 'light'
+            bg = '#fff' if is_light else '#000'
+            fg = '#000' if is_light else '#fff'
+            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
+            html = f"""<html>
+<head><title>View Configuration</title>
+<style>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
+.viewport-item{{background:{bg2};padding:15px;margin:10px 0;border-radius:5px}}
+button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px}}
+input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
+</style></head>
+<body>
+<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
+<h1>Configure Views</h1>
+<form action="/views/update" method="POST">
+<div class="viewport-item">
+<h3>Select Viewports (max 4, order matters)</h3>
+{"".join(f'<div><input type="checkbox" name="viewport" value="{vp}" {"checked" if vp in current_viewports else ""}>{i+1}. {vp.title()}</div>' for i, vp in enumerate(all_viewports))}
+</div>
+<button type="submit">Save</button>
+</form>
+</body></html>"""
+            self.wfile.write(html.encode())
+        elif path == '/processes':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            result = subprocess.run("python3 services/processes.py list", shell=True, capture_output=True, text=True)
+            processes = result.stdout.strip().split('\n') if result.stdout else []
+            settings = aios_db.read("settings") or {}
+            theme = settings.get('theme', 'dark')
+            is_light = theme == 'light'
+            bg = '#fff' if is_light else '#000'
+            fg = '#000' if is_light else '#fff'
+            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
+            html = f"""<html>
+<head><title>Processes</title>
+<style>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
+.process{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
+button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
+</style></head>
+<body>
+<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
+<h1>Process Manager</h1>
+<div>{"".join(f'<div class="process">{p}</div>' for p in processes)}</div>
+</body></html>"""
+            self.wfile.write(html.encode())
+        elif path == '/schedule':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            schedule = aios_db.read("schedule") or {}
+            settings = aios_db.read("settings") or {}
+            theme = settings.get('theme', 'dark')
+            is_light = theme == 'light'
+            bg = '#fff' if is_light else '#000'
+            fg = '#000' if is_light else '#fff'
+            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
+            html = f"""<html>
+<head><title>Schedule</title>
+<style>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
+.schedule-item{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
+</style></head>
+<body>
+<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
+<h1>Schedule</h1>
+<h2>Daily Tasks</h2>
+<div>{"".join(f'<div class="schedule-item">{t}: {c}</div>' for t,c in sorted(schedule.get("daily",{}).items()))}</div>
+<h2>Hourly Tasks</h2>
+<div>{"".join(f'<div class="schedule-item">:{int(m):02d}: {c}</div>' for m,c in sorted(schedule.get("hourly",{}).items(), key=lambda x: int(x[0])))}</div>
+</body></html>"""
             self.wfile.write(html.encode())
         elif path == '/feed':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            messages = aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 100")
+            messages = aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp ASC LIMIT 100")
             settings = aios_db.read("settings") or {}
             time_format = settings.get("time_format", "12h")
             theme = settings.get('theme', 'dark')
@@ -222,6 +323,15 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
             aios_db.write('settings', {**settings, 'theme': theme_val})
             self.send_response(303)
             self.send_header('Location', '/settings')
+            self.end_headers()
+        elif path == '/views/update':
+            selected = data.get('viewport', [])
+            if not isinstance(selected, list):
+                selected = [selected]
+            settings = aios_db.read('settings') or {}
+            aios_db.write('settings', {**settings, 'viewports': selected[:4]})
+            self.send_response(303)
+            self.send_header('Location', '/views')
             self.end_headers()
 
 def find_free_port(start=8080):
