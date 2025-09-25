@@ -52,3 +52,8 @@
 ./backup_gdrive.py restore - Download from Drive
 ./backup_gdrive.py list - Show synced files
 ./backup_gdrive.py status - Check sync status
+
+./aios start SERVICE - Start service
+./aios status - Show running services
+./aios web - Launch web interface
+./aios ai PROMPT - Natural language control
