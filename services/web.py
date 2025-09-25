@@ -43,7 +43,7 @@ a{{color:{fg};text-decoration:underline}}
 <div class="container">
 <h1>AIOS Control Center</h1>
 <h2>Quick Links</h2>
-<a href="/todo" target="_blank">Todo Manager</a>
+<a href="/todo">Todo Manager</a>
 <h2>Services</h2>
 <pre>{services_text}</pre>
 <h2>Schedule</h2>
