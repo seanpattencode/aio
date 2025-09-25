@@ -1,4 +1,4 @@
-Generated: 2025-09-25 18:03:21
+Generated: 2025-09-25 19:23:38
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -170,6 +170,10 @@ def test_web():
     result = subprocess.run(['python3', 'services/web.py', 'status'], capture_output=True, text=True, timeout=1)
     return result.returncode == 0
 
+def test_processes():
+    result = subprocess.run(['python3', 'services/processes.py', 'json'], capture_output=True, text=True, timeout=1)
+    return result.returncode == 0 and 'scheduled' in result.stdout
+
 def test_scheduler():
     aios_db.write('schedule', {'daily': {}, 'hourly': {}})
     proc = subprocess.Popen(['python3', 'programs/schedule/scheduler.py'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -181,7 +185,8 @@ test_functions = {
     'todo': test_todo, 'service': test_service, 'backup': test_backup,
     'scraper': test_scraper, 'planner': test_planner, 'ranker': test_ranker,
     'aios_start': test_aios_start, 'gdrive': test_gdrive, 'swarm': test_swarm,
-    'builder': test_builder, 'web': test_web, 'scheduler': test_scheduler
+    'builder': test_builder, 'web': test_web, 'scheduler': test_scheduler,
+    'processes': test_processes
 }
 
 detected = detect_programs()
@@ -430,25 +435,83 @@ input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            result = subprocess.run("python3 services/processes.py list", shell=True, capture_output=True, text=True)
-            processes = result.stdout.strip().split('\n') if result.stdout else []
+            result = subprocess.run("python3 services/processes.py json", shell=True, capture_output=True, text=True)
+            processes_data = json.loads(result.stdout) if result.stdout else {"scheduled": [], "ongoing": [], "core": []}
             settings = aios_db.read("settings") or {}
             theme = settings.get('theme', 'dark')
             is_light = theme == 'light'
             bg = '#fff' if is_light else '#000'
             fg = '#000' if is_light else '#fff'
             bg2 = '#f0f0f0' if is_light else '#1a1a1a'
+
+            scheduled_html = "".join(f'<div class="process-item"><span class="time">{p["time"]}</span> {p["path"]} <button onclick="runProcess(\'{p["path"]}\')">Run</button></div>'
+                                    for p in processes_data.get("scheduled", []))
+
+            ongoing_html = "".join(f'<div class="process-item">{p["path"]} <span class="status active">●</span> <button onclick="restartProcess(\'{p["path"]}\')">Restart</button></div>'
+                                 for p in processes_data.get("ongoing", []))
+
+            core_html = "".join(f'<div class="process-item">{p["path"]} <button onclick="runProcess(\'{p["path"]}\')">Run</button></div>'
+                              for p in processes_data.get("core", []))
+
             html = f"""<html>
 <head><title>Processes</title>
 <style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.process{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
-button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
-</style></head>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
+h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
+.section{{margin-bottom:30px}}
+.process-item{{background:{bg2};padding:12px;margin:4px 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center}}
+.time{{color:{fg}88;margin-right:15px;font-weight:bold}}
+.status{{margin:0 10px}}
+.status.active{{color:#0a0}}
+button{{background:{fg};color:{bg};border:none;padding:4px 12px;cursor:pointer;border-radius:3px;font-size:12px}}
+button:hover{{opacity:0.8}}
+.toggle-section{{cursor:pointer;user-select:none;color:{fg}66;font-size:12px;margin-top:15px}}
+.hidden{{display:none}}
+</style>
+<script>
+function runProcess(path) {{
+    fetch('/process/run', {{method: 'POST', body: new URLSearchParams({{'path': path}})}}
+    ).then(() => location.reload());
+}}
+function restartProcess(path) {{
+    fetch('/process/restart', {{method: 'POST', body: new URLSearchParams({{'path': path}})}}
+    ).then(() => location.reload());
+}}
+function toggleCore() {{
+    const core = document.getElementById('core-section');
+    const toggle = document.getElementById('core-toggle');
+    if (core.classList.contains('hidden')) {{
+        core.classList.remove('hidden');
+        toggle.textContent = '▼ Core Processes (hide)';
+    }} else {{
+        core.classList.add('hidden');
+        toggle.textContent = '▶ Core Processes (show)';
+    }}
+}}
+</script>
+</head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Process Manager</h1>
-<div>{"".join(f'<div class="process">{p}</div>' for p in processes)}</div>
+<h1>Processes</h1>
+
+<div class="section">
+<h2>SCHEDULED</h2>
+{scheduled_html if scheduled_html else '<div style="color:#888;padding:10px">No scheduled processes</div>'}
+</div>
+
+<div class="section">
+<h2>ONGOING</h2>
+{ongoing_html if ongoing_html else '<div style="color:#888;padding:10px">No ongoing processes</div>'}
+</div>
+
+<div class="section">
+<div id="core-toggle" class="toggle-section" onclick="toggleCore()">▶ Core Processes (show)</div>
+<div id="core-section" class="hidden">
+<h2>CORE</h2>
+{core_html}
+</div>
+</div>
+
 </body></html>"""
             self.wfile.write(html.encode())
         elif path == '/schedule':
@@ -630,6 +693,19 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
             self.send_response(303)
             self.send_header('Location', '/')
             self.end_headers()
+        elif path == '/process/run':
+            process_path = data.get('path', [''])[0]
+            subprocess.Popen(['python3', process_path])
+            self.send_response(303)
+            self.send_header('Location', '/processes')
+            self.end_headers()
+        elif path == '/process/restart':
+            process_path = data.get('path', [''])[0]
+            subprocess.run(['pkill', '-f', process_path])
+            subprocess.Popen(['python3', process_path])
+            self.send_response(303)
+            self.send_header('Location', '/processes')
+            self.end_headers()
 
 def find_free_port(start=8080):
     for port in range(start, start + 100):
@@ -738,38 +814,39 @@ sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import subprocess
 import aios_db
-import os
-import signal
+import json
+from pathlib import Path
+from datetime import datetime
 
-command = sys.argv[1] if len(sys.argv) > 1 else "list"
+command = sys.argv[1] if len(sys.argv) > 1 else "json"
 name = sys.argv[2] if len(sys.argv) > 2 else None
 
-def get_processes():
-    services = aios_db.read("services") or {}
+def get_all_processes():
     schedule = aios_db.read("schedule") or {}
     pids = aios_db.read("aios_pids") or {}
-    processes = []
+    python_files = list(Path('/home/seanpatten/projects/AIOS').rglob('*.py'))
 
-    [[processes.append({"name": k, "status": v.get("status", "unknown"), "type": "service", "next": None})]
-     for k, v in services.items()]
+    scheduled = sorted(
+        [{"path": cmd, "type": "daily", "time": time, "status": "scheduled"} for time, cmd in schedule.get("daily", {}).items()] +
+        [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"} for m, cmd in schedule.get("hourly", {}).items()],
+        key=lambda x: x["time"]
+    )
 
-    [[processes.append({"name": f"{cmd} @ {time}", "status": "scheduled", "type": "daily", "next": time})]
-     for time, cmd in schedule.get("daily", {}).items()]
+    ongoing = [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"} for k, v in pids.items()]
 
-    [[processes.append({"name": f"{cmd} @ :{int(minute):02d}", "status": "scheduled", "type": "hourly", "next": f":{int(minute):02d}"})]
-     for minute, cmd in schedule.get("hourly", {}).items()]
+    core = [{"path": str(f.relative_to(Path('/home/seanpatten/projects/AIOS'))), "type": "file", "status": "available"}
+            for f in python_files if 'archive' not in f.parts and '__pycache__' not in f.parts]
 
-    return sorted([p for p in processes if p["type"] in ["daily", "hourly"]], key=lambda x: x["next"] or "") + \
-           [p for p in processes if p["type"] == "service"]
+    return {"scheduled": scheduled, "ongoing": ongoing, "core": core}
 
 actions = {
-    "list": lambda: [print(f"{p['name']}: {p['status']}") for p in get_processes()],
-    "start": lambda: aios_db.write("services", {**aios_db.read("services") or {}, name: {"status": "running"}}),
-    "stop": lambda: aios_db.write("services", {**aios_db.read("services") or {}, name: {"status": "stopped"}}),
-    "restart": lambda: [actions["stop"](), actions["start"]()]
+    "json": lambda: print(json.dumps(get_all_processes())),
+    "list": lambda: [print(f"{p['path']}: {p['status']}") for cat in get_all_processes().values() for p in cat],
+    "start": lambda: subprocess.Popen(['python3', name]) if name else None,
+    "stop": lambda: subprocess.run(['pkill', '-f', name]) if name else None
 }
 
-actions.get(command, actions["list"])()
+actions.get(command, actions["json"])()
 
 services/gdrive.py:
 #!/usr/bin/env python3

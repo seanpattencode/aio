@@ -4,35 +4,36 @@ sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import subprocess
 import aios_db
-import os
-import signal
+import json
+from pathlib import Path
+from datetime import datetime
 
-command = sys.argv[1] if len(sys.argv) > 1 else "list"
+command = sys.argv[1] if len(sys.argv) > 1 else "json"
 name = sys.argv[2] if len(sys.argv) > 2 else None
 
-def get_processes():
-    services = aios_db.read("services") or {}
+def get_all_processes():
     schedule = aios_db.read("schedule") or {}
     pids = aios_db.read("aios_pids") or {}
-    processes = []
+    python_files = list(Path('/home/seanpatten/projects/AIOS').rglob('*.py'))
 
-    [[processes.append({"name": k, "status": v.get("status", "unknown"), "type": "service", "next": None})]
-     for k, v in services.items()]
+    scheduled = sorted(
+        [{"path": cmd, "type": "daily", "time": time, "status": "scheduled"} for time, cmd in schedule.get("daily", {}).items()] +
+        [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"} for m, cmd in schedule.get("hourly", {}).items()],
+        key=lambda x: x["time"]
+    )
 
-    [[processes.append({"name": f"{cmd} @ {time}", "status": "scheduled", "type": "daily", "next": time})]
-     for time, cmd in schedule.get("daily", {}).items()]
+    ongoing = [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"} for k, v in pids.items()]
 
-    [[processes.append({"name": f"{cmd} @ :{int(minute):02d}", "status": "scheduled", "type": "hourly", "next": f":{int(minute):02d}"})]
-     for minute, cmd in schedule.get("hourly", {}).items()]
+    core = [{"path": str(f.relative_to(Path('/home/seanpatten/projects/AIOS'))), "type": "file", "status": "available"}
+            for f in python_files if 'archive' not in f.parts and '__pycache__' not in f.parts]
 
-    return sorted([p for p in processes if p["type"] in ["daily", "hourly"]], key=lambda x: x["next"] or "") + \
-           [p for p in processes if p["type"] == "service"]
+    return {"scheduled": scheduled, "ongoing": ongoing, "core": core}
 
 actions = {
-    "list": lambda: [print(f"{p['name']}: {p['status']}") for p in get_processes()],
-    "start": lambda: aios_db.write("services", {**aios_db.read("services") or {}, name: {"status": "running"}}),
-    "stop": lambda: aios_db.write("services", {**aios_db.read("services") or {}, name: {"status": "stopped"}}),
-    "restart": lambda: [actions["stop"](), actions["start"]()]
+    "json": lambda: print(json.dumps(get_all_processes())),
+    "list": lambda: [print(f"{p['path']}: {p['status']}") for cat in get_all_processes().values() for p in cat],
+    "start": lambda: subprocess.Popen(['python3', name]) if name else None,
+    "stop": lambda: subprocess.run(['pkill', '-f', name]) if name else None
 }
 
-actions.get(command, actions["list"])()
+actions.get(command, actions["json"])()

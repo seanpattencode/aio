@@ -83,6 +83,10 @@ def test_web():
     result = subprocess.run(['python3', 'services/web.py', 'status'], capture_output=True, text=True, timeout=1)
     return result.returncode == 0
 
+def test_processes():
+    result = subprocess.run(['python3', 'services/processes.py', 'json'], capture_output=True, text=True, timeout=1)
+    return result.returncode == 0 and 'scheduled' in result.stdout
+
 def test_scheduler():
     aios_db.write('schedule', {'daily': {}, 'hourly': {}})
     proc = subprocess.Popen(['python3', 'programs/schedule/scheduler.py'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -94,7 +98,8 @@ test_functions = {
     'todo': test_todo, 'service': test_service, 'backup': test_backup,
     'scraper': test_scraper, 'planner': test_planner, 'ranker': test_ranker,
     'aios_start': test_aios_start, 'gdrive': test_gdrive, 'swarm': test_swarm,
-    'builder': test_builder, 'web': test_web, 'scheduler': test_scheduler
+    'builder': test_builder, 'web': test_web, 'scheduler': test_scheduler,
+    'processes': test_processes
 }
 
 detected = detect_programs()

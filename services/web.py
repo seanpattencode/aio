@@ -169,25 +169,83 @@ input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            result = subprocess.run("python3 services/processes.py list", shell=True, capture_output=True, text=True)
-            processes = result.stdout.strip().split('\n') if result.stdout else []
+            result = subprocess.run("python3 services/processes.py json", shell=True, capture_output=True, text=True)
+            processes_data = json.loads(result.stdout) if result.stdout else {"scheduled": [], "ongoing": [], "core": []}
             settings = aios_db.read("settings") or {}
             theme = settings.get('theme', 'dark')
             is_light = theme == 'light'
             bg = '#fff' if is_light else '#000'
             fg = '#000' if is_light else '#fff'
             bg2 = '#f0f0f0' if is_light else '#1a1a1a'
+
+            scheduled_html = "".join(f'<div class="process-item"><span class="time">{p["time"]}</span> {p["path"]} <button onclick="runProcess(\'{p["path"]}\')">Run</button></div>'
+                                    for p in processes_data.get("scheduled", []))
+
+            ongoing_html = "".join(f'<div class="process-item">{p["path"]} <span class="status active">●</span> <button onclick="restartProcess(\'{p["path"]}\')">Restart</button></div>'
+                                 for p in processes_data.get("ongoing", []))
+
+            core_html = "".join(f'<div class="process-item">{p["path"]} <button onclick="runProcess(\'{p["path"]}\')">Run</button></div>'
+                              for p in processes_data.get("core", []))
+
             html = f"""<html>
 <head><title>Processes</title>
 <style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.process{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
-button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
-</style></head>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
+h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
+.section{{margin-bottom:30px}}
+.process-item{{background:{bg2};padding:12px;margin:4px 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center}}
+.time{{color:{fg}88;margin-right:15px;font-weight:bold}}
+.status{{margin:0 10px}}
+.status.active{{color:#0a0}}
+button{{background:{fg};color:{bg};border:none;padding:4px 12px;cursor:pointer;border-radius:3px;font-size:12px}}
+button:hover{{opacity:0.8}}
+.toggle-section{{cursor:pointer;user-select:none;color:{fg}66;font-size:12px;margin-top:15px}}
+.hidden{{display:none}}
+</style>
+<script>
+function runProcess(path) {{
+    fetch('/process/run', {{method: 'POST', body: new URLSearchParams({{'path': path}})}}
+    ).then(() => location.reload());
+}}
+function restartProcess(path) {{
+    fetch('/process/restart', {{method: 'POST', body: new URLSearchParams({{'path': path}})}}
+    ).then(() => location.reload());
+}}
+function toggleCore() {{
+    const core = document.getElementById('core-section');
+    const toggle = document.getElementById('core-toggle');
+    if (core.classList.contains('hidden')) {{
+        core.classList.remove('hidden');
+        toggle.textContent = '▼ Core Processes (hide)';
+    }} else {{
+        core.classList.add('hidden');
+        toggle.textContent = '▶ Core Processes (show)';
+    }}
+}}
+</script>
+</head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Process Manager</h1>
-<div>{"".join(f'<div class="process">{p}</div>' for p in processes)}</div>
+<h1>Processes</h1>
+
+<div class="section">
+<h2>SCHEDULED</h2>
+{scheduled_html if scheduled_html else '<div style="color:#888;padding:10px">No scheduled processes</div>'}
+</div>
+
+<div class="section">
+<h2>ONGOING</h2>
+{ongoing_html if ongoing_html else '<div style="color:#888;padding:10px">No ongoing processes</div>'}
+</div>
+
+<div class="section">
+<div id="core-toggle" class="toggle-section" onclick="toggleCore()">▶ Core Processes (show)</div>
+<div id="core-section" class="hidden">
+<h2>CORE</h2>
+{core_html}
+</div>
+</div>
+
 </body></html>"""
             self.wfile.write(html.encode())
         elif path == '/schedule':
@@ -368,6 +426,19 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
             aios_db.write('settings', {**settings, 'viewports': selected[:4]})
             self.send_response(303)
             self.send_header('Location', '/')
+            self.end_headers()
+        elif path == '/process/run':
+            process_path = data.get('path', [''])[0]
+            subprocess.Popen(['python3', process_path])
+            self.send_response(303)
+            self.send_header('Location', '/processes')
+            self.end_headers()
+        elif path == '/process/restart':
+            process_path = data.get('path', [''])[0]
+            subprocess.run(['pkill', '-f', process_path])
+            subprocess.Popen(['python3', process_path])
+            self.send_response(303)
+            self.send_header('Location', '/processes')
             self.end_headers()
 
 def find_free_port(start=8080):
