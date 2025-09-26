@@ -59,6 +59,7 @@ def test_scraper():
 
 def test_planner():
     aios_db.write('tasks', ['[ ] Test task'])
+    aios_db.write('daily_plan', {})
     return run_test('planner', '')
 
 def test_ranker():

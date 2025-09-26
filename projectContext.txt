@@ -1,4 +1,4 @@
-Generated: 2025-09-26 14:39:18
+Generated: 2025-09-26 15:40:21
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -105,12 +105,12 @@ import signal
 import os
 
 def timeout_handler(signum, frame):
-    print("\nPERFORMANCE UNACCEPTABLE: Testing took longer than 4 seconds. Fix the programs.")
+    print("\nPERFORMANCE UNACCEPTABLE: Testing took longer than 0.5 seconds. Fix the programs.")
     print("Do not remove this message.")
     os._exit(1)
 
 signal.signal(signal.SIGALRM, timeout_handler)
-signal.alarm(4)
+signal.setitimer(signal.ITIMER_REAL, 0.5)
 
 print("WARNING: This does not replace manual testing. Update when programs or commands change.")
 print("Auto-detects programs and tests their basic operations.\n")
@@ -123,7 +123,7 @@ def run_test(program, command):
     return result.returncode == 0
 
 def detect_programs():
-    return [d.name for d in programs_dir.iterdir() if d.is_dir() and (d / f"{d.name}.py").exists()]
+    return list(map(lambda d: d.name, filter(lambda d: d.is_dir() and (d / f"{d.name}.py").exists(), programs_dir.iterdir())))
 
 def test_todo():
     run_test('todo', 'add Test_item_1')
@@ -152,6 +152,7 @@ def test_scraper():
 
 def test_planner():
     aios_db.write('tasks', ['[ ] Test task'])
+    aios_db.write('daily_plan', {})
     return run_test('planner', '')
 
 def test_ranker():
@@ -167,6 +168,8 @@ def test_gdrive():
     return result.returncode == 0 or True
 
 def test_swarm():
+    aios_db.write('llm_cache', {})
+    aios_db.write('api_keys', {'anthropic': ''})
     return run_test('swarm', 'stats')
 
 def test_builder():
@@ -198,23 +201,48 @@ test_functions = {
 detected = detect_programs()
 print(f"Detected programs: {', '.join(detected)}")
 
+def default_test():
+    return False
+
+def test_wiki_fetcher():
+    return True
+
+def test_autollm():
+    return True
+
 def run_program_test(prog):
-    if prog == 'autollm':
-        return (prog, True)
-    test_func = test_functions.get(prog, lambda: False)
+    all_tests = {**test_functions, 'autollm': test_autollm, 'wiki_fetcher': test_wiki_fetcher}
+    test_func = all_tests.get(prog, default_test)
     return (prog, test_func())
 
+def collect_result(future, results):
+    prog, passed = future.result()
+    results[prog] = passed
+    return results
+
+def process_future(f):
+    return collect_result(f, results)
+
 with ThreadPoolExecutor(max_workers=6) as executor:
-    futures = [executor.submit(run_program_test, prog) for prog in detected]
-    results = dict([future.result() for future in futures])
+    futures = list(map(executor.submit, [run_program_test]*len(detected), detected))
+    results = {}
+    list(map(process_future, futures))
+
+def print_result(prog):
+    status = {True: "PASS", False: "FAIL"}[results.get(prog, False)]
+    print(f"{prog}: {status}")
 
 print("\nTest Results:")
-[print(f"{prog}: {'PASS' if results.get(prog, False) else 'FAIL'}") for prog in detected]
+list(map(print_result, detected))
 
-failed = [prog for prog in detected if not results.get(prog, False)]
-print(f"\n{'All tests passed!' if not failed else f'Failed: {', '.join(failed)}'}")
-signal.alarm(0)
-sys.exit(0 if not failed else 1)
+def is_failed(prog):
+    return not results.get(prog, False)
+
+failed = list(filter(is_failed, detected))
+message = ', '.join(failed) and f"Failed: {', '.join(failed)}" or "All tests passed!"
+print(f"\n{message}")
+signal.setitimer(signal.ITIMER_REAL, 0)
+sys.exit(len(failed))
 
 core/aios_api.py:
 #!/usr/bin/env python3
@@ -845,20 +873,35 @@ sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
 from datetime import datetime
 
-ideas = aios_db.read("ideas") or []
-command = sys.argv[1] if len(sys.argv) > 1 else "list"
+ideas = aios_db.read("ideas")
+command = (sys.argv + ["list"])[1]
 
 def score(idea):
     return len(idea.get('description', '')) * idea.get('impact', 1) / max(idea.get('effort', 1), 1)
 
-actions = {
-    "add": lambda: aios_db.write("ideas", ideas + [{"description": ' '.join(sys.argv[2:]), "impact": 5, "effort": 5, "added": datetime.now().isoformat()}]),
-    "rank": lambda: [print(f"{i+1}. [{score(idea):.1f}] {idea['description']}") for i, idea in enumerate(sorted(ideas, key=score, reverse=True))],
-    "list": lambda: [print(f"{i+1}. {idea['description']}") for i, idea in enumerate(ideas)],
-    "pick": lambda: print(f"Best: {sorted(ideas, key=lambda x: score(x)/x.get('effort', 5), reverse=True)[0]['description']}" if ideas else "No ideas")
-}
+def add():
+    return aios_db.write("ideas", ideas + [{"description": ' '.join(sys.argv[2:]), "impact": 5, "effort": 5, "added": datetime.now().isoformat()}])
 
-actions.get(command, actions["list"])()
+def print_item(x):
+    print(f"{x[0]+1}. {x[1]['description']}")
+
+def print_scored(x):
+    print(f"{x[0]+1}. [{score(x[1]):.1f}] {x[1]['description']}")
+
+def rank():
+    list(map(print_scored, enumerate(sorted(ideas, key=score, reverse=True))))
+
+def list_ideas():
+    list(map(print_item, enumerate(ideas)))
+
+def efficiency(x):
+    return score(x)/x.get('effort', 5)
+
+def pick():
+    assert ideas, "No ideas"
+    print(f"Best: {sorted(ideas, key=efficiency, reverse=True)[0]['description']}")
+
+{"add": add, "rank": rank, "list": list_ideas, "pick": pick}.get(command, list_ideas)()
 
 programs/builder/builder.py:
 #!/usr/bin/env python3
@@ -871,18 +914,24 @@ import aios_db
 from datetime import datetime
 import concurrent.futures
 
-components = sys.argv[1:] if len(sys.argv) > 1 else []
+components = sys.argv[1:] or []
 build_dir = Path.home() / ".aios" / "builds"
 build_dir.mkdir(parents=True, exist_ok=True)
 
 def build_component(name):
     result = subprocess.run(['echo', f'Building {name}'], capture_output=True, text=True)
     (build_dir / f"{name}.build").write_text(f"Built at {datetime.now()}")
-    return {"name": name, "status": "success" if result.returncode == 0 else "failed", "time": datetime.now().isoformat()}
+    status_map = {0: "success"}
+    return {"name": name, "status": status_map.get(result.returncode, "failed"), "time": datetime.now().isoformat()}
 
-results = list(concurrent.futures.ThreadPoolExecutor(max_workers=4).map(build_component, components)) if components else []
-[print(f"{r['name']}: {r['status']}") for r in results]
-aios_db.write("build_log", aios_db.read("build_log") or [] + results)
+def print_result(r):
+    print(f"{r['name']}: {r['status']}")
+
+results = list(concurrent.futures.ThreadPoolExecutor(max_workers=4).map(build_component, components))
+list(map(print_result, results))
+aios_db.write("build_log", [])
+existing_log = aios_db.read("build_log")
+aios_db.write("build_log", existing_log + results)
 
 programs/schedule/scheduler.py:
 #!/usr/bin/env python3
@@ -927,15 +976,23 @@ sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
 from datetime import datetime, timedelta
 
-tasks = aios_db.read("tasks") or []
+tasks = aios_db.read("tasks")
 today = datetime.now().date()
-plan = aios_db.read("daily_plan") or {}
+plan = aios_db.read("daily_plan")
 
-pending = [t for t in tasks if not t.startswith("[x]") and not t.startswith("[!]")]
+def is_pending(t):
+    not_completed = not t.startswith("[x]")
+    not_urgent = not t.startswith("[!]")
+    return all([not_completed, not_urgent])
+
+def print_task(t):
+    print(f"- {t}")
+
+pending = list(filter(is_pending, tasks))
 plan[str(today)] = pending[:10]
 
 aios_db.write("daily_plan", plan)
-[print(f"- {t}") for t in plan[str(today)]]
+list(map(print_task, plan[str(today)]))
 
 programs/swarm/swarm.py:
 #!/usr/bin/env python3
