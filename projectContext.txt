@@ -1,4 +1,4 @@
-Generated: 2025-09-25 22:26:35
+Generated: 2025-09-25 22:32:48
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -451,7 +451,7 @@ input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
             done_html = "".join(f'<div class="job-item" data-id="{j[0]}"><span>{j[1]}</span><div><span class="output">{(j[3] or "")[:50]}...</span></div></div>'
                                 for j in jobs if j[2] == "done")
 
-            review_html = "".join(f'<div class="job-item" data-id="{j[0]}"><span>{j[1]}</span><div><span class="output">{(j[3] or "")[:50]}...</span><button onclick="acceptJob({j[0]})">Accept</button><button onclick="editJob({j[0]})">Edit</button><button onclick="redoJob({j[0]})">Redo</button></div></div>'
+            review_html = "".join(f'<div class="job-item"><span>{j[1]}</span><div><span class="output">{(j[3] or "")[:50]}...</span><form method="POST" action="/job/action" style="display:inline"><input type="hidden" name="id" value="{j[0]}"><input type="hidden" name="cmd" value="accept"><input type="submit" class="action-btn" value="Accept"></form><form method="POST" action="/job/action" style="display:inline"><input type="hidden" name="id" value="{j[0]}"><input type="hidden" name="cmd" value="redo"><input type="submit" class="action-btn" value="Redo"></form></div></div>'
                                  for j in jobs if j[2] == "review")
 
             running_html = "".join(f'<div class="job-item" data-id="{j[0]}"><span>{j[1]}</span><span class="status running">Running...</span></div>'
@@ -467,88 +467,43 @@ h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
 .status{{margin:0 10px}}
 .status.running{{color:#fa0}}
 .output{{color:{fg}88;margin:0 15px;font-size:12px;flex:1}}
-button{{background:{fg};color:{bg};border:none;padding:8px 16px;cursor:pointer;border-radius:3px;font-size:12px;margin:0 5px}}
-button:hover{{opacity:0.8}}
+.action-btn{{background:{fg};color:{bg};border:none;padding:8px 16px;cursor:pointer;border-radius:3px;font-size:12px;margin:0 5px}}
+.action-btn:hover{{opacity:0.8}}
 .new-job-btn{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;border-radius:5px;font-size:14px;margin:10px 0}}
+.dropdown{{display:none;position:absolute;background:{bg2};border:1px solid {fg};border-radius:5px;padding:10px;margin-top:5px}}
 </style>
 <script>
-let pollInterval;
-function startPolling() {{
-    pollInterval = setInterval(() => {{
-        fetch('/api/jobs')
-            .then(r => r.json())
-            .then(data => updateJobs(data));
-    }}, 100);
+function toggleMenu() {{
+    const menu = document.getElementById('job-menu');
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 }}
-function updateJobs(data) {{
-    const running = data.filter(j => j.status === 'running');
-    const review = data.filter(j => j.status === 'review');
-    const done = data.filter(j => j.status === 'done');
-
-    document.getElementById('running-count').textContent = running.length;
-    document.getElementById('review-count').textContent = review.length;
-    document.getElementById('done-count').textContent = done.length;
-
-    document.getElementById('running-section').innerHTML = running.length ? running.map(j =>
-        `<div class="job-item"><span>${{j.name}}</span><span class="status running">Running...</span></div>`
-    ).join('') : '<div style="color:#888;padding:10px">No running jobs</div>';
-
-    document.getElementById('review-section').innerHTML = review.length ? review.map(j =>
-        `<div class="job-item"><span>${{j.name}}</span><div style="display:flex;align-items:center"><span class="output">${{(j.output || '').slice(0, 50)}}...</span><button onclick="acceptJob(${{j.id}})">Accept</button><button onclick="editJob(${{j.id}})">Edit</button><button onclick="redoJob(${{j.id}})">Redo</button></div></div>`
-    ).join('') : '<div style="color:#888;padding:10px">No jobs in review</div>';
-
-    document.getElementById('done-section').innerHTML = done.slice(0, 10).map(j =>
-        `<div class="job-item"><span>${{j.name}}</span><span style="color:#0a0">Done: ${{(j.output || '').slice(0, 50)}}...</span></div>`
-    ).join('') || '<div style="color:#888;padding:10px">No completed jobs</div>';
-}}
-function showJobMenu() {{
-    document.getElementById('job-menu').style.display = 'block';
-}}
-function hideJobMenu() {{
-    document.getElementById('job-menu').style.display = 'none';
-}}
-function runWikipedia() {{
-    hideJobMenu();
-    fetch('/api/job/run', {{method: 'POST'}}).then(() => location.reload());
-}}
-function acceptJob(id) {{
-    fetch('/api/job/accept', {{method: 'POST', body: JSON.stringify({{id: id}}), headers: {{'Content-Type': 'application/json'}}}})
-        .then(() => location.reload());
-}}
-function editJob(id) {{
-    const output = prompt('Edit output:');
-    output !== null && fetch('/api/job/edit', {{method: 'POST', body: JSON.stringify({{id: id, output: output}}), headers: {{'Content-Type': 'application/json'}}}})
-        .then(() => location.reload());
-}}
-function redoJob(id) {{
-    fetch('/api/job/redo', {{method: 'POST', body: JSON.stringify({{id: id}}), headers: {{'Content-Type': 'application/json'}}}})
-        .then(() => location.reload());
-}}
-window.onload = () => startPolling();
+setTimeout(() => location.reload(), 2000);
 </script>
 </head>
-<body onclick="event.target.id !== 'job-menu' && !event.target.closest('#job-menu') && !event.target.classList.contains('new-job-btn') && hideJobMenu()">
+<body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
 <h1>Jobs</h1>
-<button class="new-job-btn" onclick="showJobMenu()">Run New Job ▼</button>
-<div id="job-menu" style="display:none;position:absolute;background:{bg2};border:1px solid {fg};border-radius:5px;padding:10px;margin-top:5px;box-shadow:0 2px 5px rgba(0,0,0,0.2)">
-  <div style="padding:8px;cursor:pointer;hover:background:{bg}" onclick="runWikipedia()">📖 Wikipedia Random Article</div>
+<button class="new-job-btn" onclick="toggleMenu()">Run New Job</button>
+<div id="job-menu" class="dropdown">
+  <form method="POST" action="/job/run/wikipedia">
+    <input type="submit" style="background:transparent;border:none;color:{fg};cursor:pointer;padding:8px;width:100%;text-align:left" value="Wikipedia Random Article">
+  </form>
   <div style="padding:8px;color:{fg}66;font-size:11px">More jobs coming soon...</div>
 </div>
 
 <div class="section">
-<h2>RUNNING (<span id="running-count">0</span>)</h2>
-<div id="running-section">{running_html if running_html else '<div style="color:#888;padding:10px">No running jobs</div>'}</div>
+<h2>RUNNING</h2>
+{running_html if running_html else '<div style="color:#888;padding:10px">No running jobs</div>'}
 </div>
 
 <div class="section">
-<h2>REVIEW (<span id="review-count">0</span>)</h2>
-<div id="review-section">{review_html if review_html else '<div style="color:#888;padding:10px">No jobs in review</div>'}</div>
+<h2>REVIEW</h2>
+{review_html if review_html else '<div style="color:#888;padding:10px">No jobs in review</div>'}
 </div>
 
 <div class="section">
-<h2>DONE (<span id="done-count">0</span>)</h2>
-<div id="done-section">{done_html if done_html else '<div style="color:#888;padding:10px">No completed jobs</div>'}</div>
+<h2>DONE</h2>
+{done_html if done_html else '<div style="color:#888;padding:10px">No completed jobs</div>'}
 </div>
 
 </body></html>"""
@@ -688,7 +643,19 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
 
         data = parse_qs(self.rfile.read(length).decode())
 
-        if path == '/run':
+        if path == '/job/action':
+            cmd = data.get('cmd', [''])[0]
+            job_id = data.get('id', [''])[0]
+            subprocess.run(["python3", "/home/seanpatten/projects/AIOS/services/jobs.py", cmd, job_id])
+            self.send_response(303)
+            self.send_header('Location', '/jobs')
+            self.end_headers()
+        elif path == '/job/run/wikipedia':
+            subprocess.run(["python3", "/home/seanpatten/projects/AIOS/services/jobs.py", "run"])
+            self.send_response(303)
+            self.send_header('Location', '/jobs')
+            self.end_headers()
+        elif path == '/run':
             cmd = data.get('cmd', [''])[0]
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
             self.send_response(200)
