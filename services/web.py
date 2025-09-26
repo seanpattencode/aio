@@ -162,120 +162,165 @@ from datetime import datetime
 aios_db.execute("jobs", "CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY, name TEXT, status TEXT, output TEXT, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
 aios_db.execute("feed", "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT, source TEXT, priority INTEGER DEFAULT 0)")
 
+def handle_api_jobs():
+    return (json.dumps([{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")]), 'application/json')
+
+def handle_default(c):
+    return (HTML_TEMPLATES.get('/', HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         s = aios_db.read("settings") or {}
-        c = {'bg': '#fff' if s.get('theme') == 'light' else '#000', 'fg': '#000' if s.get('theme') == 'light' else '#fff', 'bg2': '#f0f0f0' if s.get('theme') == 'light' else '#1a1a1a'}
+        c = {'bg': {'light': '#fff'}.get(s.get('theme'), '#000'), 'fg': {'light': '#000'}.get(s.get('theme'), '#fff'), 'bg2': {'light': '#f0f0f0'}.get(s.get('theme'), '#1a1a1a')}
 
-        if path == '/api/jobs':
-            content = json.dumps([{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")])
-            ctype = 'application/json'
-        elif path == '/':
-            tr = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
-            m = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 4")
-            j = subprocess.run("python3 programs/job_status.py summary", shell=True, capture_output=True, text=True)
+        self.s = s
+        self.c = c
 
-            todo_items = tr.stdout.strip().split('\n')[:4] if tr.stdout.strip() else []
-            feed_items = [f"{datetime.fromisoformat(x[1]).strftime('%I:%M %p' if s.get('time_format', '12h') == '12h' else '%H:%M')} - {x[0]}" for x in m] if m else []
-            jobs_summary = j.stdout.strip().split('\n')[:4] if j.stdout.strip() else ["No jobs"]
+        handlers = {
+            '/api/jobs': handle_api_jobs,
+            '/': self.handle_home,
+            '/todo': self.handle_todo,
+            '/feed': self.handle_feed,
+            '/settings': self.handle_settings,
+            '/jobs': self.handle_jobs
+        }
 
-            vp = "".join(f'''<div class="box" onclick="location.href='/{t.lower()}'">
-<div class="box-title">{t}</div>
-<div class="box-content">{"".join(f'<div class="box-item">{i}</div>' for i in items) if items else f'<div style="color:#888">No {t.lower()}</div>'}</div>
-</div>''' for t, items in [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_summary)])
-
-            content = HTML_TEMPLATES['/'].format(**c, vp=vp)
-            ctype = 'text/html'
-        elif path == '/todo':
-            result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
-            tasks = result.stdout.strip().split('\n') if result.stdout.strip() else []
-            tasks_html = "".join(f'<div class="task {"done" if "[x]" in t else ""}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] if "." in t else i+1}"><button>Done</button></form></div>' for i,t in enumerate(tasks))
-            content = HTML_TEMPLATES['/todo'].format(**c, tasks=tasks_html if tasks else '<div style="color:#888">No tasks yet</div>')
-            ctype = 'text/html'
-        elif path == '/feed':
-            messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100")
-            time_format = s.get("time_format", "12h")
-            feed_html = []
-            current_date = None
-            for m in messages:
-                msg_date = datetime.fromisoformat(m[1]).date()
-                if msg_date != current_date:
-                    current_date = msg_date
-                    feed_html.append(f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{current_date}</div>')
-                feed_html.append(f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime("%I:%M %p" if time_format == "12h" else "%H:%M")} - {m[0]}</div>')
-            content = HTML_TEMPLATES['/feed'].format(**c, feed_content="".join(feed_html) if feed_html else "<div style='color:#888'>No messages yet</div>")
-            ctype = 'text/html'
-        elif path == '/settings':
-            theme_dark_style = 'style="font-weight:bold"' if s.get('theme', 'dark') == 'dark' else ''
-            theme_light_style = 'style="font-weight:bold"' if s.get('theme') == 'light' else ''
-            time_12h_style = 'style="font-weight:bold"' if s.get('time_format', '12h') == '12h' else ''
-            time_24h_style = 'style="font-weight:bold"' if s.get('time_format') == '24h' else ''
-            content = HTML_TEMPLATES['/settings'].format(**c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style)
-            ctype = 'text/html'
-        elif path == '/jobs':
-            running = subprocess.run("python3 programs/job_status.py running", shell=True, capture_output=True, text=True)
-            review = subprocess.run("python3 programs/job_status.py review", shell=True, capture_output=True, text=True)
-            done = subprocess.run("python3 programs/job_status.py done", shell=True, capture_output=True, text=True)
-
-            running_html = running.stdout if running.stdout.strip() else '<div style="color:#888;padding:10px">No running jobs</div>'
-            review_html = review.stdout if review.stdout.strip() else '<div style="color:#888;padding:10px">No jobs in review</div>'
-            done_html = done.stdout if done.stdout.strip() else '<div style="color:#888;padding:10px">No completed jobs</div>'
-
-            content = HTML_TEMPLATES['/jobs'].format(**c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html)
-            ctype = 'text/html'
-        else:
-            content = HTML_TEMPLATES.get(path, HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs="")
-            ctype = 'text/html'
+        content, ctype = handlers.get(path, self.handle_default)()
 
         self.send_response(200)
         self.send_header('Content-type', ctype)
         self.end_headers()
         self.wfile.write(content.encode())
 
+    def handle_default(self):
+        return (HTML_TEMPLATES.get('/', HTML_TEMPLATES['/']).format(**self.c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
+
+    def handle_home(self):
+        tr = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
+        m = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 4")
+        j = subprocess.run("python3 programs/job_status.py summary", shell=True, capture_output=True, text=True)
+
+        todo_items = tr.stdout.strip().split('\n')[:4] or []
+        feed_items = [f"{datetime.fromisoformat(x[1]).strftime({'12h': '%I:%M %p'}.get(self.s.get('time_format', '12h'), '%H:%M'))} - {x[0]}" for x in m] or []
+        jobs_summary = j.stdout.strip().split('\n')[:4] or ["No jobs"]
+
+        vp = "".join(f'''<div class="box" onclick="location.href='/{t.lower()}'">
+<div class="box-title">{t}</div>
+<div class="box-content">{"".join(f'<div class="box-item">{i}</div>' for i in items) or f'<div style="color:#888">No {t.lower()}</div>'}</div>
+</div>''' for t, items in [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_summary)])
+
+        return HTML_TEMPLATES['/'].format(**self.c, vp=vp), 'text/html'
+
+    def handle_todo(self):
+        result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
+        tasks = result.stdout.strip().split('\n') or []
+        tasks_html = "".join(f'<div class="task {"done" * ("[x]" in t)}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] or str(i+1)}"><button>Done</button></form></div>' for i,t in enumerate(tasks))
+        return HTML_TEMPLATES['/todo'].format(**self.c, tasks=tasks_html or '<div style="color:#888">No tasks yet</div>'), 'text/html'
+
+    def handle_feed(self):
+        messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100")
+        time_format = self.s.get("time_format", "12h")
+        feed_html = []
+        self._dates = []
+
+        def process_message(m):
+            feed_html.append((datetime.fromisoformat(m[1]).date() not in self._dates and f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(m[1]).date()}</div>' or '') + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime({"12h": "%I:%M %p"}.get(time_format, "%H:%M"))} - {m[0]}</div>')
+            self._dates.append(datetime.fromisoformat(m[1]).date())
+
+        list(map(process_message, messages))
+        return HTML_TEMPLATES['/feed'].format(**self.c, feed_content="".join(feed_html) or "<div style='color:#888'>No messages yet</div>"), 'text/html'
+
+    def handle_settings(self):
+        theme_dark_style = {'dark': 'style="font-weight:bold"'}.get(self.s.get('theme', 'dark'), '')
+        theme_light_style = {'light': 'style="font-weight:bold"'}.get(self.s.get('theme'), '')
+        time_12h_style = {'12h': 'style="font-weight:bold"'}.get(self.s.get('time_format', '12h'), '')
+        time_24h_style = {'24h': 'style="font-weight:bold"'}.get(self.s.get('time_format'), '')
+        return HTML_TEMPLATES['/settings'].format(**self.c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style), 'text/html'
+
+    def handle_jobs(self):
+        running = subprocess.run("python3 programs/job_status.py running", shell=True, capture_output=True, text=True)
+        review = subprocess.run("python3 programs/job_status.py review", shell=True, capture_output=True, text=True)
+        done = subprocess.run("python3 programs/job_status.py done", shell=True, capture_output=True, text=True)
+
+        running_html = running.stdout.strip() or '<div style="color:#888;padding:10px">No running jobs</div>'
+        review_html = review.stdout.strip() or '<div style="color:#888;padding:10px">No jobs in review</div>'
+        done_html = done.stdout.strip() or '<div style="color:#888;padding:10px">No completed jobs</div>'
+
+        return HTML_TEMPLATES['/jobs'].format(**self.c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html), 'text/html'
+
+    def post_job_run(self):
+        return subprocess.run("python3 programs/job_status.py run_wiki", shell=True)
+
+    def post_job_accept(self):
+        return subprocess.run(f"python3 programs/job_status.py accept {self.data.get('id', [''])[0]}", shell=True)
+
+    def post_job_redo(self):
+        return subprocess.run(f"python3 programs/job_status.py redo {self.data.get('id', [''])[0]}", shell=True)
+
+    def post_run_cmd(self):
+        return subprocess.run(self.data.get('cmd', [''])[0], shell=True, capture_output=True, text=True, timeout=5)
+
+    def post_todo_add(self):
+        return subprocess.run(f"python3 programs/todo/todo.py add {self.data.get('task', [''])[0]}", shell=True)
+
+    def post_todo_done(self):
+        return subprocess.run(f"python3 programs/todo/todo.py done {self.data.get('id', [''])[0]}", shell=True)
+
+    def post_todo_clear(self):
+        return subprocess.run("python3 programs/todo/todo.py clear", shell=True)
+
+    def post_settings_theme(self):
+        return aios_db.write('settings', {**(aios_db.read('settings') or {}), 'theme': self.data.get('theme', ['dark'])[0]})
+
+    def post_settings_time(self):
+        return aios_db.write('settings', {**(aios_db.read('settings') or {}), 'time_format': self.data.get('format', ['12h'])[0]})
+
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length) if length > 0 else b''
-        data = parse_qs(body.decode()) if body else {}
+        body = self.rfile.read(length) or b''
+        data = parse_qs(body.decode()) or {}
+        self.data = data
 
-        if path == '/job/run':
-            subprocess.run("python3 programs/job_status.py run_wiki", shell=True)
-        elif path == '/job/accept':
-            subprocess.run(f"python3 programs/job_status.py accept {data.get('id', [''])[0]}", shell=True)
-        elif path == '/job/redo':
-            subprocess.run(f"python3 programs/job_status.py redo {data.get('id', [''])[0]}", shell=True)
-        elif path == '/run':
-            subprocess.run(data.get('cmd', [''])[0], shell=True, capture_output=True, text=True, timeout=5)
-        elif path == '/todo/add':
-            subprocess.run(f"python3 programs/todo/todo.py add {data.get('task', [''])[0]}", shell=True)
-        elif path == '/todo/done':
-            subprocess.run(f"python3 programs/todo/todo.py done {data.get('id', [''])[0]}", shell=True)
-        elif path == '/todo/clear':
-            subprocess.run("python3 programs/todo/todo.py clear", shell=True)
-        elif path == '/settings/theme':
-            s = aios_db.read('settings') or {}
-            s['theme'] = data.get('theme', ['dark'])[0]
-            aios_db.write('settings', s)
-        elif path == '/settings/time':
-            s = aios_db.read('settings') or {}
-            s['time_format'] = data.get('format', ['12h'])[0]
-            aios_db.write('settings', s)
+        post_handlers = {
+            '/job/run': self.post_job_run,
+            '/job/accept': self.post_job_accept,
+            '/job/redo': self.post_job_redo,
+            '/run': self.post_run_cmd,
+            '/todo/add': self.post_todo_add,
+            '/todo/done': self.post_todo_done,
+            '/todo/clear': self.post_todo_clear,
+            '/settings/theme': self.post_settings_theme,
+            '/settings/time': self.post_settings_time
+        }
+
+        handler = post_handlers.get(path)
+        handler and handler()
 
         self.send_response(303)
-        self.send_header('Location', '/' if 'settings' in path else path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/run', '').replace('/accept', '').replace('/redo', ''))
+        self.send_header('Location', ('settings' in path and '/') or path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/run', '').replace('/accept', '').replace('/redo', ''))
         self.end_headers()
 
-command = sys.argv[1] if len(sys.argv) > 1 else "start"
+def cmd_start():
+    aios_db.write("web_server", {"port": 8080, "pid": os.getpid()})
+    print(f"AIOS Control Center: http://localhost:8080")
+    HTTPServer(('', 8080), Handler).serve_forever()
 
-if command == 'start':
-    port = 8080
-    aios_db.write("web_server", {"port": port, "pid": os.getpid()})
-    print(f"AIOS Control Center: http://localhost:{port}")
-    HTTPServer(('', port), Handler).serve_forever()
-elif command == 'stop':
+def cmd_stop():
     info = aios_db.read("web_server") or {}
     pid = info.get("pid")
-    os.kill(pid, 15) if pid else print("No server running")
-elif command == 'status':
+    pid and os.kill(pid, 15) or print("No server running")
+
+def cmd_status():
     print(f"Server: {aios_db.read('web_server') or 'Not running'}")
+
+command = (sys.argv + ["start"])[1]
+
+cmd_handlers = {
+    'start': cmd_start,
+    'stop': cmd_stop,
+    'status': cmd_status
+}
+
+cmd_handlers.get(command, cmd_handlers['start'])()
