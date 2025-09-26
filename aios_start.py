@@ -17,7 +17,7 @@ def kill_existing():
     subprocess.run(["pkill", "-f", "core/aios_api.py"], stderr=subprocess.DEVNULL)
     subprocess.run(["pkill", "-f", "services/web.py"], stderr=subprocess.DEVNULL)
     pids = aios_db.read("aios_pids") or {}
-    any(subprocess.run(["kill", str(pid)], stderr=subprocess.DEVNULL) for pid in pids.values())
+    subprocess.run(["kill"] + list(map(str, pids.values())), stderr=subprocess.DEVNULL)
 
 def start():
     start_time = time.time()
