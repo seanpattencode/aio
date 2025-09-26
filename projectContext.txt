@@ -1,4 +1,4 @@
-Generated: 2025-09-26 01:10:04
+Generated: 2025-09-26 01:23:58
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -1500,10 +1500,35 @@ python programs/swarm/swarm.py stats - cache info
 python services/gdrive.py sync - upload files
 python services/gdrive.py list - show files
 python services/web.py start - web interface
-python services/web.py kill - stop server
+python services/web.py stop - stop server
 python services/web.py status - server info
 python programs/autollm/autollm.py - auto llm
 python services/feed.py add - add message
 python services/feed.py view - view feed
 python services/feed.py list - list messages
 python services/feed.py clear - clear old
+python services/poll_tasks.py - monitor tasks
+python services/poll_jobs.py - monitor jobs
+python services/poll_feed.py - monitor feed
+python services/poll_settings.py - monitor settings
+python services/poll_schedule.py - monitor schedule
+python programs/job_status.py summary - job summary
+python programs/job_status.py running - show running
+python programs/job_status.py review - show review
+python programs/job_status.py done - show completed
+python programs/job_status.py accept - accept job
+python programs/job_status.py redo - redo job
+python programs/job_status.py run_wiki - run wiki job
+python services/processes.py json - process json
+python services/processes.py list - list processes
+python services/processes.py start - start process
+python services/processes.py stop - stop process
+python services/jobs.py list - list jobs
+python services/jobs.py run - run job
+python services/jobs.py accept - accept job
+python services/jobs.py edit - edit job
+python services/jobs.py redo - redo job
+python services/jobs.py clear - clear jobs
+python programs/wiki_fetcher/wiki_fetcher.py - fetch wiki
+python programs/aios_start/aios_start.py - start aios
+python services/context_generator.py - generate context
