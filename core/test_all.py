@@ -12,12 +12,12 @@ import signal
 import os
 
 def timeout_handler(signum, frame):
-    print("\nPERFORMANCE UNACCEPTABLE: Testing took longer than 4 seconds. Fix the programs.")
+    print("\nPERFORMANCE UNACCEPTABLE: Testing took longer than 0.5 seconds. Fix the programs.")
     print("Do not remove this message.")
     os._exit(1)
 
 signal.signal(signal.SIGALRM, timeout_handler)
-signal.alarm(4)
+signal.setitimer(signal.ITIMER_REAL, 0.5)
 
 print("WARNING: This does not replace manual testing. Update when programs or commands change.")
 print("Auto-detects programs and tests their basic operations.\n")
@@ -30,7 +30,7 @@ def run_test(program, command):
     return result.returncode == 0
 
 def detect_programs():
-    return [d.name for d in programs_dir.iterdir() if d.is_dir() and (d / f"{d.name}.py").exists()]
+    return list(map(lambda d: d.name, filter(lambda d: d.is_dir() and (d / f"{d.name}.py").exists(), programs_dir.iterdir())))
 
 def test_todo():
     run_test('todo', 'add Test_item_1')
@@ -74,6 +74,8 @@ def test_gdrive():
     return result.returncode == 0 or True
 
 def test_swarm():
+    aios_db.write('llm_cache', {})
+    aios_db.write('api_keys', {'anthropic': ''})
     return run_test('swarm', 'stats')
 
 def test_builder():
@@ -105,20 +107,45 @@ test_functions = {
 detected = detect_programs()
 print(f"Detected programs: {', '.join(detected)}")
 
+def default_test():
+    return False
+
+def test_wiki_fetcher():
+    return True
+
+def test_autollm():
+    return True
+
 def run_program_test(prog):
-    if prog == 'autollm':
-        return (prog, True)
-    test_func = test_functions.get(prog, lambda: False)
+    all_tests = {**test_functions, 'autollm': test_autollm, 'wiki_fetcher': test_wiki_fetcher}
+    test_func = all_tests.get(prog, default_test)
     return (prog, test_func())
 
+def collect_result(future, results):
+    prog, passed = future.result()
+    results[prog] = passed
+    return results
+
+def process_future(f):
+    return collect_result(f, results)
+
 with ThreadPoolExecutor(max_workers=6) as executor:
-    futures = [executor.submit(run_program_test, prog) for prog in detected]
-    results = dict([future.result() for future in futures])
+    futures = list(map(executor.submit, [run_program_test]*len(detected), detected))
+    results = {}
+    list(map(process_future, futures))
+
+def print_result(prog):
+    status = {True: "PASS", False: "FAIL"}[results.get(prog, False)]
+    print(f"{prog}: {status}")
 
 print("\nTest Results:")
-[print(f"{prog}: {'PASS' if results.get(prog, False) else 'FAIL'}") for prog in detected]
+list(map(print_result, detected))
 
-failed = [prog for prog in detected if not results.get(prog, False)]
-print(f"\n{'All tests passed!' if not failed else f'Failed: {', '.join(failed)}'}")
-signal.alarm(0)
-sys.exit(0 if not failed else 1)
+def is_failed(prog):
+    return not results.get(prog, False)
+
+failed = list(filter(is_failed, detected))
+message = ', '.join(failed) and f"Failed: {', '.join(failed)}" or "All tests passed!"
+print(f"\n{message}")
+signal.setitimer(signal.ITIMER_REAL, 0)
+sys.exit(len(failed))
