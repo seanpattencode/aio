@@ -1,4 +1,4 @@
-Generated: 2025-09-26 17:02:07
+Generated: 2025-09-26 17:08:53
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -465,8 +465,11 @@ from datetime import datetime
 aios_db.execute("jobs", "CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY, name TEXT, status TEXT, output TEXT, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
 aios_db.execute("feed", "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT, source TEXT, priority INTEGER DEFAULT 0)")
 
+def format_job(j):
+    return {"id": j[0], "name": j[1], "status": j[2], "output": j[3]}
+
 def handle_api_jobs():
-    return (json.dumps([{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")]), 'application/json')
+    return (json.dumps(list(map(format_job, aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")))), 'application/json')
 
 def handle_default(c):
     return (HTML_TEMPLATES.get('/', HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
@@ -505,20 +508,31 @@ class Handler(BaseHTTPRequestHandler):
         j = subprocess.run("python3 programs/job_status.py summary", shell=True, capture_output=True, text=True)
 
         todo_items = tr.stdout.strip().split('\n')[:4] or []
-        feed_items = [f"{datetime.fromisoformat(x[1]).strftime({'12h': '%I:%M %p'}.get(self.s.get('time_format', '12h'), '%H:%M'))} - {x[0]}" for x in m] or []
+        def format_feed_item(x):
+            return f"{datetime.fromisoformat(x[1]).strftime({'12h': '%I:%M %p'}.get(self.s.get('time_format', '12h'), '%H:%M'))} - {x[0]}"
+        feed_items = list(map(format_feed_item, m)) or []
         jobs_summary = j.stdout.strip().split('\n')[:4] or ["No jobs"]
 
-        vp = "".join(f'''<div class="box" onclick="location.href='/{t.lower()}'">
+        def format_item(i):
+            return f'<div class="box-item">{i}</div>'
+        def format_box(entry):
+            t, items = entry
+            content = "".join(list(map(format_item, items))) or f'<div style="color:#888">No {t.lower()}</div>'
+            return f'''<div class="box" onclick="location.href='/{t.lower()}'">
 <div class="box-title">{t}</div>
-<div class="box-content">{"".join(f'<div class="box-item">{i}</div>' for i in items) or f'<div style="color:#888">No {t.lower()}</div>'}</div>
-</div>''' for t, items in [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_summary)])
+<div class="box-content">{content}</div>
+</div>'''
+        vp = "".join(list(map(format_box, [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_summary)])))
 
         return HTML_TEMPLATES['/'].format(**self.c, vp=vp), 'text/html'
 
     def handle_todo(self):
         result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
         tasks = result.stdout.strip().split('\n') or []
-        tasks_html = "".join(f'<div class="task {"done" * ("[x]" in t)}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] or str(i+1)}"><button>Done</button></form></div>' for i,t in enumerate(tasks))
+        def format_task(indexed_task):
+            i, t = indexed_task
+            return f'<div class="task {"done" * ("[x]" in t)}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] or str(i+1)}"><button>Done</button></form></div>'
+        tasks_html = "".join(list(map(format_task, enumerate(tasks))))
         return HTML_TEMPLATES['/todo'].format(**self.c, tasks=tasks_html or '<div style="color:#888">No tasks yet</div>'), 'text/html'
 
     def handle_feed(self):
@@ -528,7 +542,8 @@ class Handler(BaseHTTPRequestHandler):
         self._dates = []
 
         def process_message(m):
-            feed_html.append((datetime.fromisoformat(m[1]).date() not in self._dates and f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(m[1]).date()}</div>' or '') + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime({"12h": "%I:%M %p"}.get(time_format, "%H:%M"))} - {m[0]}</div>')
+            date_header = {True: f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(m[1]).date()}</div>', False: ''}.get(datetime.fromisoformat(m[1]).date() not in self._dates, '')
+            feed_html.append(date_header + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime({"12h": "%I:%M %p"}.get(time_format, "%H:%M"))} - {m[0]}</div>')
             self._dates.append(datetime.fromisoformat(m[1]).date())
 
         list(map(process_message, messages))
@@ -598,11 +613,11 @@ class Handler(BaseHTTPRequestHandler):
             '/settings/time': self.post_settings_time
         }
 
-        handler = post_handlers.get(path)
-        handler and handler()
+        handler = post_handlers.get(path, str)
+        handler()
 
         self.send_response(303)
-        self.send_header('Location', ('settings' in path and '/') or path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/run', '').replace('/accept', '').replace('/redo', ''))
+        self.send_header('Location', {'settings': '/'}.get('settings' * ('settings' in path), path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/run', '').replace('/accept', '').replace('/redo', '')))
         self.end_headers()
 
 def cmd_start():
@@ -612,8 +627,9 @@ def cmd_start():
 
 def cmd_stop():
     info = aios_db.read("web_server") or {}
-    pid = info.get("pid")
-    pid and os.kill(pid, 15) or print("No server running")
+    pid = info.get("pid", 0)
+    list(map(os.kill, [pid] * bool(pid), [15] * bool(pid)))
+    list(map(print, ["No server running"] * (not bool(pid))))
 
 def cmd_status():
     print(f"Server: {aios_db.read('web_server') or 'Not running'}")
