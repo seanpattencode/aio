@@ -8,10 +8,18 @@ import aios_db
 
 schedules = aios_db.read("schedule")
 
-[sched.every().day.at(t).do(lambda c=cmd: subprocess.run(c, shell=True))
- for t, cmd in schedules.get("daily", {}).items()]
+def run_cmd(cmd):
+    return subprocess.run(cmd, shell=True)
 
-[sched.every().hour.at(f":{int(m):02d}").do(lambda c=cmd: subprocess.run(c, shell=True))
- for m, cmd in schedules.get("hourly", {}).items()]
+def schedule_daily(item):
+    t, cmd = item
+    sched.every().day.at(t).do(run_cmd, cmd)
+
+def schedule_hourly(item):
+    m, cmd = item
+    sched.every().hour.at(f":{int(m):02d}").do(run_cmd, cmd)
+
+list(map(schedule_daily, schedules.get("daily", {}).items()))
+list(map(schedule_hourly, schedules.get("hourly", {}).items()))
 
 sched.run_pending()
