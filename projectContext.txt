@@ -1,4 +1,4 @@
-Generated: 2025-09-26 00:39:18
+Generated: 2025-09-26 01:10:04
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -34,7 +34,6 @@ def start():
     print(f"AIOS started in {elapsed:.3f}s: {url}") if elapsed <= 0.05 else (print("PERFORMANCE UNACCEPTABLE: Over .05 seconds. Do not remove this message."), sys.exit(1))
     webbrowser.open(url)
     subprocess.Popen(["python3", "-c", "from services import context_generator; context_generator.generate()"], cwd="/home/seanpatten/projects/AIOS")
-    [[time.sleep(1)] for _ in iter(int, 1)]
 
 def stop():
     kill_existing()
@@ -203,7 +202,7 @@ with ThreadPoolExecutor(max_workers=6) as executor:
     results = dict([future.result() for future in futures])
 
 print("\nTest Results:")
-[print(f"{prog}: {'✓' if results.get(prog, False) else '✗'}") for prog in detected]
+[print(f"{prog}: {'PASS' if results.get(prog, False) else 'FAIL'}") for prog in detected]
 
 failed = [prog for prog in detected if not results.get(prog, False)]
 print(f"\n{'All tests passed!' if not failed else f'Failed: {', '.join(failed)}'}")
@@ -271,7 +270,6 @@ HTML_TEMPLATES = {
 <html>
 <head>
 <title>AIOS Control Center</title>
-<meta http-equiv="refresh" content="5"><!-- Refresh every 5 seconds to show updates -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -332,7 +330,6 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
 <html>
 <head>
 <title>Jobs</title>
-<meta http-equiv="refresh" content="2"><!-- Refresh every 2 seconds for job updates -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
 h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
@@ -374,7 +371,6 @@ h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
 <html>
 <head>
 <title>Feed</title>
-<meta http-equiv="refresh" content="10"><!-- Refresh every 10 seconds for new messages -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .feed-box{{background:{bg2};border-radius:10px;padding:15px;height:400px;overflow-y:auto;margin:20px 0}}
@@ -611,6 +607,24 @@ def generate():
     output.write_text(content)
     return str(output)
 
+services/poll_schedule.py:
+#!/usr/bin/env python3
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import subprocess
+import aios_db
+
+subprocess.run(["inotifywait", "-m", "-e", "modify", f"{aios_db.db_path}/schedule.json"], stdout=subprocess.PIPE, text=True, check=False)
+
+services/poll_tasks.py:
+#!/usr/bin/env python3
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import subprocess
+import aios_db
+
+subprocess.run(["inotifywait", "-m", "-e", "modify", f"{aios_db.db_path}/tasks.json"], stdout=subprocess.PIPE, text=True, check=False)
+
 services/jobs.py:
 #!/usr/bin/env python3
 import sys
@@ -673,6 +687,24 @@ actions = {
 
 actions.get(command, actions["json"])()
 
+services/poll_jobs.py:
+#!/usr/bin/env python3
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import subprocess
+import aios_db
+
+subprocess.run(["inotifywait", "-m", "-e", "modify", f"{aios_db.db_path}/jobs.db"], stdout=subprocess.PIPE, text=True, check=False)
+
+services/poll_feed.py:
+#!/usr/bin/env python3
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import subprocess
+import aios_db
+
+subprocess.run(["inotifywait", "-m", "-e", "modify", f"{aios_db.db_path}/feed.db"], stdout=subprocess.PIPE, text=True, check=False)
+
 services/gdrive.py:
 #!/usr/bin/env python3
 import sys
@@ -730,6 +762,15 @@ actions = {
 
 actions.get(command, actions["list"])()
 
+services/poll_settings.py:
+#!/usr/bin/env python3
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import subprocess
+import aios_db
+
+subprocess.run(["inotifywait", "-m", "-e", "modify", f"{aios_db.db_path}/settings.json"], stdout=subprocess.PIPE, text=True, check=False)
+
 programs/job_status.py:
 #!/usr/bin/env python3
 import sys
@@ -748,9 +789,9 @@ if command == "summary":
     done = [j for j in jobs if j[2] == "done"][:5]
 
     summary = []
-    summary.extend([f"▶ {j[1]}" for j in running[:2]])
+    summary.extend([f"RUN {j[1]}" for j in running[:2]])
     summary.extend([f"? {j[1]}" for j in review[:1]])
-    summary.extend([f"✓ {j[1]}" for j in done[:1]])
+    summary.extend([f"DONE {j[1]}" for j in done[:1]])
 
     for line in summary[:4]:
         print(line)
@@ -839,7 +880,6 @@ import sys
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import schedule as sched
-import time
 import subprocess
 import aios_db
 
@@ -851,7 +891,7 @@ schedules = aios_db.read("schedule")
 [sched.every().hour.at(f":{int(m):02d}").do(lambda c=cmd: subprocess.run(c, shell=True))
  for m, cmd in schedules.get("hourly", {}).items()]
 
-[[sched.run_pending(), time.sleep(60)] for _ in iter(int, 1)]
+sched.run_pending()
 
 programs/wiki_fetcher/wiki_fetcher.py:
 #!/usr/bin/env python3
@@ -989,7 +1029,7 @@ class ClaudeAuto:
         self.output_dir.mkdir(exist_ok=True)
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
         if not self.working_dir.exists():
-            print(f"⚠️  Working directory doesn't exist: {self.working_dir}")
+            print(f"Working directory doesn't exist: {self.working_dir}")
             if input("Create it? (y/n): ").strip().lower() == 'y':
                 self.working_dir.mkdir(parents=True, exist_ok=True)
             else:
@@ -1042,7 +1082,7 @@ class ClaudeAuto:
 
             return exit_code == 0, ''.join(output_lines)
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
             if task_id:
                 with self.task_lock:
                     if task_id in self.active_tasks:
@@ -1085,7 +1125,7 @@ class ClaudeAuto:
         
         # Copy files from working directory to workflow directory if needed
         if self.working_dir != Path.cwd() and self.working_dir.exists():
-            print(f"\n📂 Copying files from {self.working_dir}...")
+            print(f"\nCopying files from {self.working_dir}...")
             for item in self.working_dir.iterdir():
                 if item.name.startswith('.') or item.name in ['__pycache__', 'node_modules', '.git', 'claude_output']:
                     continue
@@ -1124,7 +1164,7 @@ class ClaudeAuto:
             results.append({'name': step_name, 'success': success})
             
             if not success:
-                print(f"⚠️  {prefix}Step failed, stopping workflow")
+                print(f"{prefix}Step failed, stopping workflow")
                 break
         
         return {'version': version_num or 'single', 'directory': str(workflow_dir),
@@ -1150,7 +1190,7 @@ def main():
     
     # Check Claude CLI
     if subprocess.run(['which', 'claude'], capture_output=True).returncode != 0:
-        print("❌ Claude CLI not found! Install with: npm install -g @anthropic/claude-cli")
+        print("Claude CLI not found! Install with: npm install -g @anthropic/claude-cli")
         sys.exit(1)
     
     print(f"\n{'='*60}\nClaude Auto v{__version__}\nWorking: {auto.working_dir}\nOutput: {auto.output_dir}\n{'='*60}")
@@ -1173,14 +1213,14 @@ def main():
                         task_id, name, completion_time = auto.completed_queue.get_nowait()
                         with notification_lock:
                             recent_notifications.append({
-                                'msg': f"🔔 {name} completed [{task_id}]",
+                                'msg': f"{name} completed [{task_id}]",
                                 'time': time.time()
                             })
                             # Keep only last 10 notifications
                             if len(recent_notifications) > 10:
                                 recent_notifications.pop(0)
                         # Print notification immediately
-                        print(f"\n\033[93m🔔 {name} completed [{task_id}]\033[0m")
+                        print(f"\n\033[93m{name} completed [{task_id}]\033[0m")
                         print("Choice: ", end='', flush=True)  # Re-show prompt
                     except:
                         break
@@ -1209,7 +1249,7 @@ def main():
         active_count = len(auto.active_tasks)
         if active_count > 0:
             active_list = ", ".join([f"{tid}" for tid in list(auto.active_tasks.keys())[:5]])
-            print(f"\n\033[92m⚡ Active: {active_count} tasks [{active_list}]\033[0m")
+            print(f"\n\033[92mActive: {active_count} tasks [{active_list}]\033[0m")
 
     while True:
         # Clean up completed background tasks
@@ -1217,7 +1257,7 @@ def main():
 
         print_status()
 
-        print("\n🎯 Options:\n1. Quick prompt\n2. Multiple tasks (parallel)\n3. Multiple tasks (sequential)")
+        print("\nOptions:\n1. Quick prompt\n2. Multiple tasks (parallel)\n3. Multiple tasks (sequential)")
         print(f"4. Workflow\n5. Exit")
 
         try:
@@ -1243,7 +1283,7 @@ def main():
                         if task_id in auto.active_tasks:
                             auto.active_tasks[task_id]['future'] = future
                     background_futures.append(future)
-                    print(f"\n⚡ Task launched in background as {task_id}")
+                    print(f"\nTask launched in background as {task_id}")
         
         elif choice in ['2', '3']:
             tasks = []
@@ -1277,7 +1317,7 @@ def main():
                                 auto.active_tasks[task_id]['future'] = future
                         futures.append(future)
                     background_futures.extend(futures)
-                    print(f"\n⚡ {len(tasks)} tasks launched in parallel")
+                    print(f"\n{len(tasks)} tasks launched in parallel")
                 else:
                     # Sequential execution in background
                     def run_sequential():
@@ -1288,11 +1328,11 @@ def main():
                             auto.run_task(task['name'], task['prompt'], task_id)
                     future = executor.submit(run_sequential)
                     background_futures.append(future)
-                    print(f"\n⚡ {len(tasks)} tasks launched sequentially in background")
+                    print(f"\n{len(tasks)} tasks launched sequentially in background")
         
         elif choice == '4':
-            print("\n🔧 WORKFLOW MODE")
-            print(f"📂 Working: {auto.working_dir}")
+            print("\nWORKFLOW MODE")
+            print(f"Working: {auto.working_dir}")
             
             # Workflow type
             print("\n1. Standard (3 steps)\n2. With simplification (4 steps)")
@@ -1312,7 +1352,7 @@ def main():
                     num_versions = 2
             
             # Working directory
-            if input("\n📁 Change working directory? (y/n): ").strip().lower() == 'y':
+            if input("\nChange working directory? (y/n): ").strip().lower() == 'y':
                 new_dir = input("Path: ").strip()
                 if new_dir:
                     auto.working_dir = Path(new_dir)
@@ -1323,7 +1363,7 @@ def main():
             if num_versions > 1 and exec_mode == 'parallel' and auto.working_dir != Path.cwd():
                 size_mb = get_dir_size(auto.working_dir)
                 if size_mb > 100:
-                    print(f"\n⚠️  Will copy {size_mb:.1f}MB. Continue in 10s (Ctrl+C to abort)...")
+                    print(f"\nWill copy {size_mb:.1f}MB. Continue in 10s (Ctrl+C to abort)...")
                     try:
                         for i in range(10, 0, -1):
                             print(f"\r{i}... ", end='', flush=True)
@@ -1332,7 +1372,7 @@ def main():
                         continue
             
             # Get task
-            print("\n📝 Enter task (Ctrl+D to finish):")
+            print("\nEnter task (Ctrl+D to finish):")
             try:
                 lines = []
                 while True:
@@ -1343,25 +1383,25 @@ def main():
             if not initial_task:
                 continue
             
-            print(f"\n🚀 Starting {num_versions} workflow(s)...")
+            print(f"\nStarting {num_versions} workflow(s)...")
             
             # Execute workflows in background
             if num_versions == 1:
                 future = executor.submit(auto.run_workflow, wf_type, initial_task)
                 background_futures.append(future)
-                print(f"⚡ Workflow launched in background")
+                print(f"Workflow launched in background")
             elif exec_mode == 'parallel':
                 futures = [executor.submit(auto.run_workflow, wf_type, initial_task, i+1, num_versions)
                          for i in range(num_versions)]
                 background_futures.extend(futures)
-                print(f"⚡ {num_versions} workflows launched in parallel")
+                print(f"{num_versions} workflows launched in parallel")
             else:
                 def run_sequential_workflows():
                     for i in range(num_versions):
                         auto.run_workflow(wf_type, initial_task, i+1, num_versions)
                 future = executor.submit(run_sequential_workflows)
                 background_futures.append(future)
-                print(f"⚡ {num_versions} workflows launched sequentially")
+                print(f"{num_versions} workflows launched sequentially")
         
         if choice == '5':
             break
@@ -1369,15 +1409,15 @@ def main():
         # Show results summary
         if auto.results:
             print(f"\n{'='*60}\nSUMMARY\n{'='*60}")
-            print(f"✅ Successful: {sum(1 for r in auto.results if r.get('success'))}")
-            print(f"❌ Failed: {sum(1 for r in auto.results if not r.get('success'))}")
+            print(f"Successful: {sum(1 for r in auto.results if r.get('success'))}")
+            print(f"Failed: {sum(1 for r in auto.results if not r.get('success'))}")
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
         print("\033[?25h")  # Show cursor
-        print("\n\n⚠️ Interrupted")
+        print("\n\nInterrupted")
         sys.exit(130)
 
 programs/aios_start/aios_start.py:
@@ -1419,7 +1459,6 @@ def start():
     elapsed = time.time() - start_time
     print(f"AIOS started in {elapsed:.3f}s: {url}")
     webbrowser.open(url)
-    [[time.sleep(1)] for _ in iter(int, 1)]
 
 def stop():
     kill_existing()

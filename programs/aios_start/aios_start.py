@@ -36,7 +36,6 @@ def start():
     elapsed = time.time() - start_time
     print(f"AIOS started in {elapsed:.3f}s: {url}")
     webbrowser.open(url)
-    [[time.sleep(1)] for _ in iter(int, 1)]
 
 def stop():
     kill_existing()

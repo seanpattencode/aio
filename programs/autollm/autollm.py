@@ -28,7 +28,7 @@ class ClaudeAuto:
         self.output_dir.mkdir(exist_ok=True)
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
         if not self.working_dir.exists():
-            print(f"⚠️  Working directory doesn't exist: {self.working_dir}")
+            print(f"Working directory doesn't exist: {self.working_dir}")
             if input("Create it? (y/n): ").strip().lower() == 'y':
                 self.working_dir.mkdir(parents=True, exist_ok=True)
             else:
@@ -81,7 +81,7 @@ class ClaudeAuto:
 
             return exit_code == 0, ''.join(output_lines)
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
             if task_id:
                 with self.task_lock:
                     if task_id in self.active_tasks:
@@ -124,7 +124,7 @@ class ClaudeAuto:
         
         # Copy files from working directory to workflow directory if needed
         if self.working_dir != Path.cwd() and self.working_dir.exists():
-            print(f"\n📂 Copying files from {self.working_dir}...")
+            print(f"\nCopying files from {self.working_dir}...")
             for item in self.working_dir.iterdir():
                 if item.name.startswith('.') or item.name in ['__pycache__', 'node_modules', '.git', 'claude_output']:
                     continue
@@ -163,7 +163,7 @@ class ClaudeAuto:
             results.append({'name': step_name, 'success': success})
             
             if not success:
-                print(f"⚠️  {prefix}Step failed, stopping workflow")
+                print(f"{prefix}Step failed, stopping workflow")
                 break
         
         return {'version': version_num or 'single', 'directory': str(workflow_dir),
@@ -189,7 +189,7 @@ def main():
     
     # Check Claude CLI
     if subprocess.run(['which', 'claude'], capture_output=True).returncode != 0:
-        print("❌ Claude CLI not found! Install with: npm install -g @anthropic/claude-cli")
+        print("Claude CLI not found! Install with: npm install -g @anthropic/claude-cli")
         sys.exit(1)
     
     print(f"\n{'='*60}\nClaude Auto v{__version__}\nWorking: {auto.working_dir}\nOutput: {auto.output_dir}\n{'='*60}")
@@ -212,14 +212,14 @@ def main():
                         task_id, name, completion_time = auto.completed_queue.get_nowait()
                         with notification_lock:
                             recent_notifications.append({
-                                'msg': f"🔔 {name} completed [{task_id}]",
+                                'msg': f"{name} completed [{task_id}]",
                                 'time': time.time()
                             })
                             # Keep only last 10 notifications
                             if len(recent_notifications) > 10:
                                 recent_notifications.pop(0)
                         # Print notification immediately
-                        print(f"\n\033[93m🔔 {name} completed [{task_id}]\033[0m")
+                        print(f"\n\033[93m{name} completed [{task_id}]\033[0m")
                         print("Choice: ", end='', flush=True)  # Re-show prompt
                     except:
                         break
@@ -248,7 +248,7 @@ def main():
         active_count = len(auto.active_tasks)
         if active_count > 0:
             active_list = ", ".join([f"{tid}" for tid in list(auto.active_tasks.keys())[:5]])
-            print(f"\n\033[92m⚡ Active: {active_count} tasks [{active_list}]\033[0m")
+            print(f"\n\033[92mActive: {active_count} tasks [{active_list}]\033[0m")
 
     while True:
         # Clean up completed background tasks
@@ -256,7 +256,7 @@ def main():
 
         print_status()
 
-        print("\n🎯 Options:\n1. Quick prompt\n2. Multiple tasks (parallel)\n3. Multiple tasks (sequential)")
+        print("\nOptions:\n1. Quick prompt\n2. Multiple tasks (parallel)\n3. Multiple tasks (sequential)")
         print(f"4. Workflow\n5. Exit")
 
         try:
@@ -282,7 +282,7 @@ def main():
                         if task_id in auto.active_tasks:
                             auto.active_tasks[task_id]['future'] = future
                     background_futures.append(future)
-                    print(f"\n⚡ Task launched in background as {task_id}")
+                    print(f"\nTask launched in background as {task_id}")
         
         elif choice in ['2', '3']:
             tasks = []
@@ -316,7 +316,7 @@ def main():
                                 auto.active_tasks[task_id]['future'] = future
                         futures.append(future)
                     background_futures.extend(futures)
-                    print(f"\n⚡ {len(tasks)} tasks launched in parallel")
+                    print(f"\n{len(tasks)} tasks launched in parallel")
                 else:
                     # Sequential execution in background
                     def run_sequential():
@@ -327,11 +327,11 @@ def main():
                             auto.run_task(task['name'], task['prompt'], task_id)
                     future = executor.submit(run_sequential)
                     background_futures.append(future)
-                    print(f"\n⚡ {len(tasks)} tasks launched sequentially in background")
+                    print(f"\n{len(tasks)} tasks launched sequentially in background")
         
         elif choice == '4':
-            print("\n🔧 WORKFLOW MODE")
-            print(f"📂 Working: {auto.working_dir}")
+            print("\nWORKFLOW MODE")
+            print(f"Working: {auto.working_dir}")
             
             # Workflow type
             print("\n1. Standard (3 steps)\n2. With simplification (4 steps)")
@@ -351,7 +351,7 @@ def main():
                     num_versions = 2
             
             # Working directory
-            if input("\n📁 Change working directory? (y/n): ").strip().lower() == 'y':
+            if input("\nChange working directory? (y/n): ").strip().lower() == 'y':
                 new_dir = input("Path: ").strip()
                 if new_dir:
                     auto.working_dir = Path(new_dir)
@@ -362,7 +362,7 @@ def main():
             if num_versions > 1 and exec_mode == 'parallel' and auto.working_dir != Path.cwd():
                 size_mb = get_dir_size(auto.working_dir)
                 if size_mb > 100:
-                    print(f"\n⚠️  Will copy {size_mb:.1f}MB. Continue in 10s (Ctrl+C to abort)...")
+                    print(f"\nWill copy {size_mb:.1f}MB. Continue in 10s (Ctrl+C to abort)...")
                     try:
                         for i in range(10, 0, -1):
                             print(f"\r{i}... ", end='', flush=True)
@@ -371,7 +371,7 @@ def main():
                         continue
             
             # Get task
-            print("\n📝 Enter task (Ctrl+D to finish):")
+            print("\nEnter task (Ctrl+D to finish):")
             try:
                 lines = []
                 while True:
@@ -382,25 +382,25 @@ def main():
             if not initial_task:
                 continue
             
-            print(f"\n🚀 Starting {num_versions} workflow(s)...")
+            print(f"\nStarting {num_versions} workflow(s)...")
             
             # Execute workflows in background
             if num_versions == 1:
                 future = executor.submit(auto.run_workflow, wf_type, initial_task)
                 background_futures.append(future)
-                print(f"⚡ Workflow launched in background")
+                print(f"Workflow launched in background")
             elif exec_mode == 'parallel':
                 futures = [executor.submit(auto.run_workflow, wf_type, initial_task, i+1, num_versions)
                          for i in range(num_versions)]
                 background_futures.extend(futures)
-                print(f"⚡ {num_versions} workflows launched in parallel")
+                print(f"{num_versions} workflows launched in parallel")
             else:
                 def run_sequential_workflows():
                     for i in range(num_versions):
                         auto.run_workflow(wf_type, initial_task, i+1, num_versions)
                 future = executor.submit(run_sequential_workflows)
                 background_futures.append(future)
-                print(f"⚡ {num_versions} workflows launched sequentially")
+                print(f"{num_versions} workflows launched sequentially")
         
         if choice == '5':
             break
@@ -408,13 +408,13 @@ def main():
         # Show results summary
         if auto.results:
             print(f"\n{'='*60}\nSUMMARY\n{'='*60}")
-            print(f"✅ Successful: {sum(1 for r in auto.results if r.get('success'))}")
-            print(f"❌ Failed: {sum(1 for r in auto.results if not r.get('success'))}")
+            print(f"Successful: {sum(1 for r in auto.results if r.get('success'))}")
+            print(f"Failed: {sum(1 for r in auto.results if not r.get('success'))}")
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
         print("\033[?25h")  # Show cursor
-        print("\n\n⚠️ Interrupted")
+        print("\n\nInterrupted")
         sys.exit(130)

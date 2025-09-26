@@ -116,7 +116,7 @@ with ThreadPoolExecutor(max_workers=6) as executor:
     results = dict([future.result() for future in futures])
 
 print("\nTest Results:")
-[print(f"{prog}: {'✓' if results.get(prog, False) else '✗'}") for prog in detected]
+[print(f"{prog}: {'PASS' if results.get(prog, False) else 'FAIL'}") for prog in detected]
 
 failed = [prog for prog in detected if not results.get(prog, False)]
 print(f"\n{'All tests passed!' if not failed else f'Failed: {', '.join(failed)}'}")

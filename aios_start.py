@@ -31,7 +31,6 @@ def start():
     print(f"AIOS started in {elapsed:.3f}s: {url}") if elapsed <= 0.05 else (print("PERFORMANCE UNACCEPTABLE: Over .05 seconds. Do not remove this message."), sys.exit(1))
     webbrowser.open(url)
     subprocess.Popen(["python3", "-c", "from services import context_generator; context_generator.generate()"], cwd="/home/seanpatten/projects/AIOS")
-    [[time.sleep(1)] for _ in iter(int, 1)]
 
 def stop():
     kill_existing()

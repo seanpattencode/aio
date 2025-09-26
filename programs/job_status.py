@@ -15,9 +15,9 @@ if command == "summary":
     done = [j for j in jobs if j[2] == "done"][:5]
 
     summary = []
-    summary.extend([f"▶ {j[1]}" for j in running[:2]])
+    summary.extend([f"RUN {j[1]}" for j in running[:2]])
     summary.extend([f"? {j[1]}" for j in review[:1]])
-    summary.extend([f"✓ {j[1]}" for j in done[:1]])
+    summary.extend([f"DONE {j[1]}" for j in done[:1]])
 
     for line in summary[:4]:
         print(line)

@@ -5,7 +5,6 @@ HTML_TEMPLATES = {
 <html>
 <head>
 <title>AIOS Control Center</title>
-<meta http-equiv="refresh" content="5"><!-- Refresh every 5 seconds to show updates -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -66,7 +65,6 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
 <html>
 <head>
 <title>Jobs</title>
-<meta http-equiv="refresh" content="2"><!-- Refresh every 2 seconds for job updates -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
 h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
@@ -108,7 +106,6 @@ h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
 <html>
 <head>
 <title>Feed</title>
-<meta http-equiv="refresh" content="10"><!-- Refresh every 10 seconds for new messages -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .feed-box{{background:{bg2};border-radius:10px;padding:15px;height:400px;overflow-y:auto;margin:20px 0}}
