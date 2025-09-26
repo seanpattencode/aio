@@ -1,4 +1,4 @@
-Generated: 2025-09-25 23:30:33
+Generated: 2025-09-25 23:38:00
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -477,7 +477,20 @@ function toggleMenu() {{
     const menu = document.getElementById('job-menu');
     menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 }}
-setTimeout(() => location.reload(), 2000);
+function updateJobs() {{
+    fetch('/api/jobs').then(r => r.json()).then(jobs => {{
+        ['running', 'review', 'done'].forEach(status => {{
+            const items = jobs.filter(j => j.status === status).slice(0, status === 'done' ? 50 : 10);
+            document.getElementById(status).innerHTML = items.length ? items.map(j =>
+                `<div class="job-item">${{j.name}} ${{status === 'running' ? '<span class="status running">Running...</span>' :
+                status === 'review' ? `<span class="output">${{(j.output||'').slice(0,50)}}...</span><button class="action-btn" onclick="fetch('/api/job/accept',{{method:'POST',body:JSON.stringify({{id:${{j.id}}}})}}),updateJobs()">Accept</button><button class="action-btn" onclick="fetch('/api/job/redo',{{method:'POST',body:JSON.stringify({{id:${{j.id}}}})}}),updateJobs()">Redo</button>` :
+                `<span class="output">${{(j.output||'').slice(0,50)}}...</span>`}}</div>`).join('')
+            : '<div style="color:#888;padding:10px">No ' + (status === 'running' ? 'running' : status === 'review' ? 'jobs in review' : 'completed') + ' jobs</div>';
+        }});
+    }});
+}}
+updateJobs();
+setInterval(updateJobs, document.hidden ? 5000 : 2000);
 </script>
 </head>
 <body>
@@ -485,25 +498,23 @@ setTimeout(() => location.reload(), 2000);
 <h1>Jobs</h1>
 <button class="new-job-btn" onclick="toggleMenu()">Run New Job</button>
 <div id="job-menu" class="dropdown">
-  <form method="POST" action="/job/run/wikipedia">
-    <input type="submit" style="background:transparent;border:none;color:{fg};cursor:pointer;padding:8px;width:100%;text-align:left" value="Wikipedia Random Article">
-  </form>
+  <button onclick="fetch('/api/job/run',{{method:'POST'}}),toggleMenu(),updateJobs()" style="background:transparent;border:none;color:{fg};cursor:pointer;padding:8px;width:100%;text-align:left">Wikipedia Random Article</button>
   <div style="padding:8px;color:{fg}66;font-size:11px">More jobs coming soon...</div>
 </div>
 
 <div class="section">
 <h2>RUNNING</h2>
-{running_html if running_html else '<div style="color:#888;padding:10px">No running jobs</div>'}
+<div id="running">{running_html if running_html else '<div style="color:#888;padding:10px">No running jobs</div>'}</div>
 </div>
 
 <div class="section">
 <h2>REVIEW</h2>
-{review_html if review_html else '<div style="color:#888;padding:10px">No jobs in review</div>'}
+<div id="review">{review_html if review_html else '<div style="color:#888;padding:10px">No jobs in review</div>'}</div>
 </div>
 
 <div class="section">
 <h2>DONE</h2>
-{done_html if done_html else '<div style="color:#888;padding:10px">No completed jobs</div>'}
+<div id="done">{done_html if done_html else '<div style="color:#888;padding:10px">No completed jobs</div>'}</div>
 </div>
 
 </body></html>"""
