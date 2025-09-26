@@ -38,16 +38,14 @@ class Handler(BaseHTTPRequestHandler):
                 messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp ASC LIMIT 4")
                 viewport_data['feed'] = {'title': 'Feed', 'items': messages}
 
-            if 'processes' in viewports:
-                proc_result = subprocess.run("python3 services/processes.py list", shell=True, capture_output=True, text=True)
-                viewport_data['processes'] = {'title': 'Processes', 'items': proc_result.stdout.strip().split('\n')[:4] if proc_result.stdout else []}
-
-            if 'schedule' in viewports:
+            if 'jobs' in viewports:
+                jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
+                jobs_items = []
+                [[jobs_items.append(f"[x] {j[:30]}...")] for j in jobs_data.get("done", [])[:2]]
+                [[jobs_items.append(f">>> {j[:30]}...")] for j in jobs_data.get("ongoing", [])[:1]]
                 schedule = aios_db.read("schedule") or {}
-                schedule_items = []
-                [[schedule_items.append(f"Daily {t}: {c}")] for t,c in sorted(schedule.get("daily",{}).items())]
-                [[schedule_items.append(f"Hourly :{int(m):02d}: {c}")] for m,c in sorted(schedule.get("hourly",{}).items(), key=lambda x: int(x[0]))]
-                viewport_data['schedule'] = {'title': 'Schedule', 'items': schedule_items[:4]}
+                [[jobs_items.append(f"@ Daily {t}")] for t,c in sorted(schedule.get("daily",{}).items())[:1]]
+                viewport_data['jobs'] = {'title': 'Jobs', 'items': jobs_items[:4]}
 
             viewport_html = []
             for vp_name in viewports[:4]:
@@ -109,7 +107,7 @@ window.onclick = function(e) {{
 <div class="menu-btn views-btn" onclick="toggleDropdown('views')">Views</div>
 <div class="dropdown views" id="views-dropdown">
 <form action="/views/update" method="POST" id="viewsForm" style="margin:0">
-{''.join(f'<label class="dropdown-item" style="display:block;padding:8px 12px;margin:0;cursor:pointer"><input type="checkbox" name="viewport" value="{vp}" {"checked" if vp in viewports else ""} onchange="document.getElementById(\'viewsForm\').submit()" style="margin:0 5px 0 0;accent-color:{fg};vertical-align:middle;width:14px;height:14px">{i+1}. {vp.title()}</label>' for i, vp in enumerate(['feed', 'processes', 'schedule', 'todo']))}
+{''.join(f'<label class="dropdown-item" style="display:block;padding:8px 12px;margin:0;cursor:pointer"><input type="checkbox" name="viewport" value="{vp}" {"checked" if vp in viewports else ""} onchange="document.getElementById(\'viewsForm\').submit()" style="margin:0 5px 0 0;accent-color:{fg};vertical-align:middle;width:14px;height:14px">{i+1}. {vp.title()}</label>' for i, vp in enumerate(['feed', 'jobs', 'todo']))}
 </form>
 <div class="dropdown-item" onclick="location.href='/views'" style="font-size:12px;color:{fg}88;border-top:1px solid {fg}33;margin-top:5px;padding-top:10px">Advanced...</div>
 </div>
@@ -165,12 +163,15 @@ input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
 </form>
 </body></html>"""
             self.wfile.write(html.encode())
-        elif path == '/processes':
+        elif path == '/jobs':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            result = subprocess.run("python3 services/processes.py json", shell=True, capture_output=True, text=True)
-            processes_data = json.loads(result.stdout) if result.stdout else {"scheduled": [], "ongoing": [], "core": []}
+            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
+            schedule = aios_db.read("schedule") or {}
+            scheduled_jobs = []
+            [[scheduled_jobs.append({"time": t, "desc": c, "type": "daily"})] for t,c in sorted(schedule.get("daily",{}).items())]
+            [[scheduled_jobs.append({"time": f":{int(m):02d}", "desc": c, "type": "hourly"})] for m,c in sorted(schedule.get("hourly",{}).items(), key=lambda x: int(x[0]))]
             settings = aios_db.read("settings") or {}
             theme = settings.get('theme', 'dark')
             is_light = theme == 'light'
@@ -178,22 +179,22 @@ input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
             fg = '#000' if is_light else '#fff'
             bg2 = '#f0f0f0' if is_light else '#1a1a1a'
 
-            scheduled_html = "".join(f'<div class="process-item"><span class="time">{p["time"]}</span> {p["path"]} <button onclick="runProcess(\'{p["path"]}\')">Run</button></div>'
-                                    for p in processes_data.get("scheduled", []))
+            done_html = "".join(f'<div class="job-item">{j} <button onclick="checkOff(\'{j}\')">Done</button><button onclick="edit(\'{j}\')">Edit</button><button onclick="redo(\'{j}\')">Redo</button></div>'
+                                for j in jobs_data.get("done", []))
 
-            ongoing_html = "".join(f'<div class="process-item">{p["path"]} <span class="status active">●</span> <button onclick="restartProcess(\'{p["path"]}\')">Restart</button></div>'
-                                 for p in processes_data.get("ongoing", []))
+            ongoing_html = "".join(f'<div class="job-item">{j} <span class="status active">*</span></div>'
+                                 for j in jobs_data.get("ongoing", []))
 
-            core_html = "".join(f'<div class="process-item">{p["path"]} <button onclick="runProcess(\'{p["path"]}\')">Run</button></div>'
-                              for p in processes_data.get("core", []))
+            scheduled_html = "".join(f'<div class="job-item"><span class="time">{j["time"]}</span> {j["desc"]} <button onclick="editSchedule(\'{j["type"]}\', \'{j["time"]}\', \'{j["desc"]}\')">Edit</button></div>'
+                                    for j in scheduled_jobs)
 
             html = f"""<html>
-<head><title>Processes</title>
+<head><title>Jobs</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
 h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
 .section{{margin-bottom:30px}}
-.process-item{{background:{bg2};padding:12px;margin:4px 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center}}
+.job-item{{background:{bg2};padding:12px;margin:4px 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center}}
 .time{{color:{fg}88;margin-right:15px;font-weight:bold}}
 .status{{margin:0 10px}}
 .status.active{{color:#0a0}}
@@ -203,77 +204,51 @@ button:hover{{opacity:0.8}}
 .hidden{{display:none}}
 </style>
 <script>
-function runProcess(path) {{
-    fetch('/process/run', {{method: 'POST', body: new URLSearchParams({{'path': path}})}}
+function checkOff(job) {{
+    fetch('/job/checkoff', {{method: 'POST', body: new URLSearchParams({{'job': job}})}}
     ).then(() => location.reload());
 }}
-function restartProcess(path) {{
-    fetch('/process/restart', {{method: 'POST', body: new URLSearchParams({{'path': path}})}}
-    ).then(() => location.reload());
-}}
-function toggleCore() {{
-    const core = document.getElementById('core-section');
-    const toggle = document.getElementById('core-toggle');
-    if (core.classList.contains('hidden')) {{
-        core.classList.remove('hidden');
-        toggle.textContent = '▼ Core Processes (hide)';
-    }} else {{
-        core.classList.add('hidden');
-        toggle.textContent = '▶ Core Processes (show)';
+function edit(job) {{
+    const newJob = prompt('Edit job:', job);
+    if (newJob) {{
+        fetch('/job/edit', {{method: 'POST', body: new URLSearchParams({{'old': job, 'new': newJob}})}}
+        ).then(() => location.reload());
     }}
+}}
+function redo(job) {{
+    fetch('/job/redo', {{method: 'POST', body: new URLSearchParams({{'job': job}})}}
+    ).then(() => location.reload());
+}}
+function editSchedule(type, time, desc) {{
+    alert('Edit schedule: ' + type + ' at ' + time + ' - ' + desc);
 }}
 </script>
 </head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Processes</h1>
+<h1>Jobs</h1>
 
 <div class="section">
-<h2>SCHEDULED</h2>
-{scheduled_html if scheduled_html else '<div style="color:#888;padding:10px">No scheduled processes</div>'}
+<h2>DONE</h2>
+{done_html if done_html else '<div style="color:#888;padding:10px">No completed jobs</div>'}
 </div>
 
 <div class="section">
 <h2>ONGOING</h2>
-{ongoing_html if ongoing_html else '<div style="color:#888;padding:10px">No ongoing processes</div>'}
+{ongoing_html if ongoing_html else '<div style="color:#888;padding:10px">No ongoing jobs</div>'}
 </div>
 
 <div class="section">
-<div id="core-toggle" class="toggle-section" onclick="toggleCore()">▶ Core Processes (show)</div>
-<div id="core-section" class="hidden">
-<h2>CORE</h2>
-{core_html}
-</div>
+<h2>SCHEDULED</h2>
+{scheduled_html if scheduled_html else '<div style="color:#888;padding:10px">No scheduled jobs</div>'}
 </div>
 
 </body></html>"""
             self.wfile.write(html.encode())
         elif path == '/schedule':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
+            self.send_response(303)
+            self.send_header('Location', '/jobs')
             self.end_headers()
-            schedule = aios_db.read("schedule") or {}
-            settings = aios_db.read("settings") or {}
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-            html = f"""<html>
-<head><title>Schedule</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.schedule-item{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
-</style></head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Schedule</h1>
-<h2>Daily Tasks</h2>
-<div>{"".join(f'<div class="schedule-item">{t}: {c}</div>' for t,c in sorted(schedule.get("daily",{}).items()))}</div>
-<h2>Hourly Tasks</h2>
-<div>{"".join(f'<div class="schedule-item">:{int(m):02d}: {c}</div>' for m,c in sorted(schedule.get("hourly",{}).items(), key=lambda x: int(x[0])))}</div>
-</body></html>"""
-            self.wfile.write(html.encode())
         elif path == '/feed':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
@@ -427,18 +402,27 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
             self.send_response(303)
             self.send_header('Location', '/')
             self.end_headers()
-        elif path == '/process/run':
-            process_path = data.get('path', [''])[0]
-            subprocess.Popen(['python3', process_path])
+        elif path == '/job/checkoff':
+            job = data.get('job', [''])[0]
+            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
+            aios_db.write("jobs", {**jobs_data, "done": [j for j in jobs_data.get("done", []) if j != job]})
             self.send_response(303)
-            self.send_header('Location', '/processes')
+            self.send_header('Location', '/jobs')
             self.end_headers()
-        elif path == '/process/restart':
-            process_path = data.get('path', [''])[0]
-            subprocess.run(['pkill', '-f', process_path])
-            subprocess.Popen(['python3', process_path])
+        elif path == '/job/edit':
+            old_job = data.get('old', [''])[0]
+            new_job = data.get('new', [''])[0]
+            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
+            aios_db.write("jobs", {**jobs_data, "done": [new_job if j == old_job else j for j in jobs_data.get("done", [])]})
             self.send_response(303)
-            self.send_header('Location', '/processes')
+            self.send_header('Location', '/jobs')
+            self.end_headers()
+        elif path == '/job/redo':
+            job = data.get('job', [''])[0]
+            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
+            aios_db.write("jobs", {**jobs_data, "done": [j for j in jobs_data.get("done", []) if j != job], "ongoing": jobs_data.get("ongoing", []) + [job]})
+            self.send_response(303)
+            self.send_header('Location', '/jobs')
             self.end_headers()
 
 def find_free_port(start=8080):
