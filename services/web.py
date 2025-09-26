@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
-import sys
-sys.path.append('/home/seanpatten/projects/AIOS')
-sys.path.append('/home/seanpatten/projects/AIOS/core')
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import json, aios_db, subprocess, os, socket
-from urllib.parse import parse_qs, urlparse
-from datetime import datetime
-
-aios_db.execute("jobs", "CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY, name TEXT, status TEXT, output TEXT, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-aios_db.execute("feed", "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT, source TEXT, priority INTEGER DEFAULT 0)")
 
 HTML_TEMPLATES = {
     '/': '''<!DOCTYPE html>
 <html>
 <head>
 <title>AIOS Control Center</title>
+<meta http-equiv="refresh" content="5"><!-- Refresh every 5 seconds to show updates -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -75,6 +66,7 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;
 <html>
 <head>
 <title>Jobs</title>
+<meta http-equiv="refresh" content="2"><!-- Refresh every 2 seconds for job updates -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
 h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
@@ -86,51 +78,28 @@ h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
 .action-btn{{background:{fg};color:{bg};border:none;padding:8px 16px;cursor:pointer;border-radius:3px;font-size:12px;margin:0 5px}}
 .action-btn:hover{{opacity:0.8}}
 .new-job-btn{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;border-radius:5px;font-size:14px;margin:10px 0}}
-.dropdown{{display:none;position:absolute;background:{bg2};border:1px solid {fg};border-radius:5px;padding:10px;margin-top:5px}}
 </style>
-<script>
-function toggleMenu() {{
-    const menu = document.getElementById('job-menu');
-    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-}}
-function updateJobs() {{
-    fetch('/api/jobs').then(r => r.json()).then(jobs => {{
-        ['running', 'review', 'done'].forEach(status => {{
-            const items = jobs.filter(j => j.status === status).slice(0, status === 'done' ? 50 : 10);
-            document.getElementById(status).innerHTML = items.length ? items.map(j =>
-                `<div class="job-item">${{j.name}} ${{status === 'running' ? '<span class="status running">Running...</span>' :
-                status === 'review' ? `<span class="output">${{(j.output||'').slice(0,50)}}...</span><button class="action-btn" onclick="fetch('/api/job/accept',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:${{j.id}}}})}}),setTimeout(updateJobs,500)">Accept</button><button class="action-btn" onclick="fetch('/api/job/redo',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:${{j.id}}}})}}),setTimeout(updateJobs,500)">Redo</button>` :
-                `<span class="output">${{(j.output||'').slice(0,50)}}...</span>`}}</div>`).join('')
-            : '<div style="color:#888;padding:10px">No ' + (status === 'running' ? 'running' : status === 'review' ? 'jobs in review' : 'completed') + ' jobs</div>';
-        }});
-    }});
-}}
-updateJobs();
-setInterval(updateJobs, 2000);
-</script>
 </head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
 <h1>Jobs</h1>
-<button class="new-job-btn" onclick="toggleMenu()">Run New Job</button>
-<div id="job-menu" class="dropdown">
-  <button onclick="fetch('/api/job/run',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:'{{}}'}}),toggleMenu(),setTimeout(updateJobs,500)" style="background:transparent;border:none;color:{fg};cursor:pointer;padding:8px;width:100%;text-align:left">Wikipedia Random Article</button>
-  <div style="padding:8px;color:{fg}66;font-size:11px">More jobs coming soon...</div>
-</div>
+<form action="/job/run" method="POST" style="display:inline">
+<button type="submit" class="new-job-btn">Run Wikipedia Fetch</button>
+</form>
 
 <div class="section">
 <h2>RUNNING</h2>
-<div id="running"><div style="color:#888;padding:10px">No running jobs</div></div>
+<div id="running">{running_jobs}</div>
 </div>
 
 <div class="section">
 <h2>REVIEW</h2>
-<div id="review"><div style="color:#888;padding:10px">No jobs in review</div></div>
+<div id="review">{review_jobs}</div>
 </div>
 
 <div class="section">
 <h2>DONE</h2>
-<div id="done"><div style="color:#888;padding:10px">No completed jobs</div></div>
+<div id="done">{done_jobs}</div>
 </div>
 </body>
 </html>''',
@@ -139,6 +108,7 @@ setInterval(updateJobs, 2000);
 <html>
 <head>
 <title>Feed</title>
+<meta http-equiv="refresh" content="10"><!-- Refresh every 10 seconds for new messages -->
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .feed-box{{background:{bg2};border-radius:10px;padding:15px;height:400px;overflow-y:auto;margin:20px 0}}
@@ -183,6 +153,18 @@ button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;
 </html>'''
 }
 
+# All Python code at the end as requested
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS')
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import json, aios_db, subprocess, os, socket
+from urllib.parse import parse_qs, urlparse
+from datetime import datetime
+
+aios_db.execute("jobs", "CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY, name TEXT, status TEXT, output TEXT, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+aios_db.execute("feed", "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT, source TEXT, priority INTEGER DEFAULT 0)")
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
@@ -195,16 +177,16 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/':
             tr = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
             m = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 4")
-            j = aios_db.query("jobs", "SELECT name, status FROM jobs ORDER BY created DESC LIMIT 4")
+            j = subprocess.run("python3 programs/job_status.py summary", shell=True, capture_output=True, text=True)
 
             todo_items = tr.stdout.strip().split('\n')[:4] if tr.stdout.strip() else []
             feed_items = [f"{datetime.fromisoformat(x[1]).strftime('%I:%M %p' if s.get('time_format', '12h') == '12h' else '%H:%M')} - {x[0]}" for x in m] if m else []
-            jobs_items = [f"{x[0]} - {x[1]}" for x in j] if j else []
+            jobs_summary = j.stdout.strip().split('\n')[:4] if j.stdout.strip() else ["No jobs"]
 
             vp = "".join(f'''<div class="box" onclick="location.href='/{t.lower()}'">
 <div class="box-title">{t}</div>
 <div class="box-content">{"".join(f'<div class="box-item">{i}</div>' for i in items) if items else f'<div style="color:#888">No {t.lower()}</div>'}</div>
-</div>''' for t, items in [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_items)])
+</div>''' for t, items in [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_summary)])
 
             content = HTML_TEMPLATES['/'].format(**c, vp=vp)
             ctype = 'text/html'
@@ -235,10 +217,18 @@ class Handler(BaseHTTPRequestHandler):
             content = HTML_TEMPLATES['/settings'].format(**c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style)
             ctype = 'text/html'
         elif path == '/jobs':
-            content = HTML_TEMPLATES['/jobs'].format(**c)
+            running = subprocess.run("python3 programs/job_status.py running", shell=True, capture_output=True, text=True)
+            review = subprocess.run("python3 programs/job_status.py review", shell=True, capture_output=True, text=True)
+            done = subprocess.run("python3 programs/job_status.py done", shell=True, capture_output=True, text=True)
+
+            running_html = running.stdout if running.stdout.strip() else '<div style="color:#888;padding:10px">No running jobs</div>'
+            review_html = review.stdout if review.stdout.strip() else '<div style="color:#888;padding:10px">No jobs in review</div>'
+            done_html = done.stdout if done.stdout.strip() else '<div style="color:#888;padding:10px">No completed jobs</div>'
+
+            content = HTML_TEMPLATES['/jobs'].format(**c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html)
             ctype = 'text/html'
         else:
-            content = HTML_TEMPLATES.get(path, HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="")
+            content = HTML_TEMPLATES.get(path, HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs="")
             ctype = 'text/html'
 
         self.send_response(200)
@@ -250,17 +240,14 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(length) if length > 0 else b''
-        data = json.loads(body) if path.startswith('/api/') and body else parse_qs(body.decode()) if body else {}
+        data = parse_qs(body.decode()) if body else {}
 
-        if path == '/api/job/run':
-            aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')")
-            job_id = aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0]
-            subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(job_id)])
-        elif path == '/api/job/accept':
-            aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (data.get('id', 0),))
-        elif path == '/api/job/redo':
-            aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (data.get('id', 0),))
-            subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(data.get('id', 0))])
+        if path == '/job/run':
+            subprocess.run("python3 programs/job_status.py run_wiki", shell=True)
+        elif path == '/job/accept':
+            subprocess.run(f"python3 programs/job_status.py accept {data.get('id', [''])[0]}", shell=True)
+        elif path == '/job/redo':
+            subprocess.run(f"python3 programs/job_status.py redo {data.get('id', [''])[0]}", shell=True)
         elif path == '/run':
             subprocess.run(data.get('cmd', [''])[0], shell=True, capture_output=True, text=True, timeout=5)
         elif path == '/todo/add':
@@ -278,8 +265,8 @@ class Handler(BaseHTTPRequestHandler):
             s['time_format'] = data.get('format', ['12h'])[0]
             aios_db.write('settings', s)
 
-        self.send_response(303 if path not in ['/api/job/run', '/api/job/accept', '/api/job/redo'] else 200)
-        self.send_header('Location', '/' if 'settings' in path else path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/api/', '/'))
+        self.send_response(303)
+        self.send_header('Location', '/' if 'settings' in path else path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/run', '').replace('/accept', '').replace('/redo', ''))
         self.end_headers()
 
 command = sys.argv[1] if len(sys.argv) > 1 else "start"
