@@ -3,74 +3,18 @@ import sys
 sys.path.append('/home/seanpatten/projects/AIOS')
 sys.path.append('/home/seanpatten/projects/AIOS/core')
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import json
-import aios_db
-import socket
-import os
-import signal
-import subprocess
+import json, aios_db, subprocess, os, socket
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        path = urlparse(self.path).path
-        if path == '/api/jobs':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            jobs = aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")
-            result = [{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in jobs]
-            self.wfile.write(json.dumps(result).encode())
-        elif path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            settings = aios_db.read("settings") or {}
-            viewports = settings.get('viewports', ['feed', 'processes', 'schedule', 'todo'])
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-            time_format = settings.get("time_format", "12h")
+aios_db.execute("jobs", "CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY, name TEXT, status TEXT, output TEXT, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+aios_db.execute("feed", "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, content TEXT, timestamp TEXT, source TEXT, priority INTEGER DEFAULT 0)")
 
-            viewport_data = {}
-
-            if 'todo' in viewports:
-                todo_result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
-                viewport_data['todo'] = {'title': 'Todo', 'items': todo_result.stdout.strip().split('\n')[:4] if todo_result.stdout else []}
-
-            if 'feed' in viewports:
-                messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp ASC LIMIT 4")
-                viewport_data['feed'] = {'title': 'Feed', 'items': messages}
-
-            if 'jobs' in viewports:
-                jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
-                jobs_items = []
-                [[jobs_items.append(f"[x] {j[:30]}...")] for j in jobs_data.get("done", [])[:2]]
-                [[jobs_items.append(f">>> {j[:30]}...")] for j in jobs_data.get("ongoing", [])[:1]]
-                schedule = aios_db.read("schedule") or {}
-                [[jobs_items.append(f"@ Daily {t}")] for t,c in sorted(schedule.get("daily",{}).items())[:1]]
-                viewport_data['jobs'] = {'title': 'Jobs', 'items': jobs_items[:4]}
-
-            viewport_html = []
-            for vp_name in viewports[:4]:
-                if vp_name not in viewport_data:
-                    continue
-                data = viewport_data[vp_name]
-                if vp_name == 'feed':
-                    items_html = "".join(f'<div class="box-item">{datetime.fromisoformat(m[1]).strftime("%I:%M %p" if time_format == "12h" else "%H:%M")} - {m[0]}</div>' for m in data["items"]) if data["items"] else '<div style="color:#888">No messages</div>'
-                else:
-                    items_html = "".join(f'<div class="box-item">{item}</div>' for item in data["items"]) if data["items"] else f'<div style="color:#888">No {data["title"].lower()}</div>'
-
-                viewport_html.append(f'''<div class="box" onclick="location.href='/{vp_name}'">
-<div class="box-title">{data["title"]}</div>
-<div class="box-content">{items_html}</div>
-</div>''')
-
-            html = f"""<html>
-<head><title>AIOS Control Center</title>
+HTML_TEMPLATES = {
+    '/': '''<!DOCTYPE html>
+<html>
+<head>
+<title>AIOS Control Center</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -84,51 +28,14 @@ button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;m
 input{{background:{bg2};color:{fg};border:1px solid {fg};padding:12px;width:70%;margin:10px 0;border-radius:5px}}
 .run-box{{background:{bg2};border-radius:10px;padding:20px;margin:20px 0}}
 .run-button{{padding:12px 30px;font-size:16px}}
-.running{{color:#0a0}} .stopped{{color:#a00}}
-a{{color:{fg};text-decoration:underline}}
-.menu-btn{{position:fixed;top:20px;cursor:pointer;padding:10px;background:{fg};color:{bg};border-radius:5px}}
-.settings-btn{{right:20px}}
-.views-btn{{right:120px}}
-.dropdown{{display:none;position:fixed;top:60px;background:{bg2};border:1px solid {fg};border-radius:10px;padding:10px;min-width:150px;z-index:1000}}
-.dropdown.views{{right:120px}}
-.dropdown.settings{{right:20px}}
-.dropdown-item{{padding:8px 12px;cursor:pointer;border-radius:5px}}
-.dropdown-item:hover{{background:{bg}}}
-.dropdown.show{{display:block}}
+.settings-btn{{position:fixed;top:20px;right:20px;padding:10px;background:{fg};color:{bg};border-radius:5px;cursor:pointer}}
 </style>
-<script>
-function toggleDropdown(type) {{
-  const dropdown = document.getElementById(type + '-dropdown');
-  const other = type === 'views' ? 'settings' : 'views';
-  document.getElementById(other + '-dropdown').classList.remove('show');
-  dropdown.classList.toggle('show');
-}}
-window.onclick = function(e) {{
-  if (!e.target.matches('.menu-btn') && !e.target.closest('.dropdown')) {{
-    document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('show'));
-  }}
-}}
-</script>
 </head>
 <body>
-<div class="menu-btn views-btn" onclick="toggleDropdown('views')">Views</div>
-<div class="dropdown views" id="views-dropdown">
-<form action="/views/update" method="POST" id="viewsForm" style="margin:0">
-{''.join(f'<label class="dropdown-item" style="display:block;padding:8px 12px;margin:0;cursor:pointer"><input type="checkbox" name="viewport" value="{vp}" {"checked" if vp in viewports else ""} onchange="document.getElementById(\'viewsForm\').submit()" style="margin:0 5px 0 0;accent-color:{fg};vertical-align:middle;width:14px;height:14px">{i+1}. {vp.title()}</label>' for i, vp in enumerate(['feed', 'jobs', 'todo']))}
-</form>
-<div class="dropdown-item" onclick="location.href='/views'" style="font-size:12px;color:{fg}88;border-top:1px solid {fg}33;margin-top:5px;padding-top:10px">Advanced...</div>
-</div>
-<div class="menu-btn settings-btn" onclick="toggleDropdown('settings')">Settings</div>
-<div class="dropdown settings" id="settings-dropdown">
-<form action="/settings/theme" method="POST" style="margin:0"><button type="submit" name="theme" value="{'dark' if is_light else 'light'}" class="dropdown-item" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:transparent;color:{fg};padding:8px 12px">Theme <span>{theme.title()}</span></button></form>
-<form action="/settings/time" method="POST" style="margin:0"><button type="submit" name="format" value="{'24h' if time_format == '12h' else '12h'}" class="dropdown-item" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:transparent;color:{fg};padding:8px 12px">Time <span>{time_format.upper()}</span></button></form>
-<div class="dropdown-item" onclick="location.href='/settings'" style="font-size:12px;color:{fg}88">More...</div>
-</div>
+<div class="settings-btn" onclick="location.href='/settings'">Settings</div>
 <div class="container">
 <h1>AIOS Control Center</h1>
-<div class="viewport">
-{"".join(viewport_html)}
-</div>
+<div class="viewport">{vp}</div>
 <div class="run-box">
 <h2 style="margin-top:0">Run Command</h2>
 <form action="/run" method="POST">
@@ -136,63 +43,38 @@ window.onclick = function(e) {{
 <button type="submit" class="run-button">Run</button>
 </form>
 </div>
-</div></body></html>"""
-            self.wfile.write(html.encode())
-        elif path == '/views':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            settings = aios_db.read("settings") or {}
-            current_viewports = settings.get('viewports', ['feed', 'processes', 'schedule', 'todo'])
-            all_viewports = ['feed', 'processes', 'schedule', 'todo']
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-            html = f"""<html>
-<head><title>View Configuration</title>
+</div>
+</body>
+</html>''',
+
+    '/todo': '''<!DOCTYPE html>
+<html>
+<head>
+<title>Todo</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.viewport-item{{background:{bg2};padding:15px;margin:10px 0;border-radius:5px}}
-button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px}}
-input[type="checkbox"]{{margin-right:10px;accent-color:{fg}}}
-</style></head>
+.task{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
+.done{{text-decoration:line-through;color:#666}}
+button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
+input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;margin:10px 0}}
+</style>
+</head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Configure Views</h1>
-<form action="/views/update" method="POST">
-<div class="viewport-item">
-<h3>Select Viewports (max 4, order matters)</h3>
-{"".join(f'<div><input type="checkbox" name="viewport" value="{vp}" {"checked" if vp in current_viewports else ""}>{i+1}. {vp.title()}</div>' for i, vp in enumerate(all_viewports))}
-</div>
-<button type="submit">Save</button>
+<h1>Todo Manager</h1>
+<form action="/todo/add" method="POST">
+<input name="task" placeholder="New task... (use @ for deadline, e.g., Buy milk @ 14:30)">
+<button type="submit">Add</button>
 </form>
-</body></html>"""
-            self.wfile.write(html.encode())
-        elif path == '/jobs':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            jobs = aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY id DESC LIMIT 100")
-            settings = aios_db.read("settings") or {}
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
+<div>{tasks}</div>
+<form action="/todo/clear" method="POST"><button>Clear Completed</button></form>
+</body>
+</html>''',
 
-            done_html = "".join(f'<div class="job-item" data-id="{j[0]}"><span>{j[1]}</span><div><span class="output">{(j[3] or "")[:50]}...</span></div></div>'
-                                for j in jobs if j[2] == "done")
-
-            review_html = "".join(f'<div class="job-item"><span>{j[1]}</span><div><span class="output">{(j[3] or "")[:50]}...</span><form method="POST" action="/job/action" style="display:inline"><input type="hidden" name="id" value="{j[0]}"><input type="hidden" name="cmd" value="accept"><input type="submit" class="action-btn" value="Accept"></form><form method="POST" action="/job/action" style="display:inline"><input type="hidden" name="id" value="{j[0]}"><input type="hidden" name="cmd" value="redo"><input type="submit" class="action-btn" value="Redo"></form></div></div>'
-                                 for j in jobs if j[2] == "review")
-
-            running_html = "".join(f'<div class="job-item" data-id="{j[0]}"><span>{j[1]}</span><span class="status running">Running...</span></div>'
-                                  for j in jobs if j[2] == "running")
-
-            html = f"""<html>
-<head><title>Jobs</title>
+    '/jobs': '''<!DOCTYPE html>
+<html>
+<head>
+<title>Jobs</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
 h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
@@ -217,14 +99,14 @@ function updateJobs() {{
             const items = jobs.filter(j => j.status === status).slice(0, status === 'done' ? 50 : 10);
             document.getElementById(status).innerHTML = items.length ? items.map(j =>
                 `<div class="job-item">${{j.name}} ${{status === 'running' ? '<span class="status running">Running...</span>' :
-                status === 'review' ? `<span class="output">${{(j.output||'').slice(0,50)}}...</span><button class="action-btn" onclick="fetch('/api/job/accept',{{method:'POST',body:JSON.stringify({{id:${{j.id}}}})}}),updateJobs()">Accept</button><button class="action-btn" onclick="fetch('/api/job/redo',{{method:'POST',body:JSON.stringify({{id:${{j.id}}}})}}),updateJobs()">Redo</button>` :
+                status === 'review' ? `<span class="output">${{(j.output||'').slice(0,50)}}...</span><button class="action-btn" onclick="fetch('/api/job/accept',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:${{j.id}}}})}}),setTimeout(updateJobs,500)">Accept</button><button class="action-btn" onclick="fetch('/api/job/redo',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:${{j.id}}}})}}),setTimeout(updateJobs,500)">Redo</button>` :
                 `<span class="output">${{(j.output||'').slice(0,50)}}...</span>`}}</div>`).join('')
             : '<div style="color:#888;padding:10px">No ' + (status === 'running' ? 'running' : status === 'review' ? 'jobs in review' : 'completed') + ' jobs</div>';
         }});
     }});
 }}
 updateJobs();
-setInterval(updateJobs, document.hidden ? 5000 : 2000);
+setInterval(updateJobs, 2000);
 </script>
 </head>
 <body>
@@ -232,282 +114,184 @@ setInterval(updateJobs, document.hidden ? 5000 : 2000);
 <h1>Jobs</h1>
 <button class="new-job-btn" onclick="toggleMenu()">Run New Job</button>
 <div id="job-menu" class="dropdown">
-  <button onclick="fetch('/api/job/run',{{method:'POST'}}),toggleMenu(),updateJobs()" style="background:transparent;border:none;color:{fg};cursor:pointer;padding:8px;width:100%;text-align:left">Wikipedia Random Article</button>
+  <button onclick="fetch('/api/job/run',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:'{{}}'}}),toggleMenu(),setTimeout(updateJobs,500)" style="background:transparent;border:none;color:{fg};cursor:pointer;padding:8px;width:100%;text-align:left">Wikipedia Random Article</button>
   <div style="padding:8px;color:{fg}66;font-size:11px">More jobs coming soon...</div>
 </div>
 
 <div class="section">
 <h2>RUNNING</h2>
-<div id="running">{running_html if running_html else '<div style="color:#888;padding:10px">No running jobs</div>'}</div>
+<div id="running"><div style="color:#888;padding:10px">No running jobs</div></div>
 </div>
 
 <div class="section">
 <h2>REVIEW</h2>
-<div id="review">{review_html if review_html else '<div style="color:#888;padding:10px">No jobs in review</div>'}</div>
+<div id="review"><div style="color:#888;padding:10px">No jobs in review</div></div>
 </div>
 
 <div class="section">
 <h2>DONE</h2>
-<div id="done">{done_html if done_html else '<div style="color:#888;padding:10px">No completed jobs</div>'}</div>
+<div id="done"><div style="color:#888;padding:10px">No completed jobs</div></div>
 </div>
+</body>
+</html>''',
 
-</body></html>"""
-            self.wfile.write(html.encode())
-        elif path == '/schedule':
-            self.send_response(303)
-            self.send_header('Location', '/jobs')
-            self.end_headers()
-        elif path == '/feed':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            messages = aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp ASC LIMIT 100")
-            settings = aios_db.read("settings") or {}
-            time_format = settings.get("time_format", "12h")
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-            current_date = None
-            feed_html = []
-            [[feed_html.append(f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(m[2]).date()}</div>') if (current_date := datetime.fromisoformat(m[2]).date()) != current_date else None,
-              feed_html.append(f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[2]).strftime("%I:%M %p" if time_format == "12h" else "%H:%M")} - {m[1]}</div>')]
-             for m in messages]
-            html = f"""<html>
-<head><title>Feed</title>
+    '/feed': '''<!DOCTYPE html>
+<html>
+<head>
+<title>Feed</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .feed-box{{background:{bg2};border-radius:10px;padding:15px;height:400px;overflow-y:auto;margin:20px 0}}
 button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;margin:5px}}
-</style></head>
+</style>
+</head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
 <h1>Feed</h1>
-<div class="feed-box">{"".join(feed_html) if feed_html else "<div style='color:#888'>No messages yet</div>"}</div>
-</body></html>"""
-            self.wfile.write(html.encode())
-        elif path == '/settings':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            settings = aios_db.read("settings") or {}
-            time_format = settings.get("time_format", "12h")
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-            html = f"""<html>
-<head><title>Settings</title>
+<div class="feed-box">{feed_content}</div>
+</body>
+</html>''',
+
+    '/settings': '''<!DOCTYPE html>
+<html>
+<head>
+<title>Settings</title>
 <style>
 body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 .setting{{background:{bg2};padding:15px;margin:10px 0;border-radius:10px}}
 button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px;border-radius:5px}}
-</style></head>
+</style>
+</head>
 <body>
 <div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
 <h1>Settings</h1>
 <div class="setting">
 <h3>Theme</h3>
 <form action="/settings/theme" method="POST">
-<button type="submit" name="theme" value="dark" {'style="font-weight:bold"' if theme == "dark" else ""}>Dark Mode</button>
-<button type="submit" name="theme" value="light" {'style="font-weight:bold"' if theme == "light" else ""}>Light Mode</button>
+<button type="submit" name="theme" value="dark" {theme_dark_style}>Dark Mode</button>
+<button type="submit" name="theme" value="light" {theme_light_style}>Light Mode</button>
 </form>
 </div>
 <div class="setting">
 <h3>Time Format</h3>
 <form action="/settings/time" method="POST">
-<button type="submit" name="format" value="12h" {'style="font-weight:bold"' if time_format == "12h" else ""}>12-hour (AM/PM)</button>
-<button type="submit" name="format" value="24h" {'style="font-weight:bold"' if time_format == "24h" else ""}>24-hour</button>
+<button type="submit" name="format" value="12h" {time_12h_style}>12-hour (AM/PM)</button>
+<button type="submit" name="format" value="24h" {time_24h_style}>24-hour</button>
 </form>
 </div>
-</body></html>"""
-            self.wfile.write(html.encode())
+</body>
+</html>'''
+}
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        path = urlparse(self.path).path
+        s = aios_db.read("settings") or {}
+        c = {'bg': '#fff' if s.get('theme') == 'light' else '#000', 'fg': '#000' if s.get('theme') == 'light' else '#fff', 'bg2': '#f0f0f0' if s.get('theme') == 'light' else '#1a1a1a'}
+
+        if path == '/api/jobs':
+            content = json.dumps([{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")])
+            ctype = 'application/json'
+        elif path == '/':
+            tr = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
+            m = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 4")
+            j = aios_db.query("jobs", "SELECT name, status FROM jobs ORDER BY created DESC LIMIT 4")
+
+            todo_items = tr.stdout.strip().split('\n')[:4] if tr.stdout.strip() else []
+            feed_items = [f"{datetime.fromisoformat(x[1]).strftime('%I:%M %p' if s.get('time_format', '12h') == '12h' else '%H:%M')} - {x[0]}" for x in m] if m else []
+            jobs_items = [f"{x[0]} - {x[1]}" for x in j] if j else []
+
+            vp = "".join(f'''<div class="box" onclick="location.href='/{t.lower()}'">
+<div class="box-title">{t}</div>
+<div class="box-content">{"".join(f'<div class="box-item">{i}</div>' for i in items) if items else f'<div style="color:#888">No {t.lower()}</div>'}</div>
+</div>''' for t, items in [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_items)])
+
+            content = HTML_TEMPLATES['/'].format(**c, vp=vp)
+            ctype = 'text/html'
         elif path == '/todo':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
             result = subprocess.run("python3 programs/todo/todo.py list", shell=True, capture_output=True, text=True)
-            tasks = result.stdout.strip().split('\n') if result.stdout else []
-            settings = aios_db.read("settings") or {}
-            theme = settings.get('theme', 'dark')
-            is_light = theme == 'light'
-            bg = '#fff' if is_light else '#000'
-            fg = '#000' if is_light else '#fff'
-            bg2 = '#f0f0f0' if is_light else '#1a1a1a'
-            html = f"""<html>
-<head><title>Todo</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.task{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
-.done{{text-decoration:line-through;color:#666}}
-button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
-input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;margin:10px 0}}
-</style></head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Todo Manager</h1>
-<form action="/todo/add" method="POST">
-<input name="task" placeholder="New task... (use @ for deadline, e.g., Buy milk @ 14:30)">
-<button type="submit">Add</button>
-</form>
-<div>{"".join(f'<div class="task {"done" if "[x]" in t else ""}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] if "." in t else i+1}"><button>Done</button></form></div>' for i,t in enumerate(tasks))}</div>
-<form action="/todo/clear" method="POST"><button>Clear Completed</button></form>
-</body></html>"""
-            self.wfile.write(html.encode())
+            tasks = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            tasks_html = "".join(f'<div class="task {"done" if "[x]" in t else ""}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] if "." in t else i+1}"><button>Done</button></form></div>' for i,t in enumerate(tasks))
+            content = HTML_TEMPLATES['/todo'].format(**c, tasks=tasks_html if tasks else '<div style="color:#888">No tasks yet</div>')
+            ctype = 'text/html'
+        elif path == '/feed':
+            messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100")
+            time_format = s.get("time_format", "12h")
+            feed_html = []
+            current_date = None
+            for m in messages:
+                msg_date = datetime.fromisoformat(m[1]).date()
+                if msg_date != current_date:
+                    current_date = msg_date
+                    feed_html.append(f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{current_date}</div>')
+                feed_html.append(f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime("%I:%M %p" if time_format == "12h" else "%H:%M")} - {m[0]}</div>')
+            content = HTML_TEMPLATES['/feed'].format(**c, feed_content="".join(feed_html) if feed_html else "<div style='color:#888'>No messages yet</div>")
+            ctype = 'text/html'
+        elif path == '/settings':
+            theme_dark_style = 'style="font-weight:bold"' if s.get('theme', 'dark') == 'dark' else ''
+            theme_light_style = 'style="font-weight:bold"' if s.get('theme') == 'light' else ''
+            time_12h_style = 'style="font-weight:bold"' if s.get('time_format', '12h') == '12h' else ''
+            time_24h_style = 'style="font-weight:bold"' if s.get('time_format') == '24h' else ''
+            content = HTML_TEMPLATES['/settings'].format(**c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style)
+            ctype = 'text/html'
+        elif path == '/jobs':
+            content = HTML_TEMPLATES['/jobs'].format(**c)
+            ctype = 'text/html'
+        else:
+            content = HTML_TEMPLATES.get(path, HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="")
+            ctype = 'text/html'
+
+        self.send_response(200)
+        self.send_header('Content-type', ctype)
+        self.end_headers()
+        self.wfile.write(content.encode())
 
     def do_POST(self):
         path = urlparse(self.path).path
-        length = int(self.headers['Content-Length'])
+        length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(length) if length > 0 else b''
+        data = json.loads(body) if path.startswith('/api/') and body else parse_qs(body.decode()) if body else {}
 
-        if path.startswith('/api/'):
-            if path == '/api/job/run':
-                aios_db.execute("jobs", "INSERT INTO jobs(name, status, output) VALUES ('wiki', 'running', NULL)")
-                subprocess.Popen(["python3", "-c", "import time; time.sleep(2); import urllib.request, json, sys; sys.path.append('/home/seanpatten/projects/AIOS/core'); import aios_db; req=urllib.request.Request('https://en.wikipedia.org/api/rest_v1/page/random/summary', headers={'User-Agent': 'Mozilla/5.0'}); data=json.loads(urllib.request.urlopen(req).read().decode()); output=data.get('title', 'Unknown') + ': ' + data.get('extract', 'No extract available')[:200] + '...'; aios_db.execute('jobs', 'UPDATE jobs SET status=?, output=? WHERE id=(SELECT MAX(id) FROM jobs)', ('review', output))"])
-                self.send_response(200)
-                self.end_headers()
-            else:
-                body = self.rfile.read(length).decode()
-                data = json.loads(body) if body else {}
-                job_id = int(data.get('id', 0))
-                if path == '/api/job/accept':
-                    aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (job_id,))
-                    self.send_response(200)
-                    self.end_headers()
-                elif path == '/api/job/edit':
-                    aios_db.execute("jobs", "UPDATE jobs SET output=? WHERE id=?", (data.get('output', ''), job_id))
-                    self.send_response(200)
-                    self.end_headers()
-                elif path == '/api/job/redo':
-                    aios_db.execute("jobs", "UPDATE jobs SET status='running', output=NULL WHERE id=?", (job_id,))
-                    subprocess.Popen(["python3", "-c", f"import time; time.sleep(2); import urllib.request, json, sys; sys.path.append('/home/seanpatten/projects/AIOS/core'); import aios_db; req=urllib.request.Request('https://en.wikipedia.org/api/rest_v1/page/random/summary', headers={{'User-Agent': 'Mozilla/5.0'}}); data=json.loads(urllib.request.urlopen(req).read().decode()); output=data.get('title', 'Unknown') + ': ' + data.get('extract', 'No extract available')[:200] + '...'; aios_db.execute('jobs', 'UPDATE jobs SET status=?, output=? WHERE id=?', ('review', output, {job_id}))"])
-                    self.send_response(200)
-                    self.end_headers()
-            return
-
-        data = parse_qs(self.rfile.read(length).decode())
-
-        if path == '/job/action':
-            cmd = data.get('cmd', [''])[0]
-            job_id = data.get('id', [''])[0]
-            subprocess.run(["python3", "/home/seanpatten/projects/AIOS/services/jobs.py", cmd, job_id])
-            self.send_response(303)
-            self.send_header('Location', '/jobs')
-            self.end_headers()
-        elif path == '/job/run/wikipedia':
-            subprocess.run(["python3", "/home/seanpatten/projects/AIOS/services/jobs.py", "run"])
-            self.send_response(303)
-            self.send_header('Location', '/jobs')
-            self.end_headers()
+        if path == '/api/job/run':
+            aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')")
+            job_id = aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0]
+            subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(job_id)])
+        elif path == '/api/job/accept':
+            aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (data.get('id', 0),))
+        elif path == '/api/job/redo':
+            aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (data.get('id', 0),))
+            subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(data.get('id', 0))])
         elif path == '/run':
-            cmd = data.get('cmd', [''])[0]
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            output = f"<pre>{result.stdout}\n{result.stderr}</pre>"
-            self.wfile.write(f'<html><body><a href="/">Back</a><h2>Output:</h2>{output}</body></html>'.encode())
+            subprocess.run(data.get('cmd', [''])[0], shell=True, capture_output=True, text=True, timeout=5)
         elif path == '/todo/add':
-            task = data.get('task', [''])[0]
-            subprocess.run(f"python3 programs/todo/todo.py add {task}", shell=True)
-            self.send_response(303)
-            self.send_header('Location', '/todo')
-            self.end_headers()
+            subprocess.run(f"python3 programs/todo/todo.py add {data.get('task', [''])[0]}", shell=True)
         elif path == '/todo/done':
-            task_id = data.get('id', [''])[0]
-            subprocess.run(f"python3 programs/todo/todo.py done {task_id}", shell=True)
-            self.send_response(303)
-            self.send_header('Location', '/todo')
-            self.end_headers()
+            subprocess.run(f"python3 programs/todo/todo.py done {data.get('id', [''])[0]}", shell=True)
         elif path == '/todo/clear':
             subprocess.run("python3 programs/todo/todo.py clear", shell=True)
-            self.send_response(303)
-            self.send_header('Location', '/todo')
-            self.end_headers()
-        elif path == '/settings/time':
-            format_val = data.get('format', ['12h'])[0]
-            settings = aios_db.read('settings') or {}
-            aios_db.write('settings', {**settings, 'time_format': format_val})
-            self.send_response(303)
-            self.send_header('Location', '/')
-            self.end_headers()
         elif path == '/settings/theme':
-            theme_val = data.get('theme', ['dark'])[0]
-            settings = aios_db.read('settings') or {}
-            aios_db.write('settings', {**settings, 'theme': theme_val})
-            self.send_response(303)
-            self.send_header('Location', '/')
-            self.end_headers()
-        elif path == '/views/update':
-            selected = data.get('viewport', [])
-            if not isinstance(selected, list):
-                selected = [selected]
-            settings = aios_db.read('settings') or {}
-            aios_db.write('settings', {**settings, 'viewports': selected[:4]})
-            self.send_response(303)
-            self.send_header('Location', '/')
-            self.end_headers()
-        elif path == '/job/checkoff':
-            job = data.get('job', [''])[0]
-            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
-            aios_db.write("jobs", {**jobs_data, "done": [j for j in jobs_data.get("done", []) if j != job]})
-            self.send_response(303)
-            self.send_header('Location', '/jobs')
-            self.end_headers()
-        elif path == '/job/edit':
-            old_job = data.get('old', [''])[0]
-            new_job = data.get('new', [''])[0]
-            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
-            aios_db.write("jobs", {**jobs_data, "done": [new_job if j == old_job else j for j in jobs_data.get("done", [])]})
-            self.send_response(303)
-            self.send_header('Location', '/jobs')
-            self.end_headers()
-        elif path == '/job/redo':
-            job = data.get('job', [''])[0]
-            jobs_data = aios_db.read("jobs") or {"done": [], "ongoing": [], "scheduled": []}
-            aios_db.write("jobs", {**jobs_data, "done": [j for j in jobs_data.get("done", []) if j != job], "ongoing": jobs_data.get("ongoing", []) + [job]})
-            self.send_response(303)
-            self.send_header('Location', '/jobs')
-            self.end_headers()
+            s = aios_db.read('settings') or {}
+            s['theme'] = data.get('theme', ['dark'])[0]
+            aios_db.write('settings', s)
+        elif path == '/settings/time':
+            s = aios_db.read('settings') or {}
+            s['time_format'] = data.get('format', ['12h'])[0]
+            aios_db.write('settings', s)
 
-def find_free_port(start=8080):
-    for port in range(start, start + 100):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex(('127.0.0.1', port))
-        sock.close()
-        if result != 0:
-            return port
-    return start
-
-def start_server():
-    import time
-    start = float(sys.argv[2]) if len(sys.argv) > 2 else time.time()
-    port = find_free_port()
-    print(f"AIOS Control Center: http://localhost:{port}")
-    aios_db.write("web_server", {"port": port, "pid": os.getpid()})
-    print(f"Web ready: {time.time() - start:.3f}s", flush=True)
-    HTTPServer(('', port), Handler).serve_forever()
-
-def kill_server():
-    info = aios_db.read("web_server")
-    pid = info.get("pid") if info else None
-    if pid:
-        try:
-            os.kill(pid, signal.SIGTERM)
-            print(f"Killed server (PID: {pid})")
-        except ProcessLookupError:
-            print("Server not running")
-    else:
-        print("No server running")
+        self.send_response(303 if path not in ['/api/job/run', '/api/job/accept', '/api/job/redo'] else 200)
+        self.send_header('Location', '/' if 'settings' in path else path.replace('/add', '').replace('/done', '').replace('/clear', '').replace('/api/', '/'))
+        self.end_headers()
 
 command = sys.argv[1] if len(sys.argv) > 1 else "start"
 
-actions = {
-    "start": start_server,
-    "stop": kill_server,
-    "status": lambda: print(f"Server: {aios_db.read('web_server') or 'Not running'}"),
-    "kill": kill_server
-}
-
-actions.get(command, start_server)()
+if command == 'start':
+    port = 8080
+    aios_db.write("web_server", {"port": port, "pid": os.getpid()})
+    print(f"AIOS Control Center: http://localhost:{port}")
+    HTTPServer(('', port), Handler).serve_forever()
+elif command == 'stop':
+    info = aios_db.read("web_server") or {}
+    pid = info.get("pid")
+    os.kill(pid, 15) if pid else print("No server running")
+elif command == 'status':
+    print(f"Server: {aios_db.read('web_server') or 'Not running'}")
