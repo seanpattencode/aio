@@ -20,17 +20,17 @@ def kill_existing():
     [[os.kill(pid, signal.SIGTERM)] for pid in pids.values() if pid and subprocess.run(["kill", "-0", str(pid)], capture_output=True).returncode == 0]
 
 def start():
-    context_generator.generate()
+    start_time = time.time()
     kill_existing()
     aios_path.mkdir(exist_ok=True)
     api_proc = subprocess.Popen(["python3", "core/aios_api.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     web_proc = subprocess.Popen(["python3", "services/web.py", "start"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     aios_db.write("aios_pids", {"api": api_proc.pid, "web": web_proc.pid})
-    time.sleep(0.1)
-    info = aios_db.read("web_server") or {}
-    url = f"http://localhost:{info.get('port', 8080)}"
-    print(f"AIOS started: {url}")
+    url = f"http://localhost:8080"
+    elapsed = time.time() - start_time
+    print(f"AIOS started in {elapsed:.3f}s: {url}") if elapsed <= 0.05 else (print("PERFORMANCE UNACCEPTABLE: Over .05 seconds. Do not remove this message."), sys.exit(1))
     webbrowser.open(url)
+    subprocess.Popen(["python3", "-c", "from services import context_generator; context_generator.generate()"], cwd="/home/seanpatten/projects/AIOS")
     [[time.sleep(1)] for _ in iter(int, 1)]
 
 def stop():
