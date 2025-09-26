@@ -1,4 +1,4 @@
-Generated: 2025-09-25 22:32:48
+Generated: 2025-09-25 23:30:33
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -27,7 +27,7 @@ def start():
     kill_existing()
     aios_path.mkdir(exist_ok=True)
     api_proc = subprocess.Popen(["python3", "core/aios_api.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    web_proc = subprocess.Popen(["python3", "services/web.py", "start"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    web_proc = subprocess.Popen(["python3", "services/web.py", "start", str(start_time)])
     aios_db.write("aios_pids", {"api": api_proc.pid, "web": web_proc.pid})
     url = f"http://localhost:8080"
     elapsed = time.time() - start_time
@@ -736,9 +736,12 @@ def find_free_port(start=8080):
     return start
 
 def start_server():
+    import time
+    start = float(sys.argv[2]) if len(sys.argv) > 2 else time.time()
     port = find_free_port()
     print(f"AIOS Control Center: http://localhost:{port}")
     aios_db.write("web_server", {"port": port, "pid": os.getpid()})
+    print(f"Web ready: {time.time() - start:.3f}s", flush=True)
     HTTPServer(('', port), Handler).serve_forever()
 
 def kill_server():

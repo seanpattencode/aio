@@ -470,9 +470,12 @@ def find_free_port(start=8080):
     return start
 
 def start_server():
+    import time
+    start = float(sys.argv[2]) if len(sys.argv) > 2 else time.time()
     port = find_free_port()
     print(f"AIOS Control Center: http://localhost:{port}")
     aios_db.write("web_server", {"port": port, "pid": os.getpid()})
+    print(f"Web ready: {time.time() - start:.3f}s", flush=True)
     HTTPServer(('', port), Handler).serve_forever()
 
 def kill_server():
