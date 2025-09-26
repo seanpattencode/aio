@@ -38,5 +38,8 @@ def stop():
     aios_db.write("aios_pids", {})
     print("AIOS stopped")
 
-actions = {"start": start, "stop": stop, "status": lambda: print(f"PIDs: {aios_db.read('aios_pids')}")}
+def status():
+    print(f"PIDs: {aios_db.read('aios_pids')}")
+
+actions = {"start": start, "stop": stop, "status": status}
 actions.get(command, start)()
