@@ -6,22 +6,37 @@ import aios_db
 import anthropic
 from datetime import datetime
 
-cache = aios_db.read("llm_cache") or {}
-command = sys.argv[1] if len(sys.argv) > 1 else "list"
-question = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else ""
+cache = aios_db.read("llm_cache")
+command = (sys.argv + ["list"])[1]
+question = ' '.join(sys.argv[2:])
 
 client = anthropic.Anthropic(api_key=aios_db.read("api_keys").get("anthropic", ""))
 
-actions = {
-    "ask": lambda: aios_db.write("llm_cache", {**cache, question: {"response": client.messages.create(
+def ask():
+    response = client.messages.create(
         model="claude-3-haiku-20240307",
         max_tokens=500,
         messages=[{"role": "user", "content": question}]
-    ).content[0].text, "time": datetime.now().isoformat()}}),
-    "list": lambda: [print(f"Q: {q[:50]}... A: {a['response'][:50]}...") for q, a in cache.items()],
-    "clear": lambda: aios_db.write("llm_cache", {}),
-    "stats": lambda: print(f"Cached queries: {len(cache)}")
-}
+    ).content[0].text
+    cache[question] = {"response": response, "time": datetime.now().isoformat()}
+    aios_db.write("llm_cache", cache)
+    print(response)
+    return cache
 
-result = actions.get(command, actions["list"])()
-print(cache.get(question, {}).get("response", "") if command == "ask" else "")
+def print_item(item):
+    q, a = item
+    print(f"Q: {q[:50]}... A: {a['response'][:50]}...")
+
+def list_cache():
+    list(map(print_item, cache.items()))
+    return cache
+
+def clear():
+    return aios_db.write("llm_cache", {})
+
+def stats():
+    print(f"Cached queries: {len(cache)}")
+    return len(cache)
+
+actions = {"ask": ask, "list": list_cache, "clear": clear, "stats": stats}
+actions.get(command, list_cache)()
