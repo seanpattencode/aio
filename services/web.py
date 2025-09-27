@@ -395,7 +395,7 @@ class Handler(BaseHTTPRequestHandler):
         branches = self.data.get('branches', ['1'])[0]
         model = self.data.get('model', ['claude-3-5-sonnet-20241022'])[0]
         task = self.data.get('task', [''])[0]
-        return subprocess.run(f"python3 programs/autollm/autollm.py run '{repo}' '{model}' {branches} {task}", shell=True, timeout=5)
+        return subprocess.run(f"python3 programs/autollm/autollm.py run '{repo}' {branches} '{model}' '{task}'", shell=True, timeout=5)
 
     def post_autollm_accept(self):
         job_id = self.data.get('job_id', [''])[0]

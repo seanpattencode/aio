@@ -4,7 +4,7 @@ import sys
 import signal
 
 WHITELIST_5SEC = {'wiki_fetcher', 'scraper', 'gdrive', 'curl', 'wget', 'git', 'npm', 'pip'}
-WHITELIST_FOREVER = {'web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve'}
+WHITELIST_FOREVER = {'web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve', 'autollm', 'claude', 'codex'}
 
 cmd_str = ' '.join(sys.argv[1:]).lower()
 def check_forever(p): return 999999 * min(1, cmd_str.find(p) + 1)
