@@ -1,47 +1,21 @@
 #!/usr/bin/env python3
 import subprocess
 import sys
-import time
-import os
+import signal
 
-WHITELIST_5SEC = {
-    'wiki_fetcher', 'scraper', 'gdrive', 'curl', 'wget', 'git', 'npm', 'pip'
-}
+WHITELIST_5SEC = {'wiki_fetcher', 'scraper', 'gdrive', 'curl', 'wget', 'git', 'npm', 'pip'}
+WHITELIST_FOREVER = {'web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve'}
 
-WHITELIST_FOREVER = {
-    'web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve'
-}
+cmd_str = ' '.join(sys.argv[1:]).lower()
+def check_forever(p): return 999999 * min(1, cmd_str.find(p) + 1)
+def check_5sec(p): return 5.0 * min(1, cmd_str.find(p) + 1)
+timeout = max([max(list(map(check_forever, WHITELIST_FOREVER))), max(list(map(check_5sec, WHITELIST_5SEC))), 0.1])
 
-def get_timeout(cmd):
-    cmd_str = ' '.join(cmd).lower()
-
-    for pattern in WHITELIST_FOREVER:
-        if pattern in cmd_str:
-            return None
-
-    for pattern in WHITELIST_5SEC:
-        if pattern in cmd_str:
-            return 5.0
-
-    return float(os.environ.get('AIOS_TIMEOUT', '0.1'))
-
-timeout = get_timeout(sys.argv[1:])
-
-if timeout is None:
-    result = subprocess.run(sys.argv[1:], capture_output=True, text=True)
-    print(result.stdout)
-    result.stderr and print(result.stderr, file=sys.stderr)
-    sys.exit(result.returncode)
-else:
-    start = time.time()
-    try:
-        result = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=timeout)
-        elapsed = time.time() - start
-        print(result.stdout)
-        result.stderr and print(result.stderr, file=sys.stderr)
-        elapsed > timeout * 0.8 and print(f"WARNING: Process took {elapsed:.3f}s (limit: {timeout}s)", file=sys.stderr)
-        sys.exit(result.returncode)
-    except subprocess.TimeoutExpired:
-        elapsed = time.time() - start
-        print(f"DEATH: Process killed after {elapsed:.3f}s timeout", file=sys.stderr)
-        sys.exit(124)
+def timeout_handler(s, f): sys.exit(124)
+signal.signal(signal.SIGALRM, timeout_handler)
+signal.setitimer(signal.ITIMER_REAL, timeout)
+result = subprocess.run(sys.argv[1:], capture_output=True, text=True)
+signal.alarm(0)
+print(result.stdout, end='')
+sys.stderr.write(str(result.stderr))
+sys.exit(result.returncode)

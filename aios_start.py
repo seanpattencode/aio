@@ -14,11 +14,9 @@ aios_path = Path.home() / ".aios"
 command = (sys.argv + ["start"])[1]
 
 def kill_existing():
-    subprocess.run(["pkill", "-f", "core/aios_api.py"], stderr=subprocess.DEVNULL, timeout=5)
-    subprocess.run(["pkill", "-f", "services/web.py"], stderr=subprocess.DEVNULL, timeout=5)
+    subprocess.run(["pkill", "-f", "core/aios_api.py"], stderr=subprocess.DEVNULL)
+    subprocess.run(["pkill", "-f", "services/web.py"], stderr=subprocess.DEVNULL)
     aios_db.write("aios_pids", {})
-    pids = aios_db.read("aios_pids")
-    subprocess.run(["kill"] + list(map(str, getattr(pids, 'values', list)())), stderr=subprocess.DEVNULL, timeout=5)
 
 def start():
     start_time = time.time()
