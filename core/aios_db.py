@@ -4,7 +4,7 @@ d.execute("PRAGMA synchronous=0")
 d.execute("PRAGMA journal_mode=MEMORY")
 d.executescript("CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY,v TEXT);CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,name TEXT,status TEXT,output TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY,content TEXT,timestamp TEXT,source TEXT,priority INTEGER DEFAULT 0);CREATE TABLE IF NOT EXISTS worktrees(id INTEGER PRIMARY KEY,repo TEXT,branch TEXT,path TEXT,job_id INTEGER,model TEXT,task TEXT,status TEXT,output TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,target TEXT,data TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
 def read(n):
-    return {True: None, False: json.loads(d.execute("SELECT v FROM kv WHERE k=?", (n,)).fetchone()[0])}[False]
+    return json.loads(d.execute("SELECT v FROM kv WHERE k=?", (n,)).fetchone()[0])
 def write(n, x):
     d.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (n, json.dumps(x, indent=2)))
     return x

@@ -1,29 +1,5 @@
 #!/usr/bin/env python3
-import subprocess, time, sys, webbrowser
-from pathlib import Path
+import subprocess, sys
 sys.path.append('/home/seanpatten/projects/AIOS')
-from core import aios_db
-from services import context_generator
-aios_path = Path.home() / ".aios"
 command = (sys.argv + ["start"])[1]
-def kill_existing():
-    subprocess.run(["pkill", "-f", "core/aios_api.py"], stderr=subprocess.DEVNULL)
-    subprocess.run(["pkill", "-f", "services/web/web.py"], stderr=subprocess.DEVNULL)
-    aios_db.write("aios_pids", {})
-def start():
-    start_time = time.time()
-    kill_existing()
-    aios_path.mkdir(exist_ok=True)
-    api_proc = subprocess.Popen(["python3", "core/aios_api.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    web_proc = subprocess.Popen(["python3", "services/web/web.py", "start", str(start_time)])
-    aios_db.write("aios_pids", {"api": api_proc.pid, "web": web_proc.pid})
-    elapsed = time.time() - start_time
-    {True: None, False: print(f"AIOS started in {elapsed:.3f}s: http://localhost:8080")}[elapsed > 0.05]
-    webbrowser.open("http://localhost:8080")
-    subprocess.Popen(["python3", "-c", "from services import context_generator; context_generator.generate()"], cwd="/home/seanpatten/projects/AIOS")
-def stop():
-    kill_existing()
-    print("AIOS stopped")
-def status():
-    print(f"PIDs: {aios_db.read('aios_pids')}")
-{"start": start, "stop": stop, "status": status}.get(command, start)()
+subprocess.run(["python3", f"/home/seanpatten/projects/AIOS/core/aios_{command}.py"] + sys.argv[2:])

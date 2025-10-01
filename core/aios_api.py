@@ -20,4 +20,4 @@ async def status():
     aios_db.write("tasks", [])
     aios_db.write("schedule", {})
     return {"services": aios_db.read("services"), "tasks": aios_db.read("tasks"), "schedule": aios_db.read("schedule")}
-{True: None, False: uvicorn.run(app, host="0.0.0.0", port=8000)}[__name__ == "__main__"]
+uvicorn.run(app, host="0.0.0.0", port=8000)
