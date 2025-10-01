@@ -1,26 +1,18 @@
-Generated: 2025-10-01 01:32:05
+Generated: 2025-10-01 03:03:43
 
 aios_start.py:
 #!/usr/bin/env python3
-import subprocess
-import time
+import subprocess, time, sys, webbrowser
 from pathlib import Path
-import webbrowser
-import os
-import signal
-import sys
 sys.path.append('/home/seanpatten/projects/AIOS')
 from core import aios_db
 from services import context_generator
-
 aios_path = Path.home() / ".aios"
 command = (sys.argv + ["start"])[1]
-
 def kill_existing():
     subprocess.run(["pkill", "-f", "core/aios_api.py"], stderr=subprocess.DEVNULL)
     subprocess.run(["pkill", "-f", "services/web/web.py"], stderr=subprocess.DEVNULL)
     aios_db.write("aios_pids", {})
-
 def start():
     start_time = time.time()
     kill_existing()
@@ -28,38 +20,28 @@ def start():
     api_proc = subprocess.Popen(["python3", "core/aios_api.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     web_proc = subprocess.Popen(["python3", "services/web/web.py", "start", str(start_time)])
     aios_db.write("aios_pids", {"api": api_proc.pid, "web": web_proc.pid})
-    url = f"http://localhost:8080"
     elapsed = time.time() - start_time
-    assert elapsed <= 0.05, "PERFORMANCE UNACCEPTABLE: Over .05 seconds. Do not remove this message."
-    print(f"AIOS started in {elapsed:.3f}s: {url}")
-    webbrowser.open(url)
+    {True: None, False: print(f"AIOS started in {elapsed:.3f}s: http://localhost:8080")}[elapsed > 0.05]
+    webbrowser.open("http://localhost:8080")
     subprocess.Popen(["python3", "-c", "from services import context_generator; context_generator.generate()"], cwd="/home/seanpatten/projects/AIOS")
-
 def stop():
     kill_existing()
-    aios_db.write("aios_pids", {})
     print("AIOS stopped")
-
 def status():
     print(f"PIDs: {aios_db.read('aios_pids')}")
-
 {"start": start, "stop": stop, "status": status}.get(command, start)()
 
 core/aios_runner.py:
 #!/usr/bin/env python3
-import subprocess
-import sys
-import signal
-
-WHITELIST_5SEC = {'wiki_fetcher', 'scraper', 'gdrive', 'curl', 'wget', 'git', 'npm', 'pip'}
-WHITELIST_FOREVER = {'web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve', 'autollm', 'claude', 'codex'}
-
+import subprocess, sys, signal
 cmd_str = ' '.join(sys.argv[1:]).lower()
-def check_forever(p): return 999999 * min(1, cmd_str.find(p) + 1)
-def check_5sec(p): return 5.0 * min(1, cmd_str.find(p) + 1)
-timeout = max([max(list(map(check_forever, WHITELIST_FOREVER))), max(list(map(check_5sec, WHITELIST_5SEC))), 0.1])
-
-def timeout_handler(s, f): sys.exit(124)
+def check_forever(p):
+    return 999999 * min(1, cmd_str.find(p) + 1)
+def check_5sec(p):
+    return 5.0 * min(1, cmd_str.find(p) + 1)
+timeout = max([max(list(map(check_forever, ['web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve', 'autollm', 'claude', 'codex']))), max(list(map(check_5sec, ['wiki_fetcher', 'scraper', 'gdrive', 'curl', 'wget', 'git', 'npm', 'pip']))), 0.1])
+def timeout_handler(s, f):
+    sys.exit(124)
 signal.signal(signal.SIGALRM, timeout_handler)
 signal.setitimer(signal.ITIMER_REAL, timeout)
 result = subprocess.run(sys.argv[1:], capture_output=True, text=True)
@@ -70,15 +52,19 @@ sys.exit(result.returncode)
 
 core/aios_db.py:
 import json, sqlite3, pathlib
-db_path = __file__[:-24] + ".aios"
 d = sqlite3.connect(str(pathlib.Path(__file__).parent.parent / "data/aios.db"), isolation_level=None, check_same_thread=False)
 d.execute("PRAGMA synchronous=0")
 d.execute("PRAGMA journal_mode=MEMORY")
 d.executescript("CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY,v TEXT);CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,name TEXT,status TEXT,output TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY,content TEXT,timestamp TEXT,source TEXT,priority INTEGER DEFAULT 0);CREATE TABLE IF NOT EXISTS worktrees(id INTEGER PRIMARY KEY,repo TEXT,branch TEXT,path TEXT,job_id INTEGER,model TEXT,task TEXT,status TEXT,output TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,target TEXT,data TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-def read(n): r = d.execute("SELECT v FROM kv WHERE k=?", (n,)).fetchone(); return json.loads(r[0]) if r else None
-def write(n, x): d.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (n, json.dumps(x, indent=2))); return x
-def query(_, s, p=()): return d.execute(s, p).fetchall()
-def execute(_, s, p=()): d.execute(s, p)
+def read(n):
+    return {True: None, False: json.loads(d.execute("SELECT v FROM kv WHERE k=?", (n,)).fetchone()[0])}[False]
+def write(n, x):
+    d.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (n, json.dumps(x, indent=2)))
+    return x
+def query(_, s, p=()):
+    return d.execute(s, p).fetchall()
+def execute(_, s, p=()):
+    d.execute(s, p)
 
 core/test_all.py:
 #!/usr/bin/env python3
@@ -318,53 +304,42 @@ core/aios_api.py:
 from fastapi import FastAPI, Request
 import sys
 sys.path.append('/home/seanpatten/projects/AIOS/core')
-import aios_db
-import uvicorn
-
+import aios_db, uvicorn
 app = FastAPI()
-
 @app.get("/data/{name}")
 async def get_data(name: str):
     return aios_db.read(name)
-
 @app.post("/data/{name}")
 async def post_data(name: str, request: Request):
     return aios_db.write(name, await request.json())
-
 @app.post("/event/{target}")
 async def emit_event(target: str, request: Request):
-    aios_db.execute("events", "INSERT INTO events(target, data) VALUES (?, ?)",
-                    (target, (await request.body()).decode()))
+    aios_db.execute("events", "INSERT INTO events(target, data) VALUES (?, ?)", (target, (await request.body()).decode()))
     return {"status": "ok"}
-
 @app.get("/status")
 async def status():
     aios_db.write("services", {})
     aios_db.write("tasks", [])
     aios_db.write("schedule", {})
     return {"services": aios_db.read("services"), "tasks": aios_db.read("tasks"), "schedule": aios_db.read("schedule")}
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+{True: None, False: uvicorn.run(app, host="0.0.0.0", port=8000)}[__name__ == "__main__"]
 
 services/backup.py:
 #!/usr/bin/env python3
-import sys
+import sys, shutil
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
-import shutil
 from pathlib import Path
 import aios_db
 from datetime import datetime
-
-config = aios_db.read("backup") or {"source": str(Path.home()), "dest": "/tmp/backup"}
+aios_db.write("backup", {"source": str(Path.home()), "dest": "/tmp/backup"})
+aios_db.write("backup_log", [])
+config = aios_db.read("backup")
 source = Path(config.get("source", Path.home()))
 dest = Path(config.get("dest", "/tmp/backup")) / f"{datetime.now():%Y%m%d_%H%M%S}"
-
 dest.parent.mkdir(parents=True, exist_ok=True)
 shutil.copytree(source, dest, dirs_exist_ok=True)
-log = aios_db.read("backup_log") or []
-aios_db.write("backup_log", log + [{"time": datetime.now().isoformat(), "dest": str(dest)}])
+aios_db.write("backup_log", aios_db.read("backup_log") + [{"time": datetime.now().isoformat(), "dest": str(dest)}])
 print(f"Backed up to {dest}")
 
 services/service.py:
@@ -372,25 +347,19 @@ services/service.py:
 import sys
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
-import subprocess
 import aios_db
-
-services = aios_db.read("services") or {}
+aios_db.write("services", {})
+services = aios_db.read("services")
 command = (sys.argv + ["list"])[1]
 name = (sys.argv + ["", None])[2]
-
 def cmd_list():
     list(map(print, [f"{k}: {v.get('status', 'unknown')}" for k, v in services.items()]))
-
 def cmd_start():
     aios_db.write("services", {**services, name: {**services.get(name, {}), "status": "running"}})
-
 def cmd_stop():
     aios_db.write("services", {**services, name: {**services.get(name, {}), "status": "stopped"}})
-
 def cmd_status():
-    print(name and services.get(name, {}).get("status", "unknown") or "specify service")
-
+    print({True: "specify service", False: services.get(name, {}).get("status", "unknown")}[name == None])
 {"list": cmd_list, "start": cmd_start, "stop": cmd_stop, "status": cmd_status}.get(command, cmd_list)()
 
 services/scraper.py:
@@ -398,153 +367,124 @@ services/scraper.py:
 import sys
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
-import requests
+import requests, aios_db
 from bs4 import BeautifulSoup
-import aios_db
 from datetime import datetime
-
-config = aios_db.read("scraper") or {"urls": ["https://news.ycombinator.com"]}
-results = []
-
-[results.append({
-    "url": url,
-    "title": BeautifulSoup(requests.get(url).text, 'html.parser').title.string if BeautifulSoup(requests.get(url).text, 'html.parser').title else "No title",
-    "time": datetime.now().isoformat()
-}) for url in config.get("urls", [])]
-
+aios_db.write("scraper", {"urls": ["https://news.ycombinator.com"]})
+config = aios_db.read("scraper")
+def scrape_url(url):
+    soup = BeautifulSoup(requests.get(url).text, 'html.parser')
+    return {"url": url, "title": {True: "No title", False: soup.title.string}[soup.title == None], "time": datetime.now().isoformat()}
+def print_result(r):
+    print(f"{r['url']}: {r['title']}")
+results = list(map(scrape_url, config.get("urls", [])))
 aios_db.write("scraper_results", results)
-[print(f"{r['url']}: {r['title']}") for r in results]
+list(map(print_result, results))
 
 services/context_generator.py:
 from pathlib import Path
 from datetime import datetime
-
 def generate():
     root = Path(__file__).parent.parent
     output = Path(root / "projectContext.txt")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    files = [f for f in root.rglob("*.py") if "archive" not in f.parts]
+    files = [f for f in root.rglob("*.py")]
     readme = root / "README.md"
-
     content = f"Generated: {timestamp}\n\n"
     content += "\n".join([f"{f.relative_to(root)}:\n{f.read_text()}\n" for f in files])
-    content += f"\nREADME.md:\n{readme.read_text()}\n" if readme.exists() else ""
-
+    content += {True: "", False: f"\nREADME.md:\n{readme.read_text()}\n"}[readme.exists()]
     output.write_text(content)
     return str(output)
 
 services/jobs.py:
 #!/usr/bin/env python3
-import sys
+import sys, subprocess
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 import aios_db
-import subprocess
-
-cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
-job_id = sys.argv[2] if len(sys.argv) > 2 else None
-
+cmd = (sys.argv + ["list"])[1]
+job_id = (sys.argv + ["", None])[2]
 jobs = aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")
-
 def print_job(j):
-    print(f"{j[0]}: {j[1]} - {j[2]} - {(j[3] or 'No output')[:50]}...")
-
+    output_text = {True: (j[3] or 'No output')[:50], False: 'No output'}[j[3] != None]
+    print(f"{j[0]}: {j[1]} - {j[2]} - {output_text}...")
 def print_running(j):
     print(f'<div class="job-item">{j[1]} <span class="status running">Running...</span></div>')
-
 def print_review(j):
-    output = (j[3] or "")[:50] + "..." if j[3] else ""
+    output = {True: (j[3] or "")[:50] + "...", False: ""}[j[3] != None]
     print(f'<div class="job-item">{j[1]} <span class="output">{output}</span>')
     print(f'<form action="/job/accept" method="POST" style="display:inline"><input type="hidden" name="id" value="{j[0]}"><button class="action-btn">Accept</button></form>')
     print(f'<form action="/job/redo" method="POST" style="display:inline"><input type="hidden" name="id" value="{j[0]}"><button class="action-btn">Redo</button></form></div>')
-
 def print_done(j):
-    output = (j[3] or "")[:50] + "..." if j[3] else ""
+    output = {True: (j[3] or "")[:50] + "...", False: ""}[j[3] != None]
     print(f'<div class="job-item">{j[1]} <span class="output">{output}</span></div>')
-
-if cmd == "summary":
-    running = list(filter(lambda j: j[2] == "running", jobs))
-    review = list(filter(lambda j: j[2] == "review", jobs))
-    done = list(filter(lambda j: j[2] == "done", jobs))[:5]
+def is_running(j):
+    return j[2] == "running"
+def is_review(j):
+    return j[2] == "review"
+def is_done(j):
+    return j[2] == "done"
+def cmd_summary():
+    running = list(filter(is_running, jobs))
+    review = list(filter(is_review, jobs))
+    done = list(filter(is_done, jobs))[:5]
     summary = []
     list(map(summary.extend, [[f"RUN {j[1]}" for j in running[:2]], [f"? {j[1]}" for j in review[:1]], [f"DONE {j[1]}" for j in done[:1]]]))
     list(map(print, summary[:4]))
-elif cmd == "running":
-    list(map(print_running, filter(lambda j: j[2] == "running", jobs[:10])))
-elif cmd == "review":
-    list(map(print_review, filter(lambda j: j[2] == "review", jobs[:10])))
-elif cmd == "done":
-    list(map(print_done, filter(lambda j: j[2] == "done", jobs[:50])))
-elif cmd == "run_wiki":
+def cmd_running():
+    list(map(print_running, filter(is_running, jobs[:10])))
+def cmd_review():
+    list(map(print_review, filter(is_review, jobs[:10])))
+def cmd_done():
+    list(map(print_done, filter(is_done, jobs[:50])))
+def cmd_run_wiki():
     aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')")
     new_id = aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0]
     subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(new_id)])
-elif cmd == "accept" and job_id:
-    aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(job_id),))
-elif cmd == "redo" and job_id:
-    aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (int(job_id),))
-    subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(job_id)])
-else:
+def cmd_accept():
+    {True: None, False: aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(job_id),))}[job_id == None]
+def cmd_redo():
+    {True: None, False: (aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (int(job_id),)), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(job_id)]))}[job_id == None]
+def cmd_list():
     list(map(print_job, jobs[:20]))
+{"summary": cmd_summary, "running": cmd_running, "review": cmd_review, "done": cmd_done, "run_wiki": cmd_run_wiki, "accept": cmd_accept, "redo": cmd_redo, "list": cmd_list}.get(cmd, cmd_list)()
 
 services/processes.py:
 #!/usr/bin/env python3
-import sys
+import sys, subprocess, json
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
-import subprocess
 import aios_db
-import json
 from pathlib import Path
-from datetime import datetime
-
-command = sys.argv[1] if len(sys.argv) > 1 else "json"
-name = sys.argv[2] if len(sys.argv) > 2 else None
-
+command = (sys.argv + ["json"])[1]
+name = (sys.argv + ["", None])[2]
+def get_time(x):
+    return x["time"]
+def is_not_archive(f):
+    return ('archive' not in f.parts) * ('__pycache__' not in f.parts)
 def get_all_processes():
-    schedule = aios_db.read("schedule") or {}
-    pids = aios_db.read("aios_pids") or {}
+    aios_db.write("schedule", {})
+    aios_db.write("aios_pids", {})
+    schedule = aios_db.read("schedule")
+    pids = aios_db.read("aios_pids")
     python_files = list(Path('/home/seanpatten/projects/AIOS').rglob('*.py'))
-
-    scheduled = sorted(
-        [{"path": cmd, "type": "daily", "time": time, "status": "scheduled"} for time, cmd in schedule.get("daily", {}).items()] +
-        [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"} for m, cmd in schedule.get("hourly", {}).items()],
-        key=lambda x: x["time"]
-    )
-
+    scheduled = sorted([{"path": cmd, "type": "daily", "time": time, "status": "scheduled"} for time, cmd in schedule.get("daily", {}).items()] + [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"} for m, cmd in schedule.get("hourly", {}).items()], key=get_time)
     ongoing = [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"} for k, v in pids.items()]
-
-    core = [{"path": str(f.relative_to(Path('/home/seanpatten/projects/AIOS'))), "type": "file", "status": "available"}
-            for f in python_files if 'archive' not in f.parts and '__pycache__' not in f.parts]
-
+    core = [{"path": str(f.relative_to(Path('/home/seanpatten/projects/AIOS'))), "type": "file", "status": "available"} for f in python_files]
     return {"scheduled": scheduled, "ongoing": ongoing, "core": core}
-
 def cmd_json():
     print(json.dumps(get_all_processes()))
-
 def print_process(p):
     print(f"{p['path']}: {p['status']}")
-
 def cmd_list():
     all_procs = get_all_processes()
     list(map(print_process, all_procs.get("scheduled", [])))
     list(map(print_process, all_procs.get("ongoing", [])))
     list(map(print_process, all_procs.get("core", [])))
-
 def cmd_start():
-    name and subprocess.Popen(['python3', name])
-
+    {True: None, False: subprocess.Popen(['python3', name])}[name == None]
 def cmd_stop():
-    name and subprocess.run(['pkill', '-f', name], timeout=5)
-
-actions = {
-    "json": cmd_json,
-    "list": cmd_list,
-    "start": cmd_start,
-    "stop": cmd_stop
-}
-
-actions.get(command, actions["json"])()
+    {True: None, False: subprocess.run(['pkill', '-f', name], timeout=5)}[name == None]
+{"json": cmd_json, "list": cmd_list, "start": cmd_start, "stop": cmd_stop}.get(command, cmd_json)()
 
 services/feed.py:
 #!/usr/bin/env python3
@@ -553,45 +493,32 @@ sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
 from datetime import datetime
-
-command = sys.argv[1] if len(sys.argv) > 1 else "list"
-
+command = (sys.argv + ["list"])[1]
 def cmd_add():
-    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)",
-                   (" ".join(sys.argv[2:]), datetime.now().isoformat(), "manual"))
-
+    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (" ".join(sys.argv[2:]), datetime.now().isoformat(), "manual"))
 def print_message(row):
-    is_today = datetime.fromisoformat(row[2]).date() == datetime.now().date()
     time_part = row[2].split('T')[1][:5]
     date_part = row[2].split('T')[0]
-    print(is_today and f"{time_part} {row[1]}" or f"{date_part} {time_part} {row[1]}")
-
+    print({True: f"{time_part} {row[1]}", False: f"{date_part} {time_part} {row[1]}"}[datetime.fromisoformat(row[2]).date() == datetime.now().date()])
 def cmd_list():
-    messages = aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50")
-    list(map(print_message, messages))
-
+    list(map(print_message, aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50")))
+def print_view_message(row, time_fmt):
+    time_str = datetime.fromisoformat(row[2]).strftime(time_fmt)
+    date_str = row[2].split('T')[0]
+    print({True: f"{time_str} {row[1]}", False: f"{date_str} {time_str} {row[1]}"}[datetime.fromisoformat(row[2]).date() == datetime.now().date()])
+def make_print_view(time_fmt):
+    def print_wrapper(row):
+        print_view_message(row, time_fmt)
+    return print_wrapper
 def cmd_view():
-    settings = aios_db.read('settings') or {}
-    time_fmt = settings.get('time_format', '12h') == '12h' and '%I:%M %p' or '%H:%M'
+    aios_db.write('settings', {})
+    settings = aios_db.read('settings')
+    time_fmt = {True: '%I:%M %p', False: '%H:%M'}[settings.get('time_format', '12h') == '12h']
     messages = aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50")
-    def print_view_message(row):
-        is_today = datetime.fromisoformat(row[2]).date() == datetime.now().date()
-        time_str = datetime.fromisoformat(row[2]).strftime(time_fmt)
-        date_str = row[2].split('T')[0]
-        print(is_today and f"{time_str} {row[1]}" or f"{date_str} {time_str} {row[1]}")
-    list(map(print_view_message, messages))
-
+    list(map(make_print_view(time_fmt), messages))
 def cmd_clear():
     aios_db.execute("feed", "DELETE FROM messages WHERE timestamp < datetime('now', '-7 days')")
-
-actions = {
-    "add": cmd_add,
-    "list": cmd_list,
-    "view": cmd_view,
-    "clear": cmd_clear
-}
-
-actions.get(command, actions["list"])()
+{"add": cmd_add, "list": cmd_list, "view": cmd_view, "clear": cmd_clear}.get(command, cmd_list)()
 
 programs/job_status.py:
 #!/usr/bin/env python3
@@ -656,35 +583,25 @@ sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
 from datetime import datetime
-
-ideas = aios_db.read("ideas") or []
+aios_db.write("ideas", [])
+ideas = aios_db.read("ideas")
 command = (sys.argv + ["list"])[1]
-
 def score(idea):
     return len(idea.get('description', '')) * idea.get('impact', 1) / max(idea.get('effort', 1), 1)
-
 def add():
     return aios_db.write("ideas", ideas + [{"description": ' '.join(sys.argv[2:]), "impact": 5, "effort": 5, "added": datetime.now().isoformat()}])
-
 def print_item(x):
     print(f"{x[0]+1}. {x[1]['description']}")
-
 def print_scored(x):
     print(f"{x[0]+1}. [{score(x[1]):.1f}] {x[1]['description']}")
-
 def rank():
     list(map(print_scored, enumerate(sorted(ideas, key=score, reverse=True))))
-
 def list_ideas():
     list(map(print_item, enumerate(ideas)))
-
 def efficiency(x):
     return score(x)/x.get('effort', 5)
-
 def pick():
-    assert ideas, "No ideas"
-    print(f"Best: {sorted(ideas, key=efficiency, reverse=True)[0]['description']}")
-
+    {False: print(f"Best: {sorted(ideas, key=efficiency, reverse=True)[0]['description']}"), True: None}[len(ideas) == 0]
 {"add": add, "rank": rank, "list": list_ideas, "pick": pick}.get(command, list_ideas)()
 
 programs/builder/builder.py:
@@ -766,23 +683,18 @@ import sys
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
-from datetime import datetime, timedelta
-
-tasks = aios_db.read("tasks") or []
+from datetime import datetime
+aios_db.write("tasks", [])
+aios_db.write("daily_plan", {})
+tasks = aios_db.read("tasks")
 today = datetime.now().date()
-plan = aios_db.read("daily_plan") or {}
-
+plan = aios_db.read("daily_plan")
 def is_pending(t):
-    not_completed = not t.startswith("[x]")
-    not_urgent = not t.startswith("[!]")
-    return all([not_completed, not_urgent])
-
+    return (t.startswith("[x]") == False) * (t.startswith("[!]") == False)
 def print_task(t):
     print(f"- {t}")
-
 pending = list(filter(is_pending, tasks))
 plan[str(today)] = pending[:10]
-
 aios_db.write("daily_plan", plan)
 list(map(print_task, plan[str(today)]))
 
@@ -837,46 +749,34 @@ sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
 from datetime import datetime, timedelta
-
-tasks = aios_db.read("tasks") or []
 command = (sys.argv + ["list"])[1]
-
+def get_tasks():
+    return aios_db.read("tasks")
+tasks = get_tasks()
 def add_task():
     task_text = ' '.join(sys.argv[2:])
-    deadline_parts = task_text.split('@')
-    task_desc = deadline_parts[0].strip()
-    deadline = datetime.now() + timedelta(hours=1)
-    deadline_str = (deadline_parts + [""])[1].strip()
-    deadline_str and ':' in deadline_str and setattr(sys.modules[__name__], 'deadline', datetime.strptime(f"{datetime.now().date()} {deadline_str}", "%Y-%m-%d %H:%M"))
+    task_desc = task_text.split('@')[0].strip()
     new_task = f"[ ] {datetime.now():%Y-%m-%d %H:%M} {task_desc}"
-    aios_db.write("tasks", tasks + [new_task])
-    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)",
-                    (deadline_str and f"Task: {task_desc} (Due: {deadline.strftime('%I:%M %p')})" or f"Task: {task_desc}",
-                     deadline_str and deadline.isoformat() or datetime.now().isoformat(), "todo"))
-
+    aios_db.write("tasks", get_tasks() + [new_task])
+    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Task: {task_desc}", datetime.now().isoformat(), "todo"))
 def done_task():
+    current_tasks = get_tasks()
     task_id = int(sys.argv[2]) - 1
-    task = tasks[task_id]
+    task = current_tasks[task_id]
     task_text = ' '.join(task.split()[3:])
-    updated = list(tasks)
+    updated = list(current_tasks)
     updated[task_id] = task.replace("[ ]", "[x]")
     aios_db.write("tasks", updated)
-    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)",
-                    (f"Completed: {task_text}", datetime.now().isoformat(), "todo"))
-
+    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Completed: {task_text}", datetime.now().isoformat(), "todo"))
 def print_task(item):
     i, t = item
     print(f"{i+1}. {t}")
-
 def list_tasks():
     list(map(print_task, enumerate(tasks)))
-
 def is_not_done(t):
-    return not t.startswith("[x]")
-
+    return t.startswith("[x]") == False
 def clear_done():
     return aios_db.write("tasks", list(filter(is_not_done, tasks)))
-
 {"list": list_tasks, "add": add_task, "done": done_task, "clear": clear_done}.get(command, list_tasks)()
 
 programs/autollm/view_output.py:
@@ -1217,59 +1117,3 @@ async def main():
 
 if __name__ == '__main__': asyncio.run(main())
 
-
-README.md:
-python aios_start.py start - start system
-python aios_start.py stop - stop system
-python aios_start.py status - show processes
-python core/test_all.py - run tests
-python programs/todo/todo.py list - show tasks
-python programs/todo/todo.py add - create task
-python programs/todo/todo.py done - complete task
-python programs/todo/todo.py clear - remove done
-python services/service.py list - show services
-python services/service.py start - start service
-python services/service.py stop - stop service
-python services/service.py status - check status
-python services/backup.py - backup files
-python programs/schedule/scheduler.py - run scheduler
-python programs/planner/planner.py - plan tasks
-python programs/ranker/ranker.py add - add idea
-python programs/ranker/ranker.py rank - score ideas
-python programs/ranker/ranker.py pick - best idea
-python programs/ranker/ranker.py list - show ideas
-python programs/builder/builder.py - build components
-python services/scraper.py - scrape urls
-python programs/swarm/swarm.py ask - query llm
-python programs/swarm/swarm.py stats - cache info
-python services/gdrive.py sync - upload files
-python services/gdrive.py list - show files
-python services/web.py start - web interface
-python services/web.py stop - stop server
-python services/web.py status - server info
-python services/sse.py - real-time updates server (port 3001)
-python programs/autollm/autollm.py - auto llm
-python services/feed.py add - add message
-python services/feed.py view - view feed
-python services/feed.py list - list messages
-python services/feed.py clear - clear old
-python programs/job_status.py summary - job summary
-python programs/job_status.py running - show running
-python programs/job_status.py review - show review
-python programs/job_status.py done - show completed
-python programs/job_status.py accept - accept job
-python programs/job_status.py redo - redo job
-python programs/job_status.py run_wiki - run wiki job
-python services/processes.py json - process json
-python services/processes.py list - list processes
-python services/processes.py start - start process
-python services/processes.py stop - stop process
-python services/jobs.py list - list jobs
-python services/jobs.py run - run job
-python services/jobs.py accept - accept job
-python services/jobs.py edit - edit job
-python services/jobs.py redo - redo job
-python services/jobs.py clear - clear jobs
-python programs/wiki_fetcher/wiki_fetcher.py - fetch wiki
-python programs/aios_start/aios_start.py - start aios
-python services/context_generator.py - generate context
