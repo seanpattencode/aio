@@ -160,9 +160,16 @@ async def client_handler(ws):
         await proc.wait()
         os.close(master)
 
+def serve_http(sock=None):
+    server = HTTPServer(('', 8080), Handler, bind_and_activate=(sock is None))
+    {True: setattr(server, 'socket', sock), False: None}[sock is not None]
+    server.serve_forever()
+
 async def main():
-    Thread(target=lambda: HTTPServer(('', 8080), Handler).serve_forever(), daemon=True).start()
+    import socket
+    sock = socket.fromfd(int(sys.argv[1]), socket.AF_INET, socket.SOCK_STREAM) if len(sys.argv) > 1 else None
+    Thread(target=serve_http, args=(sock,), daemon=True).start()
     async with websockets.serve(client_handler, 'localhost', 8766):
         await asyncio.Future()
 
-if __name__ == '__main__': asyncio.run(main())
+asyncio.run(main())
