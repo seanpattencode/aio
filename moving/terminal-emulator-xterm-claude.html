@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+import asyncio, websockets, pty, os, struct, fcntl, termios
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from threading import Thread
+
+HTML = b'''<!DOCTYPE html>
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"/>
+<style>body{margin:0;background:#000}#terminal{height:100vh}</style>
+<div id="terminal"></div>
+<script>
+const term = new Terminal();
+const fit = new FitAddon.FitAddon();
+term.loadAddon(fit);
+term.open(document.getElementById('terminal'));
+fit.fit();
+const ws = new WebSocket('ws://localhost:8766');
+ws.binaryType = 'arraybuffer';
+ws.onmessage = e => term.write(new Uint8Array(e.data));
+term.onData(d => ws.send(new TextEncoder().encode(d)));
+window.onresize = () => fit.fit();
+</script>'''
+
+class H(BaseHTTPRequestHandler):
+    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(HTML)
+    def log_message(self, *a): pass
+
+async def handler(ws):
+    m, s = pty.openpty()
+    fcntl.ioctl(s, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    p = await asyncio.create_subprocess_exec('bash', stdin=s, stdout=s, stderr=s, preexec_fn=os.setsid)
+    os.close(s); os.set_blocking(m, False)
+    loop = asyncio.get_event_loop()
+    loop.add_reader(m, lambda: asyncio.create_task(ws.send(os.read(m, 65536))) if (d := os.read(m, 65536)) else None)
+    try:
+        async for msg in ws: os.write(m, msg)
+    finally: loop.remove_reader(m); p.kill(); await p.wait(); os.close(m)
+
+async def main():
+    Thread(target=lambda: HTTPServer(('', 8700), H).serve_forever(), daemon=True).start()
+    print("http://localhost:8700")
+    async with websockets.serve(handler, 'localhost', 8766): await asyncio.Future()
+
+asyncio.run(main())

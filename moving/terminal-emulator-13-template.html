@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html><head><title>Terminal Emulator - Hybrid Reflow</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font:14px monospace;color:#dfdbd2}
+#term{position:absolute;top:0;left:0;right:0;bottom:0;padding:10px;overflow-x:auto;overflow-y:auto;contain:layout}
+.line{white-space:pre-wrap;word-wrap:break-word;user-select:text}
+#prompt-line{white-space:pre;padding-left:12px;position:relative}
+#prompt-line:before{content:'$ ';position:absolute;left:0;top:0}
+#input{background:transparent;border:none;color:#dfdbd2;font:14px monospace;outline:none;width:100%;padding:0}
+</style></head><body>
+<div id="term">
+  <div id="prompt-line"><input id="input" type="text" autocomplete="off" spellcheck="false"/></div>
+</div>
+<script>
+const term = document.getElementById('term');
+const promptLine = document.getElementById('prompt-line');
+const input = document.getElementById('input');
+const ws = new WebSocket('ws://localhost:8766');
+ws.binaryType = 'arraybuffer';
+let history = [];
+let historyIndex = -1;
+let ignoreNext = false;
+let currentCols = 80;
+let currentRows = 24;
+
+const ansiRegex = /\x1b\[[^\x1b]*?[a-zA-Z]/g;
+const controlRegex = /[\x00-\x1F\x7F]/g;
+
+const byteToChar = new Array(256);
+for(let i=0;i<256;i++)byteToChar[i]=String.fromCharCode(i);
+
+function calculateSize() {
+  const cols = Math.floor((window.innerWidth - 20) / 8.4);
+  const rows = Math.floor((window.innerHeight - 20) / 16.8);
+  currentCols = cols;
+  currentRows = rows;
+}
+
+ws.onopen = () => {
+  calculateSize();
+  const msg = JSON.stringify({resize:{rows:currentRows,cols:currentCols},term:'xterm-256color'});
+  const bytes = new Uint8Array(msg.length);
+  for(let i=0;i<msg.length;i++)bytes[i]=msg.charCodeAt(i);
+  ws.send(bytes);
+};
+
+ws.onmessage = e => {
+  const bytes = new Uint8Array(e.data);
+  let str = '';
+  for(let i=0;i<bytes.length;i++)str+=byteToChar[bytes[i]];
+
+  if(ignoreNext && str.includes(input.value)){ignoreNext=false;return;}
+
+  const clean = str.replace(ansiRegex,'').replace(controlRegex,c=>c==='\n'?'\n':'');
+
+  let start = 0;
+  for(let i=0;i<clean.length;i++){
+    if(clean[i]==='\n'){
+      const line = document.createElement('div');
+      line.className = 'line';
+      line.textContent = clean.substring(start,i);
+      term.insertBefore(line,promptLine);
+      start = i+1;
+    }
+  }
+  if(start<clean.length){
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.textContent = clean.substring(start);
+    term.insertBefore(line,promptLine);
+  }
+
+  promptLine.scrollIntoView();
+};
+
+input.onkeydown = e => {
+  const k = e.key;
+  let data = null;
+
+  if(e.ctrlKey){
+    const key = k.toLowerCase();
+    if(key==='c'){data='\x03';input.value='';e.preventDefault();}
+    else if(key==='d'){data='\x04';e.preventDefault();}
+    else if(key==='l'){term.innerHTML='';term.appendChild(promptLine);data='\x0c';e.preventDefault();}
+  }else{
+    if(k==='Enter'){
+      const cmd = input.value;
+      if(cmd){history.push(cmd);historyIndex=history.length;}
+
+      calculateSize();
+      const resizeMsg = JSON.stringify({resize:{rows:currentRows,cols:currentCols}});
+      const resizeBytes = new Uint8Array(resizeMsg.length);
+      for(let i=0;i<resizeMsg.length;i++)resizeBytes[i]=resizeMsg.charCodeAt(i);
+      ws.send(resizeBytes);
+
+      data = cmd+'\r';
+      ignoreNext=true;
+      input.value='';
+      e.preventDefault();
+    }else if(k==='ArrowUp'){
+      if(historyIndex>0){historyIndex--;input.value=history[historyIndex];}
+      e.preventDefault();
+    }else if(k==='ArrowDown'){
+      if(historyIndex<history.length-1){historyIndex++;input.value=history[historyIndex];}
+      else{historyIndex=history.length;input.value='';}
+      e.preventDefault();
+    }else if(k==='Tab'){data='\t';e.preventDefault();}
+  }
+
+  if(data){
+    const bytes = new Uint8Array(data.length);
+    for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i);
+    ws.send(bytes);
+  }
+};
+
+term.onclick = e => {
+  if(e.target !== input) input.blur();
+};
+
+document.onkeydown = e => {
+  if(document.activeElement !== input) input.focus();
+};
+
+input.focus();
+</script>
+</body></html>
