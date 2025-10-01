@@ -1,4 +1,4 @@
-Generated: 2025-09-30 22:56:04
+Generated: 2025-09-30 23:31:28
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -369,6 +369,15 @@ print(f"Backed up to {dest}")
 
 services/web.py:
 #!/usr/bin/env python3
+import sys
+sys.path.append('/home/seanpatten/projects/AIOS')
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import json, aios_db, subprocess, os, asyncio, websockets, pty, struct, fcntl, termios
+from urllib.parse import parse_qs, urlparse
+from datetime import datetime
+from pathlib import Path
+from threading import Thread
 
 HTML_TEMPLATES = {
     '/': '''<!DOCTYPE html>
@@ -547,7 +556,6 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:8px;margin:5px;
 <form action="/autollm/clean" method="POST">
 <button>Clean Done Worktrees</button>
 </form>
-<script>new EventSource('http://localhost:3001/e').onmessage=e=>c.innerHTML=e.data</script>
 </body>
 </html>''',
 
@@ -583,7 +591,6 @@ body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
 <div style="margin-bottom:20px"><a href="/autollm" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
 <h1>Terminal Output</h1>
 <div id="c">{terminal_content}</div>
-<script>new EventSource('http://localhost:3001/e?job_id={job_id}').onmessage=e=>c.innerHTML=e.data</script>
 </body>
 </html>''',
 
@@ -618,25 +625,6 @@ button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;
 </html>'''
 }
 
-# All Python code at the end as requested
-import sys
-sys.path.append('/home/seanpatten/projects/AIOS')
-sys.path.append('/home/seanpatten/projects/AIOS/core')
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import json, aios_db, subprocess, os, socket
-from urllib.parse import parse_qs, urlparse
-from datetime import datetime
-from pathlib import Path
-
-def format_job(j):
-    return {"id": j[0], "name": j[1], "status": j[2], "output": j[3]}
-
-def handle_api_jobs():
-    return (json.dumps(list(map(format_job, aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")))), 'application/json')
-
-def handle_default(c):
-    return (HTML_TEMPLATES.get('/', HTML_TEMPLATES['/']).format(**c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
-
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -644,25 +632,11 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         s = aios_db.read("settings") or {}
         c = {'bg': {'light': '#fff'}.get(s.get('theme'), '#000'), 'fg': {'light': '#000'}.get(s.get('theme'), '#fff'), 'bg2': {'light': '#f0f0f0'}.get(s.get('theme'), '#1a1a1a')}
-
         self.s = s
         self.c = c
         self.query = query
-
-        handlers = {
-            '/api/jobs': handle_api_jobs,
-            '/': self.handle_home,
-            '/todo': self.handle_todo,
-            '/feed': self.handle_feed,
-            '/settings': self.handle_settings,
-            '/jobs': self.handle_jobs,
-            '/autollm': self.handle_autollm,
-            '/autollm/output': self.handle_autollm_output,
-            '/terminal': self.handle_terminal
-        }
-
+        handlers = {'/api/jobs': self.handle_api_jobs, '/': self.handle_home, '/todo': self.handle_todo, '/feed': self.handle_feed, '/settings': self.handle_settings, '/jobs': self.handle_jobs, '/autollm': self.handle_autollm, '/autollm/output': self.handle_autollm_output, '/terminal': self.handle_terminal}
         content, ctype = handlers.get(path, self.handle_default)()
-
         self.send_response(200)
         self.send_header('Content-type', ctype)
         self.end_headers()
@@ -671,43 +645,28 @@ class Handler(BaseHTTPRequestHandler):
     def handle_default(self):
         return (HTML_TEMPLATES.get('/', HTML_TEMPLATES['/']).format(**self.c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
 
+    def handle_api_jobs(self):
+        return (json.dumps(list(map(lambda j: {"id": j[0], "name": j[1], "status": j[2], "output": j[3]}, aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")))), 'application/json')
+
     def handle_home(self):
         tr = subprocess.run(["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"], capture_output=True, text=True)
         m = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 4")
         j = subprocess.run(["python3", "core/aios_runner.py", "python3", "services/jobs.py", "summary"], capture_output=True, text=True)
-
         todo_items = tr.stdout.strip().split('\n')[:4] or []
-        def format_feed_item(x):
-            return f"{datetime.fromisoformat(x[1]).strftime({'12h': '%I:%M %p'}.get(self.s.get('time_format', '12h'), '%H:%M'))} - {x[0]}"
-        feed_items = list(map(format_feed_item, m)) or []
+        feed_items = list(map(lambda x: f"{datetime.fromisoformat(x[1]).strftime({'12h': '%I:%M %p'}.get(self.s.get('time_format', '12h'), '%H:%M'))} - {x[0]}", m)) or []
         jobs_summary = j.stdout.strip().split('\n')[:4] or ["No jobs"]
-
-        def format_item(i):
-            return f'<div class="box-item">{i}</div>'
-        def format_box(entry):
-            t, items = entry
-            content = "".join(list(map(format_item, items))) or f'<div style="color:#888">No {t.lower()}</div>'
-            return f'''<div class="box" onclick="location.href='/{t.lower()}'">
-<div class="box-title">{t}</div>
-<div class="box-content">{content}</div>
-</div>'''
         boxes = [('Todo', todo_items), ('Feed', feed_items), ('Jobs', jobs_summary)]
         try:
             aios_db.query("autollm", "SELECT COUNT(*) FROM worktrees")
             boxes.append(('AutoLLM', ['Manage worktrees']))
-        except:
-            pass
-        vp = "".join(list(map(format_box, boxes)))
-
+        except: pass
+        vp = "".join(list(map(lambda entry: f'''<div class="box" onclick="location.href='/{entry[0].lower()}'"><div class="box-title">{entry[0]}</div><div class="box-content">{"".join(list(map(lambda i: f'<div class="box-item">{i}</div>', entry[1]))) or f'<div style="color:#888">No {entry[0].lower()}</div>'}</div></div>''', boxes)))
         return HTML_TEMPLATES['/'].format(**self.c, vp=vp), 'text/html'
 
     def handle_todo(self):
         result = subprocess.run(["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"], capture_output=True, text=True)
         tasks = result.stdout.strip().split('\n') or []
-        def format_task(indexed_task):
-            i, t = indexed_task
-            return f'<div class="task {"done" * ("[x]" in t)}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] or str(i+1)}"><button>Done</button></form></div>'
-        tasks_html = "".join(list(map(format_task, enumerate(tasks))))
+        tasks_html = "".join(list(map(lambda it: f'<div class="task {"done" * ("[x]" in it[1])}">{it[1]} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{it[1].split(".")[0] or str(it[0]+1)}"><button>Done</button></form></div>', enumerate(tasks))))
         return HTML_TEMPLATES['/todo'].format(**self.c, tasks=tasks_html or '<div style="color:#888">No tasks yet</div>'), 'text/html'
 
     def handle_feed(self):
@@ -715,12 +674,10 @@ class Handler(BaseHTTPRequestHandler):
         time_format = self.s.get("time_format", "12h")
         feed_html = []
         self._dates = []
-
         def process_message(m):
             date_header = {True: f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(m[1]).date()}</div>', False: ''}.get(datetime.fromisoformat(m[1]).date() not in self._dates, '')
             feed_html.append(date_header + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime({"12h": "%I:%M %p"}.get(time_format, "%H:%M"))} - {m[0]}</div>')
             self._dates.append(datetime.fromisoformat(m[1]).date())
-
         list(map(process_message, messages))
         return HTML_TEMPLATES['/feed'].format(**self.c, feed_content="".join(feed_html) or "<div style='color:#888'>No messages yet</div>"), 'text/html'
 
@@ -735,50 +692,30 @@ class Handler(BaseHTTPRequestHandler):
         running = subprocess.run("python3 services/jobs.py running", shell=True, capture_output=True, text=True, timeout=5)
         review = subprocess.run("python3 services/jobs.py review", shell=True, capture_output=True, text=True, timeout=5)
         done = subprocess.run("python3 services/jobs.py done", shell=True, capture_output=True, text=True, timeout=5)
-
         running_html = running.stdout.strip() or '<div style="color:#888;padding:10px">No running jobs</div>'
         review_html = review.stdout.strip() or '<div style="color:#888;padding:10px">No jobs in review</div>'
         done_html = done.stdout.strip() or '<div style="color:#888;padding:10px">No completed jobs</div>'
-
         return HTML_TEMPLATES['/jobs'].format(**self.c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html), 'text/html'
 
     def handle_autollm(self):
         worktrees = aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees")
-
         running = []
         review = []
         done = []
-
         for w in worktrees:
-            if w[3] == 'running':
-                running.append((w[0], w[1], w[2], w[4], w[5]))
-            elif w[3] == 'review':
-                review.append((w[0], w[1], w[2], w[4], w[5], w[6]))
-            elif w[3] == 'done':
-                done.append((w[0], w[1]))
-
-        def format_running(w):
-            output_file = (Path.home() / ".aios" / f"autollm_output_{w[2]}.txt")
-            preview = (output_file.read_text()[-200:] if output_file.exists() else "Waiting for output...")
-            return f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{preview}</pre><a href="/autollm/output?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px">Full Output</a><a href="/terminal?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a></div>'
-        def format_review(w):
-            return f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br>Output: {(w[5] or "")[:50]}<br><form action="/autollm/accept" method="POST" style="display:inline"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form><form action="/autollm/vscode" method="POST" style="display:inline"><input type="hidden" name="path" value="{w[1]}"><button>VSCode</button></form></div>'
-        def format_done(w):
-            return f'<div class="worktree"><span class="status done">{w[0]}</span></div>'
-
-        running_html = "".join(list(map(format_running, running))) or '<div style="color:#888">No running worktrees</div>'
-        review_html = "".join(list(map(format_review, review))) or '<div style="color:#888">No worktrees in review</div>'
-        done_html = "".join(list(map(format_done, done))) or '<div style="color:#888">No completed worktrees</div>'
-
+            if w[3] == 'running': running.append((w[0], w[1], w[2], w[4], w[5]))
+            elif w[3] == 'review': review.append((w[0], w[1], w[2], w[4], w[5], w[6]))
+            elif w[3] == 'done': done.append((w[0], w[1]))
+        running_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{((Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").read_text()[-200:] if (Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").exists() else "Waiting for output...")}</pre><a href="/autollm/output?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px">Full Output</a><a href="/terminal?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a></div>', running))) or '<div style="color:#888">No running worktrees</div>'
+        review_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br>Output: {(w[5] or "")[:50]}<br><form action="/autollm/accept" method="POST" style="display:inline"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form><form action="/autollm/vscode" method="POST" style="display:inline"><input type="hidden" name="path" value="{w[1]}"><button>VSCode</button></form></div>', review))) or '<div style="color:#888">No worktrees in review</div>'
+        done_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status done">{w[0]}</span></div>', done))) or '<div style="color:#888">No completed worktrees</div>'
         return HTML_TEMPLATES['/autollm'].format(**self.c, running_worktrees=running_html, review_worktrees=review_html, done_worktrees=done_html), 'text/html'
 
     def handle_autollm_output(self):
         job_id = self.query.get('job_id', [''])[0]
         output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
         db_output = aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", (job_id,))
-
         output_content = output_file.read_text() * output_file.exists() or (db_output[0][0] or "No output yet") * bool(db_output) or "No output yet"
-
         return HTML_TEMPLATES['/autollm/output'].format(**self.c, output_content=output_content), 'text/html'
 
     def handle_terminal(self):
@@ -787,151 +724,59 @@ class Handler(BaseHTTPRequestHandler):
         terminal_content = (output_file.exists() and output_file.read_text()) or "Waiting for output..."
         return HTML_TEMPLATES['/terminal'].format(**self.c, terminal_content=terminal_content, job_id=job_id), 'text/html'
 
-
-    def post_job_run(self):
-        return subprocess.run("python3 services/jobs.py run_wiki", shell=True, timeout=5)
-
-    def post_job_accept(self):
-        return subprocess.run(f"python3 services/jobs.py accept {self.data.get('id', [''])[0]}", shell=True, timeout=5)
-
-    def post_job_redo(self):
-        return subprocess.run(f"python3 services/jobs.py redo {self.data.get('id', [''])[0]}", shell=True, timeout=5)
-
-    def post_run_cmd(self):
-        return subprocess.run(self.data.get('cmd', [''])[0], shell=True, capture_output=True, text=True, timeout=5)
-
-    def post_todo_add(self):
-        return subprocess.run(f"python3 programs/todo/todo.py add {self.data.get('task', [''])[0]}", shell=True, timeout=5)
-
-    def post_todo_done(self):
-        return subprocess.run(f"python3 programs/todo/todo.py done {self.data.get('id', [''])[0]}", shell=True, timeout=5)
-
-    def post_todo_clear(self):
-        return subprocess.run("python3 programs/todo/todo.py clear", shell=True, timeout=5)
-
-    def post_settings_theme(self):
-        return aios_db.write('settings', {**(aios_db.read('settings') or {}), 'theme': self.data.get('theme', ['dark'])[0]})
-
-    def post_settings_time(self):
-        return aios_db.write('settings', {**(aios_db.read('settings') or {}), 'time_format': self.data.get('format', ['12h'])[0]})
-
-    def post_autollm_run(self):
-        repo = self.data.get('repo', [''])[0]
-        branches = self.data.get('branches', ['1'])[0]
-        model = self.data.get('model', ['claude-3-5-sonnet-20241022'])[0]
-        task = self.data.get('task', [''])[0]
-        return subprocess.run(["python3", "programs/autollm/autollm.py", "run", repo, branches, model, task], timeout=5)
-
-    def post_autollm_accept(self):
-        job_id = self.data.get('job_id', [''])[0]
-        aios_db.execute("autollm", "UPDATE worktrees SET status='done' WHERE job_id=?", (int(job_id),))
-        return aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(job_id),))
-
-    def post_autollm_vscode(self):
-        path = self.data.get('path', [''])[0]
-        return subprocess.run(["code", path])
-
-    def post_autollm_clean(self):
-        return subprocess.run(["python3", "programs/autollm/autollm.py", "clean"], timeout=5)
-
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(length) or b''
         data = parse_qs(body.decode()) or {}
         self.data = data
-
-        post_handlers = {
-            '/job/run': self.post_job_run,
-            '/job/accept': self.post_job_accept,
-            '/job/redo': self.post_job_redo,
-            '/run': self.post_run_cmd,
-            '/todo/add': self.post_todo_add,
-            '/todo/done': self.post_todo_done,
-            '/todo/clear': self.post_todo_clear,
-            '/settings/theme': self.post_settings_theme,
-            '/settings/time': self.post_settings_time,
-            '/autollm/run': self.post_autollm_run,
-            '/autollm/accept': self.post_autollm_accept,
-            '/autollm/vscode': self.post_autollm_vscode,
-            '/autollm/clean': self.post_autollm_clean
-        }
-
+        post_handlers = {'/job/run': lambda: subprocess.run("python3 services/jobs.py run_wiki", shell=True, timeout=5), '/job/accept': lambda: subprocess.run(f"python3 services/jobs.py accept {self.data.get('id', [''])[0]}", shell=True, timeout=5), '/job/redo': lambda: subprocess.run(f"python3 services/jobs.py redo {self.data.get('id', [''])[0]}", shell=True, timeout=5), '/run': lambda: subprocess.run(self.data.get('cmd', [''])[0], shell=True, capture_output=True, text=True, timeout=5), '/todo/add': lambda: subprocess.run(f"python3 programs/todo/todo.py add {self.data.get('task', [''])[0]}", shell=True, timeout=5), '/todo/done': lambda: subprocess.run(f"python3 programs/todo/todo.py done {self.data.get('id', [''])[0]}", shell=True, timeout=5), '/todo/clear': lambda: subprocess.run("python3 programs/todo/todo.py clear", shell=True, timeout=5), '/settings/theme': lambda: aios_db.write('settings', {**(aios_db.read('settings') or {}), 'theme': self.data.get('theme', ['dark'])[0]}), '/settings/time': lambda: aios_db.write('settings', {**(aios_db.read('settings') or {}), 'time_format': self.data.get('format', ['12h'])[0]}), '/autollm/run': lambda: subprocess.run(["python3", "programs/autollm/autollm.py", "run", self.data.get('repo', [''])[0], self.data.get('branches', ['1'])[0], self.data.get('model', ['claude-3-5-sonnet-20241022'])[0], self.data.get('task', [''])[0]], timeout=5), '/autollm/accept': lambda: (aios_db.execute("autollm", "UPDATE worktrees SET status='done' WHERE job_id=?", (int(self.data.get('job_id', [''])[0]),)), aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(self.data.get('job_id', [''])[0]),))), '/autollm/vscode': lambda: subprocess.run(["code", self.data.get('path', [''])[0]]), '/autollm/clean': lambda: subprocess.run(["python3", "programs/autollm/autollm.py", "clean"], timeout=5)}
         handler = post_handlers.get(path, str)
         handler()
-
         self.send_response(303)
         self.send_header('Location', '/autollm' * ('autollm' in path) or '/settings' * ('settings' in path) or path.replace('/add', '').replace('/done', '').replace('/clear', ''))
         self.end_headers()
 
-def cmd_start():
-    aios_db.write("web_server", {"port": 8080, "pid": os.getpid()})
-    print(f"AIOS Control Center: http://localhost:8080")
-    HTTPServer(('', 8080), Handler).serve_forever()
+    def log_message(self, *args): pass
 
-def cmd_stop():
-    info = aios_db.read("web_server") or {}
-    pid = info.get("pid", 0)
-    list(map(os.kill, [pid] * bool(pid), [15] * bool(pid)))
-    list(map(print, ["No server running"] * (not bool(pid))))
+async def client_handler(ws):
+    master, slave = pty.openpty()
+    winsize = struct.pack('HHHH', 24, 80, 0, 0)
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
+    proc = await asyncio.create_subprocess_exec('bash', stdin=slave, stdout=slave, stderr=slave, preexec_fn=os.setsid)
+    os.close(slave)
+    os.set_blocking(master, False)
+    loop = asyncio.get_event_loop()
+    def read_output():
+        try:
+            data = os.read(master, 65536)
+            if data: asyncio.create_task(ws.send(data))
+        except (OSError, BlockingIOError): pass
+    loop.add_reader(master, read_output)
+    try:
+        async for msg in ws:
+            if isinstance(msg, bytes):
+                try:
+                    data = json.loads(msg.decode('utf-8'))
+                    if 'resize' in data:
+                        size = data['resize']
+                        winsize = struct.pack('HHHH', size['rows'], size['cols'], 0, 0)
+                        fcntl.ioctl(master, termios.TIOCSWINSZ, winsize)
+                        if 'term' in data: os.environ['TERM'] = data['term']
+                except: os.write(master, msg)
+    finally:
+        loop.remove_reader(master)
+        proc.terminate()
+        await proc.wait()
+        os.close(master)
 
-def cmd_status():
-    print(f"Server: {aios_db.read('web_server') or 'Not running'}")
+async def main():
+    Thread(target=lambda: HTTPServer(('', 8080), Handler).serve_forever(), daemon=True).start()
+    async with websockets.serve(client_handler, 'localhost', 8766):
+        await asyncio.Future()
 
-command = (sys.argv + ["start"])[1]
+if __name__ == '__main__': asyncio.run(main())
 
-{'start': cmd_start, 'stop': cmd_stop, 'status': cmd_status}.get(command, cmd_start)()
-
-services/sse.py:
-#!/usr/bin/env python3
-import sys
-sys.path.append('/home/seanpatten/projects/AIOS')
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import subprocess
-from pathlib import Path
-from core import aios_db
-
-class H(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/event-stream')
-        self.send_header('Cache-Control', 'no-cache')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-
-        page = self.headers.get('Referer', '').split('8080')[-1].split('?')[0]
-        job_id = self.path.split('job_id=')[-1].split('&')[0] * ('job_id=' in self.path) or ''
-
-        def render_autollm():
-            worktrees = aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees")
-            running = list(filter(lambda w: w[3] == 'running', worktrees))
-            review = list(filter(lambda w: w[3] == 'review', worktrees))
-            done = list(filter(lambda w: w[3] == 'done', worktrees))
-
-            def fmt_run(w):
-                f = Path.home() / ".aios" / f"autollm_output_{w[2]}.txt"
-                preview = (f.exists() and f.read_text()[-200:]) or "Waiting..."
-                return f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[5]}: {w[4][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{preview}</pre><a href="/terminal?job_id={w[2]}">Terminal</a></div>'
-
-            def fmt_rev(w):
-                return f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[5]}: {w[4][:30]}<br>Output: {(w[6] or "")[:50]}<br><form action="/autollm/accept" method="POST"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form></div>'
-
-            running_html = "".join(list(map(fmt_run, running))) or '<div style="color:#888">No running</div>'
-            review_html = "".join(list(map(fmt_rev, review))) or '<div style="color:#888">No review</div>'
-            done_html = str(len(done)) + " done" * bool(done) or '<div style="color:#888">No done</div>'
-
-            return f'<div class="grid"><div><h2>Running</h2><div>{running_html}</div></div><div><h2>Review</h2><div>{review_html}</div></div><div><h2>Done</h2><div>{done_html}</div></div></div>'
-
-        files = {'/terminal': [f'/home/seanpatten/.aios/autollm_output_{job_id}.txt'], '/autollm': [__file__[:-20] + 'data/aios.db']}.get(page, ['/tmp/dummy'])
-        content = render_autollm() * ('/autollm' in page) or ((Path(files[0]).read_text() * Path(files[0]).exists()) * ('/terminal' in page) or "Waiting...")
-
-        self.wfile.write(f'data: {content}\n\n'.encode())
-        self.wfile.flush()
-
-        proc = subprocess.Popen(['inotifywait', '-q', '-m', '-e', 'modify'] + files, stdout=subprocess.PIPE, text=True)
-        list(map(lambda _: (self.wfile.write(f'data: {render_autollm() * ("/autollm" in page) or ((Path(files[0]).read_text() * Path(files[0]).exists()) * ("/terminal" in page) or "Waiting...")}\n\n'.encode()), self.wfile.flush()), proc.stdout))
-
-HTTPServer(('', 3001), H).serve_forever()
 
 services/service.py:
 #!/usr/bin/env python3
