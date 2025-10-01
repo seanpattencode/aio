@@ -15,7 +15,7 @@ command = (sys.argv + ["start"])[1]
 
 def kill_existing():
     subprocess.run(["pkill", "-f", "core/aios_api.py"], stderr=subprocess.DEVNULL)
-    subprocess.run(["pkill", "-f", "services/web.py"], stderr=subprocess.DEVNULL)
+    subprocess.run(["pkill", "-f", "services/web/web.py"], stderr=subprocess.DEVNULL)
     aios_db.write("aios_pids", {})
 
 def start():
@@ -23,7 +23,7 @@ def start():
     kill_existing()
     aios_path.mkdir(exist_ok=True)
     api_proc = subprocess.Popen(["python3", "core/aios_api.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    web_proc = subprocess.Popen(["python3", "services/web.py", "start", str(start_time)])
+    web_proc = subprocess.Popen(["python3", "services/web/web.py", "start", str(start_time)])
     aios_db.write("aios_pids", {"api": api_proc.pid, "web": web_proc.pid})
     url = f"http://localhost:8080"
     elapsed = time.time() - start_time

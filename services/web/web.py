@@ -9,251 +9,16 @@ from datetime import datetime
 from pathlib import Path
 from threading import Thread
 
-HTML_TEMPLATES = {
-    '/': '''<!DOCTYPE html>
-<html>
-<head>
-<title>AIOS Control Center</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.container{{max-width:1200px;margin:0 auto}}
-.viewport{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 0}}
-.box{{background:{bg2};border-radius:10px;padding:15px;cursor:pointer;position:relative}}
-.box:hover{{opacity:0.9}}
-.box-title{{font-weight:bold;margin-bottom:10px;font-size:18px}}
-.box-content{{max-height:200px;overflow-y:auto}}
-.box-item{{padding:5px 0;border-bottom:1px solid {fg}33}}
-button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;margin:5px;border-radius:5px}}
-input{{background:{bg2};color:{fg};border:1px solid {fg};padding:12px;width:70%;margin:10px 0;border-radius:5px}}
-.run-box{{background:{bg2};border-radius:10px;padding:20px;margin:20px 0}}
-.run-button{{padding:12px 30px;font-size:16px}}
-.settings-btn{{position:fixed;top:20px;right:20px;padding:10px;background:{fg};color:{bg};border-radius:5px;cursor:pointer}}
-</style>
-</head>
-<body>
-<div class="settings-btn" onclick="location.href='/settings'">Settings</div>
-<div class="container">
-<h1>AIOS Control Center</h1>
-<div class="viewport">{vp}</div>
-<div class="run-box">
-<h2 style="margin-top:0">Run Command</h2>
-<form action="/run" method="POST">
-<input name="cmd" placeholder="python3 programs/todo/todo.py list">
-<button type="submit" class="run-button">Run</button>
-</form>
-</div>
-</div>
-</body>
-</html>''',
-
-    '/todo': '''<!DOCTYPE html>
-<html>
-<head>
-<title>Todo</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.task{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
-.done{{text-decoration:line-through;color:#666}}
-button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
-input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;margin:10px 0}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Todo Manager</h1>
-<form action="/todo/add" method="POST">
-<input name="task" placeholder="New task... (use @ for deadline, e.g., Buy milk @ 14:30)">
-<button type="submit">Add</button>
-</form>
-<div>{tasks}</div>
-<form action="/todo/clear" method="POST"><button>Clear Completed</button></form>
-</body>
-</html>''',
-
-    '/jobs': '''<!DOCTYPE html>
-<html>
-<head>
-<title>Jobs</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
-h2{{margin:25px 0 10px;font-size:16px;color:{fg}99}}
-.section{{margin-bottom:30px}}
-.job-item{{background:{bg2};padding:15px;margin:8px 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center}}
-.status{{margin:0 10px}}
-.status.running{{color:#fa0}}
-.output{{color:{fg}88;margin:0 15px;font-size:12px;flex:1}}
-.action-btn{{background:{fg};color:{bg};border:none;padding:8px 16px;cursor:pointer;border-radius:3px;font-size:12px;margin:0 5px}}
-.action-btn:hover{{opacity:0.8}}
-.new-job-btn{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;border-radius:5px;font-size:14px;margin:10px 0}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Jobs</h1>
-<form action="/job/run" method="POST" style="display:inline">
-<button type="submit" class="new-job-btn">Run Wikipedia Fetch</button>
-</form>
-
-<div class="section">
-<h2>RUNNING</h2>
-<div id="running">{running_jobs}</div>
-</div>
-
-<div class="section">
-<h2>REVIEW</h2>
-<div id="review">{review_jobs}</div>
-</div>
-
-<div class="section">
-<h2>DONE</h2>
-<div id="done">{done_jobs}</div>
-</div>
-</body>
-</html>''',
-
-    '/feed': '''<!DOCTYPE html>
-<html>
-<head>
-<title>Feed</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.feed-box{{background:{bg2};border-radius:10px;padding:15px;height:400px;overflow-y:auto;margin:20px 0}}
-button{{background:{fg};color:{bg};border:none;padding:5px 15px;cursor:pointer;margin:5px}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Feed</h1>
-<div class="feed-box">{feed_content}</div>
-</body>
-</html>''',
-
-    '/autollm': '''<!DOCTYPE html>
-<html>
-<head>
-<title>AutoLLM</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px;max-width:1200px;margin:0 auto}}
-.worktree{{background:{bg2};padding:15px;margin:10px 0;border-radius:5px}}
-.status{{font-weight:bold;color:#fa0}}
-.running{{color:#0f0}}
-.review{{color:#ff0}}
-.done{{color:#888}}
-button{{background:{fg};color:{bg};border:none;padding:8px 16px;cursor:pointer;border-radius:3px;margin:5px}}
-input{{background:{bg2};color:{fg};border:1px solid {fg};padding:8px;margin:5px;border-radius:3px}}
-.grid{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin:20px 0}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>AutoLLM Worktree Manager</h1>
-<form action="/autollm/run" method="POST">
-<input name="repo" placeholder="Repository path" value="/home/seanpatten/projects/testRepoPrivate">
-<input name="branches" placeholder="Number of branches" value="1" style="width:150px">
-<select name="model" style="padding:8px;margin:5px;border-radius:3px;background:{bg2};color:{fg};border:1px solid {fg}">
-<option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-<option value="claude-dangerous">Claude (--dangerously-skip-permissions)</option>
-<option value="gpt-4">GPT-4</option>
-<option value="gpt-5-codex">GPT-5 Codex</option>
-</select>
-<select name="preset" style="padding:8px;margin:5px;border-radius:3px;background:{bg2};color:{fg};border:1px solid {fg}" onchange="document.getElementsByName('task')[0].value=this.value">
-<option value="">Select preset...</option>
-<option value="Simplify and optimize this code">Simplify Code</option>
-<option value="Add comprehensive tests">Add Tests</option>
-<option value="Fix bugs and improve error handling">Fix Bugs</option>
-<option value="Add type hints and documentation">Add Docs</option>
-<option value="Refactor for better performance">Optimize Performance</option>
-</select>
-<input name="task" placeholder="Task description" style="width:400px">
-<button type="submit">Launch Worktrees</button>
-</form>
-<div id="c">
-<div class="grid">
-<div>
-<h2>Running</h2>
-<div>{running_worktrees}</div>
-</div>
-<div>
-<h2>Review</h2>
-<div>{review_worktrees}</div>
-</div>
-<div>
-<h2>Done</h2>
-<div>{done_worktrees}</div>
-</div>
-</div>
-</div>
-<form action="/autollm/clean" method="POST">
-<button>Clean Done Worktrees</button>
-</form>
-</body>
-</html>''',
-
-    '/autollm/output': '''<!DOCTYPE html>
-<html>
-<head>
-<title>AutoLLM Output</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.output-box{{background:{bg2};padding:20px;border-radius:5px;margin:20px 0}}
-pre{{white-space:pre-wrap;word-wrap:break-word}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/autollm" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Job Output</h1>
-<div class="output-box">
-<pre>{output_content}</pre>
-</div>
-</body>
-</html>''',
-
-    '/terminal': '''<!DOCTYPE html>
-<html>
-<head>
-<title>Terminal</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-#c{{background:#000;color:#0f0;padding:20px;border-radius:5px;height:500px;overflow-y:auto;white-space:pre-wrap}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/autollm" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Terminal Output</h1>
-<div id="c">{terminal_content}</div>
-</body>
-</html>''',
-
-    '/settings': '''<!DOCTYPE html>
-<html>
-<head>
-<title>Settings</title>
-<style>
-body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
-.setting{{background:{bg2};padding:15px;margin:10px 0;border-radius:10px}}
-button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px;border-radius:5px}}
-</style>
-</head>
-<body>
-<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
-<h1>Settings</h1>
-<div class="setting">
-<h3>Theme</h3>
-<form action="/settings/theme" method="POST">
-<button type="submit" name="theme" value="dark" {theme_dark_style}>Dark Mode</button>
-<button type="submit" name="theme" value="light" {theme_light_style}>Light Mode</button>
-</form>
-</div>
-<div class="setting">
-<h3>Time Format</h3>
-<form action="/settings/time" method="POST">
-<button type="submit" name="format" value="12h" {time_12h_style}>12-hour (AM/PM)</button>
-<button type="submit" name="format" value="24h" {time_24h_style}>24-hour</button>
-</form>
-</div>
-</body>
-</html>'''
-}
+TEMPLATE_DIR = Path(__file__).parent / 'templates'
+# Ram cache, no disk
+TEMPLATE_INDEX = (TEMPLATE_DIR / 'index.html').read_text()
+TEMPLATE_TODO = (TEMPLATE_DIR / 'todo.html').read_text()
+TEMPLATE_JOBS = (TEMPLATE_DIR / 'jobs.html').read_text()
+TEMPLATE_FEED = (TEMPLATE_DIR / 'feed.html').read_text()
+TEMPLATE_AUTOLLM = (TEMPLATE_DIR / 'autollm.html').read_text()
+TEMPLATE_AUTOLLM_OUTPUT = (TEMPLATE_DIR / 'autollm_output.html').read_text()
+TEMPLATE_TERMINAL = (TEMPLATE_DIR / 'terminal.html').read_text()
+TEMPLATE_SETTINGS = (TEMPLATE_DIR / 'settings.html').read_text()
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -273,7 +38,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content.encode())
 
     def handle_default(self):
-        return (HTML_TEMPLATES.get('/', HTML_TEMPLATES['/']).format(**self.c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
+        return (TEMPLATE_INDEX.format(**self.c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
 
     def handle_api_jobs(self):
         return (json.dumps(list(map(lambda j: {"id": j[0], "name": j[1], "status": j[2], "output": j[3]}, aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")))), 'application/json')
@@ -291,13 +56,13 @@ class Handler(BaseHTTPRequestHandler):
             boxes.append(('AutoLLM', ['Manage worktrees']))
         except: pass
         vp = "".join(list(map(lambda entry: f'''<div class="box" onclick="location.href='/{entry[0].lower()}'"><div class="box-title">{entry[0]}</div><div class="box-content">{"".join(list(map(lambda i: f'<div class="box-item">{i}</div>', entry[1]))) or f'<div style="color:#888">No {entry[0].lower()}</div>'}</div></div>''', boxes)))
-        return HTML_TEMPLATES['/'].format(**self.c, vp=vp), 'text/html'
+        return TEMPLATE_INDEX.format(**self.c, vp=vp), 'text/html'
 
     def handle_todo(self):
         result = subprocess.run(["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"], capture_output=True, text=True)
         tasks = result.stdout.strip().split('\n') or []
         tasks_html = "".join(list(map(lambda it: f'<div class="task {"done" * ("[x]" in it[1])}">{it[1]} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{it[1].split(".")[0] or str(it[0]+1)}"><button>Done</button></form></div>', enumerate(tasks))))
-        return HTML_TEMPLATES['/todo'].format(**self.c, tasks=tasks_html or '<div style="color:#888">No tasks yet</div>'), 'text/html'
+        return TEMPLATE_TODO.format(**self.c, tasks=tasks_html or '<div style="color:#888">No tasks yet</div>'), 'text/html'
 
     def handle_feed(self):
         messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100")
@@ -309,14 +74,14 @@ class Handler(BaseHTTPRequestHandler):
             feed_html.append(date_header + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime({"12h": "%I:%M %p"}.get(time_format, "%H:%M"))} - {m[0]}</div>')
             self._dates.append(datetime.fromisoformat(m[1]).date())
         list(map(process_message, messages))
-        return HTML_TEMPLATES['/feed'].format(**self.c, feed_content="".join(feed_html) or "<div style='color:#888'>No messages yet</div>"), 'text/html'
+        return TEMPLATE_FEED.format(**self.c, feed_content="".join(feed_html) or "<div style='color:#888'>No messages yet</div>"), 'text/html'
 
     def handle_settings(self):
         theme_dark_style = {'dark': 'style="font-weight:bold"'}.get(self.s.get('theme', 'dark'), '')
         theme_light_style = {'light': 'style="font-weight:bold"'}.get(self.s.get('theme'), '')
         time_12h_style = {'12h': 'style="font-weight:bold"'}.get(self.s.get('time_format', '12h'), '')
         time_24h_style = {'24h': 'style="font-weight:bold"'}.get(self.s.get('time_format'), '')
-        return HTML_TEMPLATES['/settings'].format(**self.c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style), 'text/html'
+        return TEMPLATE_SETTINGS.format(**self.c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style), 'text/html'
 
     def handle_jobs(self):
         running = subprocess.run("python3 services/jobs.py running", shell=True, capture_output=True, text=True, timeout=5)
@@ -325,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
         running_html = running.stdout.strip() or '<div style="color:#888;padding:10px">No running jobs</div>'
         review_html = review.stdout.strip() or '<div style="color:#888;padding:10px">No jobs in review</div>'
         done_html = done.stdout.strip() or '<div style="color:#888;padding:10px">No completed jobs</div>'
-        return HTML_TEMPLATES['/jobs'].format(**self.c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html), 'text/html'
+        return TEMPLATE_JOBS.format(**self.c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html), 'text/html'
 
     def handle_autollm(self):
         worktrees = aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees")
@@ -339,20 +104,20 @@ class Handler(BaseHTTPRequestHandler):
         running_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{((Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").read_text()[-200:] if (Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").exists() else "Waiting for output...")}</pre><a href="/autollm/output?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px">Full Output</a><a href="/terminal?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a></div>', running))) or '<div style="color:#888">No running worktrees</div>'
         review_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br>Output: {(w[5] or "")[:50]}<br><form action="/autollm/accept" method="POST" style="display:inline"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form><form action="/autollm/vscode" method="POST" style="display:inline"><input type="hidden" name="path" value="{w[1]}"><button>VSCode</button></form></div>', review))) or '<div style="color:#888">No worktrees in review</div>'
         done_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status done">{w[0]}</span></div>', done))) or '<div style="color:#888">No completed worktrees</div>'
-        return HTML_TEMPLATES['/autollm'].format(**self.c, running_worktrees=running_html, review_worktrees=review_html, done_worktrees=done_html), 'text/html'
+        return TEMPLATE_AUTOLLM.format(**self.c, running_worktrees=running_html, review_worktrees=review_html, done_worktrees=done_html), 'text/html'
 
     def handle_autollm_output(self):
         job_id = self.query.get('job_id', [''])[0]
         output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
         db_output = aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", (job_id,))
         output_content = output_file.read_text() * output_file.exists() or (db_output[0][0] or "No output yet") * bool(db_output) or "No output yet"
-        return HTML_TEMPLATES['/autollm/output'].format(**self.c, output_content=output_content), 'text/html'
+        return TEMPLATE_AUTOLLM_OUTPUT.format(**self.c, output_content=output_content), 'text/html'
 
     def handle_terminal(self):
         job_id = self.query.get('job_id', [''])[0]
         output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
         terminal_content = (output_file.exists() and output_file.read_text()) or "Waiting for output..."
-        return HTML_TEMPLATES['/terminal'].format(**self.c, terminal_content=terminal_content, job_id=job_id), 'text/html'
+        return TEMPLATE_TERMINAL.format(**self.c, terminal_content=terminal_content, job_id=job_id), 'text/html'
 
     def do_POST(self):
         path = urlparse(self.path).path

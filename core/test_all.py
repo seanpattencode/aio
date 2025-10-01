@@ -83,7 +83,7 @@ def test_builder():
     return run_test('builder', 'component1')
 
 def test_web():
-    result = subprocess.run(['python3', 'services/web.py', 'status'], capture_output=True, text=True, timeout=1)
+    result = subprocess.run(['python3', 'services/web/web.py', 'status'], capture_output=True, text=True, timeout=1)
     return result.returncode == 0
 
 def test_processes():

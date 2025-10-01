@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Settings</title>
+<style>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
+.setting{{background:{bg2};padding:15px;margin:10px 0;border-radius:10px}}
+button{{background:{fg};color:{bg};border:none;padding:10px 20px;cursor:pointer;margin:5px;border-radius:5px}}
+</style>
+</head>
+<body>
+<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
+<h1>Settings</h1>
+<div class="setting">
+<h3>Theme</h3>
+<form action="/settings/theme" method="POST">
+<button type="submit" name="theme" value="dark" {theme_dark_style}>Dark Mode</button>
+<button type="submit" name="theme" value="light" {theme_light_style}>Light Mode</button>
+</form>
+</div>
+<div class="setting">
+<h3>Time Format</h3>
+<form action="/settings/time" method="POST">
+<button type="submit" name="format" value="12h" {time_12h_style}>12-hour (AM/PM)</button>
+<button type="submit" name="format" value="24h" {time_24h_style}>24-hour</button>
+</form>
+</div>
+</body>
+</html>

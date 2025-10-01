@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Todo</title>
+<style>
+body{{font-family:monospace;background:{bg};color:{fg};padding:20px}}
+.task{{background:{bg2};padding:10px;margin:5px 0;border-radius:5px}}
+.done{{text-decoration:line-through;color:#666}}
+button{{background:{fg};color:{bg};border:none;padding:5px 10px;cursor:pointer;margin:2px}}
+input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:50%;margin:10px 0}}
+</style>
+</head>
+<body>
+<div style="margin-bottom:20px"><a href="/" style="padding:10px;background:{fg};color:{bg};border-radius:5px;text-decoration:none">Back</a></div>
+<h1>Todo Manager</h1>
+<form action="/todo/add" method="POST">
+<input name="task" placeholder="New task... (use @ for deadline, e.g., Buy milk @ 14:30)">
+<button type="submit">Add</button>
+</form>
+<div>{tasks}</div>
+<form action="/todo/clear" method="POST"><button>Clear Completed</button></form>
+</body>
+</html>
