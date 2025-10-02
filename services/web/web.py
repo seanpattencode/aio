@@ -332,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
 
             def restart_aios():
                 __import__('time').sleep(0.5)
-                subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_start.py"])
+                subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/aios_start.py"])
                 __import__('time').sleep(1)
                 os._exit(0)
 

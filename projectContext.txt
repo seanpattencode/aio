@@ -1,4 +1,4 @@
-Generated: 2025-10-02 17:18:10
+Generated: 2025-10-02 19:26:17
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -40,44 +40,30 @@ commands = {
     )[-1],
     "status": lambda: print(f"PIDs: {aios_db.read('aios_pids')}")
 }
-commands.get((sys.argv + ["start"])[1], commands["start"])()
+commands[(sys.argv + ["start"])[1]]()
 
 core/aios_runner.py:
 #!/usr/bin/env python3
-import subprocess, sys, signal, os, operator
+import subprocess, sys, signal, os
 
 cmd_str = ' '.join(sys.argv[1:]).lower()
 
-# Determine timeout based on command
-long_running_cmds = ['web.py', 'aios_api.py', 'scheduler.py', 'poll',
-                     'watch', 'serve', 'autollm', 'claude', 'codex']
-medium_cmds = ['wiki_fetcher', 'scraper', 'gdrive',
-               'curl', 'wget', 'git', 'npm', 'pip']
+timeout_map = {
+    'web.py': 999999, 'aios_api.py': 999999, 'scheduler.py': 999999,
+    'poll': 999999, 'watch': 999999, 'serve': 999999,
+    'autollm': 999999, 'claude': 999999, 'codex': 999999,
+    'wiki_fetcher': 5.0, 'scraper': 5.0, 'gdrive': 5.0,
+    'curl': 5.0, 'wget': 5.0, 'git': 5.0, 'npm': 5.0, 'pip': 5.0
+}
 
-# Check for long running commands (essentially infinite timeout)
-timeout_values = []
-for p in long_running_cmds:
-    if cmd_str.find(p) >= 0:
-        timeout_values.append(999999)
+matches = [timeout_map.get(p, 0) * (p in cmd_str) for p in timeout_map.keys()]
+timeout = float(os.getenv('AIOS_TIMEOUT', str(max(matches + [0.1]))))
 
-# Check for medium timeout commands
-for p in medium_cmds:
-    if cmd_str.find(p) >= 0:
-        timeout_values.append(5.0)
-
-# Default short timeout
-timeout_values.append(0.1)
-
-timeout = float(os.getenv('AIOS_TIMEOUT', max(timeout_values)))
-
-# Set timeout signal handler
 signal.signal(signal.SIGALRM, lambda *_: sys.exit(1))
 signal.setitimer(signal.ITIMER_REAL, timeout)
 
-# Run command
 result = subprocess.run(sys.argv[1:], capture_output=True, text=True)
 
-# Clear alarm and output results
 signal.alarm(0)
 sys.stdout.write(result.stdout)
 sys.stderr.write(result.stderr)
@@ -166,8 +152,7 @@ async def status():
     aios_db.write("schedule", {})
     return {"services": aios_db.read("services"), "tasks": aios_db.read("tasks"), "schedule": aios_db.read("schedule")}
 
-# Get port from command line argument or default to 8000
-api_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+api_port = int((sys.argv + ["8000"])[1])
 uvicorn.run(app, host="0.0.0.0", port=api_port)
 
 services/backup.py:
@@ -189,41 +174,19 @@ import sys
 [sys.path.append(p) for p in ["/home/seanpatten/projects/AIOS/core", "/home/seanpatten/projects/AIOS"]]
 import aios_db
 
-# Initialize services
 aios_db.write("services", {})
-
-# Parse arguments
 s = aios_db.read("services")
 c = (sys.argv + ["list"])[1]
-n = (sys.argv + ["", None])[2]
+n = (sys.argv + ["", ""])[2]
 
-# Define commands
-def list_services():
-    return list(map(print, [f"{k}: {v.get('status', 'unknown')}" for k, v in s.items()]))
-
-def start_service():
-    updated = {**s, n: {**s.get(n, {}), "status": "running"}}
-    return aios_db.write("services", updated)
-
-def stop_service():
-    updated = {**s, n: {**s.get(n, {}), "status": "stopped"}}
-    return aios_db.write("services", updated)
-
-def get_status():
-    if n == None:
-        return print("specify service")
-    return print(s.get(n, {}).get("status", "unknown"))
-
-# Execute command
 commands = {
-    "list": list_services,
-    "start": start_service,
-    "stop": stop_service,
-    "status": get_status
+    "list": lambda: list(map(print, [f"{k}: {v.get('status', 'unknown')}" for k, v in s.items()])),
+    "start": lambda: aios_db.write("services", {**s, n: {**s.get(n, {}), "status": "running"}}),
+    "stop": lambda: aios_db.write("services", {**s, n: {**s.get(n, {}), "status": "stopped"}}),
+    "status": lambda: print(s.get(n, {}).get("status", "unknown") or "specify service")
 }
 
-handler = commands.get(c, list_services)
-handler()
+commands[c]()
 
 services/scraper.py:
 #!/usr/bin/env python3
@@ -244,11 +207,11 @@ def generate():
     root = Path(__file__).parent.parent
     output = Path(root / "projectContext.txt")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    files = [f for f in root.rglob("*.py")]
+    files = list(root.rglob("*.py"))
     readme = root / "README.md"
     content = f"Generated: {timestamp}\n\n"
     content += "\n".join([f"{f.relative_to(root)}:\n{f.read_text()}\n" for f in files])
-    content += {True: "", False: f"\nREADME.md:\n{readme.read_text()}\n"}[readme.exists()]
+    content += (lambda r: f"\nREADME.md:\n{r.read_text()}\n" * r.exists())(readme)
     output.write_text(content)
     return str(output)
 
@@ -257,13 +220,13 @@ services/jobs.py:
 import sys, subprocess
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 import aios_db
-c, jid, j = (sys.argv + ["list"])[1], (sys.argv + ["", None])[2], aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")
-pj = lambda x: print(f"{x[0]}: {x[1]} - {x[2]} - {({True: (x[3] or 'No output')[:50], False: 'No output'}[x[3] != None])}...")
+c, jid, j = (sys.argv + ["list"])[1], (sys.argv + ["", "0"])[2], aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")
+pj = lambda x: print(f"{x[0]}: {x[1]} - {x[2]} - {((x[3] or 'No output')[:50]) * (x[3] != None) or 'No output'}...")
 pr = lambda x: print(f'<div class="job-item">{x[1]} <span class="status running">Running...</span></div>')
-prv = lambda x: [print(f'<div class="job-item">{x[1]} <span class="output">{({True: (x[3] or "")[:50] + "...", False: ""}[x[3] != None])}</span>'), print(f'<form action="/job/accept" method="POST" style="display:inline"><input type="hidden" name="id" value="{x[0]}"><button class="action-btn">Accept</button></form>'), print(f'<form action="/job/redo" method="POST" style="display:inline"><input type="hidden" name="id" value="{x[0]}"><button class="action-btn">Redo</button></form></div>')]
-pd = lambda x: print(f'<div class="job-item">{x[1]} <span class="output">{({True: (x[3] or "")[:50] + "...", False: ""}[x[3] != None])}</span></div>')
+prv = lambda x: [print(f'<div class="job-item">{x[1]} <span class="output">{((x[3] or "")[:50] + "...") * (x[3] != None)}</span>'), print(f'<form action="/job/accept" method="POST" style="display:inline"><input type="hidden" name="id" value="{x[0]}"><button class="action-btn">Accept</button></form>'), print(f'<form action="/job/redo" method="POST" style="display:inline"><input type="hidden" name="id" value="{x[0]}"><button class="action-btn">Redo</button></form></div>')]
+pd = lambda x: print(f'<div class="job-item">{x[1]} <span class="output">{((x[3] or "")[:50] + "...") * (x[3] != None)}</span></div>')
 print_summary = lambda: (lambda r, rv, d, s: (list(map(s.extend, [[f"RUN {x[1]}" for x in r[:2]], [f"? {x[1]}" for x in rv[:1]], [f"DONE {x[1]}" for x in d[:1]]])), list(map(print, s[:4]))))((list(filter(lambda x: x[2] == "running", j))), (list(filter(lambda x: x[2] == "review", j))), (list(filter(lambda x: x[2] == "done", j))[:5]), [])[-1]
-{"summary": print_summary, "running": lambda: list(map(pr, filter(lambda x: x[2] == "running", j[:10]))), "review": lambda: list(map(prv, filter(lambda x: x[2] == "review", j[:10]))), "done": lambda: list(map(pd, filter(lambda x: x[2] == "done", j[:50]))), "run_wiki": lambda: (aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')"), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0])]))[-1], "accept": lambda: {True: None, False: aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(jid),))}[jid == None], "redo": lambda: {True: None, False: (aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (int(jid),)), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(jid)]))}[jid == None], "list": lambda: list(map(pj, j[:20]))}.get(c, lambda: list(map(pj, j[:20])))()
+{"summary": print_summary, "running": lambda: list(map(pr, filter(lambda x: x[2] == "running", j[:10]))), "review": lambda: list(map(prv, filter(lambda x: x[2] == "review", j[:10]))), "done": lambda: list(map(pd, filter(lambda x: x[2] == "done", j[:50]))), "run_wiki": lambda: (aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')"), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0])]))[-1], "accept": lambda: aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(jid),)) or None, "redo": lambda: (aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (int(jid),)), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(jid)]))[-1] or None, "list": lambda: list(map(pj, j[:20]))}[c]()
 
 services/processes.py:
 #!/usr/bin/env python3
@@ -272,85 +235,32 @@ import sys, subprocess, json
 import aios_db
 from pathlib import Path
 
-# Parse arguments
 c = (sys.argv + ["json"])[1]
-n = (sys.argv + ["", None])[2]
+n = (sys.argv + ["", ""])[2]
 
-# Initialize database entries
 [aios_db.write(k, v) for k, v in [("schedule", {}), ("aios_pids", {})]]
 
-def get_all_processes():
-    """Get all process information"""
-    schedule = aios_db.read("schedule")
-    pids = aios_db.read("aios_pids")
-    aios_path = Path('/home/seanpatten/projects/AIOS')
-
-    # Build scheduled tasks
-    daily_tasks = [{"path": cmd, "type": "daily", "time": time, "status": "scheduled"}
-                   for time, cmd in schedule.get("daily", {}).items()]
-
-    hourly_tasks = [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"}
-                    for m, cmd in schedule.get("hourly", {}).items()]
-
-    scheduled = sorted(daily_tasks + hourly_tasks, key=lambda x: x["time"])
-
-    # Build ongoing processes
-    ongoing = [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"}
-               for k, v in pids.items()]
-
-    # Build core files list
-    py_files = aios_path.rglob('*.py')
-    core = []
-    for f in py_files:
-        if 'archive' not in f.parts and '__pycache__' not in f.parts:
-            core.append({
-                "path": str(f.relative_to(aios_path)),
-                "type": "file",
-                "status": "available"
-            })
-
-    return {
-        "scheduled": scheduled,
-        "ongoing": ongoing,
-        "core": core
-    }
-
-def print_process(p):
-    """Print a single process"""
-    print(f"{p['path']}: {p['status']}")
-
-def cmd_json():
-    """Output JSON format"""
-    print(json.dumps(get_all_processes()))
-
-def cmd_list():
-    """List all processes"""
-    ap = get_all_processes()
-    list(map(print_process, ap.get("scheduled", [])))
-    list(map(print_process, ap.get("ongoing", [])))
-    list(map(print_process, ap.get("core", [])))
-
-def cmd_start():
-    """Start a process"""
-    if n is not None:
-        subprocess.Popen(['python3', n])
-
-def cmd_stop():
-    """Stop a process"""
-    if n is not None:
-        subprocess.run(['pkill', '-f', n], timeout=5)
-
-# Command dispatch
-commands = {
-    "json": cmd_json,
-    "list": cmd_list,
-    "start": cmd_start,
-    "stop": cmd_stop
+get_procs = lambda: {
+    "scheduled": sorted(
+        [{"path": cmd, "type": "daily", "time": time, "status": "scheduled"} for time, cmd in aios_db.read("schedule").get("daily", {}).items()] +
+        [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"} for m, cmd in aios_db.read("schedule").get("hourly", {}).items()],
+        key=lambda x: x["time"]
+    ),
+    "ongoing": [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"} for k, v in aios_db.read("aios_pids").items()],
+    "core": [{"path": str(f.relative_to(Path('/home/seanpatten/projects/AIOS'))), "type": "file", "status": "available"}
+             for f in list(filter(lambda f: 'archive' not in f.parts and '__pycache__' not in f.parts, Path('/home/seanpatten/projects/AIOS').rglob('*.py')))]
 }
 
-# Execute command (default to json)
-handler = commands.get(c, cmd_json)
-handler()
+print_proc = lambda p: print(f"{p['path']}: {p['status']}")
+
+commands = {
+    "json": lambda: print(json.dumps(get_procs())),
+    "list": lambda: (list(map(print_proc, get_procs()["scheduled"])), list(map(print_proc, get_procs()["ongoing"])), list(map(print_proc, get_procs()["core"])))[0],
+    "start": lambda: subprocess.Popen(['python3', n]) or None,
+    "stop": lambda: subprocess.run(['pkill', '-f', n], timeout=5) or None
+}
+
+commands[c]()
 
 services/feed.py:
 #!/usr/bin/env python3
@@ -359,71 +269,18 @@ import sys
 import aios_db
 from datetime import datetime
 
-# Get command
 c = (sys.argv + ["list"])[1]
 
-# Message formatting functions
-def print_message(r):
-    """Print message with standard formatting"""
-    is_today = datetime.fromisoformat(r[2]).date() == datetime.now().date()
-    time_part = r[2].split('T')[1][:5]
+print_msg = lambda r: print({True: f"{r[2].split('T')[1][:5]} {r[1]}", False: f"{r[2].split('T')[0]} {r[2].split('T')[1][:5]} {r[1]}"}[datetime.fromisoformat(r[2]).date() == datetime.now().date()])
 
-    if is_today:
-        print(f"{time_part} {r[1]}")
-    else:
-        date_part = r[2].split('T')[0]
-        print(f"{date_part} {time_part} {r[1]}")
-
-def print_message_with_format(r, time_format):
-    """Print message with custom time format"""
-    dt = datetime.fromisoformat(r[2])
-    is_today = dt.date() == datetime.now().date()
-    time_str = dt.strftime(time_format)
-
-    if is_today:
-        print(f"{time_str} {r[1]}")
-    else:
-        date_part = r[2].split('T')[0]
-        print(f"{date_part} {time_str} {r[1]}")
-
-# Command functions
-def add_message():
-    content = " ".join(sys.argv[2:])
-    timestamp = datetime.now().isoformat()
-    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)",
-                   (content, timestamp, "manual"))
-
-def list_messages():
-    messages = aios_db.query("feed",
-                            "SELECT id, content, timestamp, source FROM messages "
-                            "ORDER BY timestamp DESC LIMIT 50")
-    list(map(print_message, messages))
-
-def view_messages():
-    aios_db.write('settings', {})
-    settings = aios_db.read('settings')
-    is_12h = settings.get('time_format', '12h') == '12h'
-    time_format = '%I:%M %p' if is_12h else '%H:%M'
-
-    messages = aios_db.query("feed",
-                            "SELECT id, content, timestamp, source FROM messages "
-                            "ORDER BY timestamp DESC LIMIT 50")
-    list(map(lambda r: print_message_with_format(r, time_format), messages))
-
-def clear_old_messages():
-    aios_db.execute("feed", "DELETE FROM messages WHERE timestamp < datetime('now', '-7 days')")
-
-# Command dispatch
 commands = {
-    "add": add_message,
-    "list": list_messages,
-    "view": view_messages,
-    "clear": clear_old_messages
+    "add": lambda: aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (" ".join(sys.argv[2:]), datetime.now().isoformat(), "manual")),
+    "list": lambda: list(map(print_msg, aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50"))),
+    "view": lambda: list(map(print_msg, aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50"))),
+    "clear": lambda: aios_db.execute("feed", "DELETE FROM messages WHERE timestamp < datetime('now', '-7 days')")
 }
 
-# Execute command (default to list)
-handler = commands.get(c, list_messages)
-handler()
+commands[c]()
 
 programs/job_status.py:
 #!/usr/bin/env python3
@@ -610,17 +467,17 @@ from datetime import datetime
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
-command, get_tasks = (sys.argv + ["list"])[1], lambda: aios_db.read("tasks")
+command, get_tasks = (sys.argv + ["list"])[1], lambda: aios_db.read("tasks") or []
 tasks = get_tasks()
 commands = {
     "add": lambda: (aios_db.write("tasks", get_tasks() + [f"[ ] {datetime.now():%Y-%m-%d %H:%M} {' '.join(sys.argv[2:]).split('@')[0].strip()}"]),
                    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Task: {' '.join(sys.argv[2:]).split('@')[0].strip()}", datetime.now().isoformat(), "todo"))),
     "done": lambda: (lambda ts, tid, t: (aios_db.write("tasks", ts[:tid] + [t.replace("[ ]", "[x]")] + ts[tid+1:]),
-                                          aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Completed: {' '.join(t.split()[3:])}", datetime.now().isoformat(), "todo"))))(get_tasks(), int(sys.argv[2])-1, get_tasks()[int(sys.argv[2])-1]),
+                                          aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Completed: {' '.join(t.split()[3:])}", datetime.now().isoformat(), "todo"))))(get_tasks(), int((sys.argv + ["0", "1"])[2])-1, get_tasks()[int((sys.argv + ["0", "1"])[2])-1]),
     "list": lambda: list(map(lambda x: print(f"{x[0]+1}. {x[1]}"), enumerate(tasks))),
-    "clear": lambda: aios_db.write("tasks", [t for t in tasks if not t.startswith("[x]")])
+    "clear": lambda: aios_db.write("tasks", list(filter(lambda t: t.startswith("[ ]"), tasks)))
 }
-commands.get(command, commands["list"])()
+commands[command]()
 
 programs/autollm/view_output.py:
 #!/usr/bin/env python3
@@ -682,17 +539,17 @@ create_and_launch = lambda repo, branch, model, task: (
                     (repo, branch, str(Path(repo).parent / f"{Path(repo).name}-{branch}"), aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0], model, task)),
     subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_runner.py", "python3", "/home/seanpatten/projects/AIOS/programs/autollm/capture_output.py",
                      str(aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0]),
-                     "claude-dangerous" if model == "claude-dangerous" else "claude" if model.startswith("claude") else "codex", model, task],
+                     {"claude-dangerous": "claude-dangerous"}.get(model, {True: "claude", False: "codex"}[model.startswith("claude")]), model, task],
                     cwd=str(Path(repo).parent / f"{Path(repo).name}-{branch}"), env={**subprocess.os.environ, "AIOS_TIMEOUT": "999999"})
 )
 commands = {
     "run": lambda: list(map(lambda i: create_and_launch((sys.argv + ["", "/home/seanpatten/projects/testRepoPrivate"])[2], f"autollm-{Path((sys.argv + ['', '/home/seanpatten/projects/testRepoPrivate'])[2]).name}-{i}", (sys.argv + ["", "", "", "claude-3-5-sonnet-20241022"])[4], " ".join(sys.argv[5:]) or "Improve code"), range(int((sys.argv + ["", "", "1"])[3])))),
     "status": lambda: list(map(lambda w: print(f"{w[0]}: {w[1]}"), aios_db.query("autollm", "SELECT branch, status FROM worktrees"))),
     "clean": lambda: (list(map(lambda w: subprocess.run(["git", "worktree", "remove", w[2]], cwd=w[0], capture_output=True, timeout=5), aios_db.query("autollm", "SELECT repo, branch, path FROM worktrees WHERE status='done'"))), aios_db.execute("autollm", "DELETE FROM worktrees WHERE status='done'")),
-    "output": lambda: print((lambda r: (r[0][0] or "") if r else "")(aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", ((sys.argv + ["", ""])[2],)))),
+    "output": lambda: print((lambda r: r and r[0][0] or "")(aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", ((sys.argv + ["", ""])[2],)))),
     "accept": lambda: (aios_db.execute("autollm", "UPDATE worktrees SET status='done' WHERE job_id=?", ((sys.argv + ["", ""])[2],)), aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", ((sys.argv + ["", ""])[2],)))
 }
-commands.get(command, commands["run"])()
+commands[command]()
 
 programs/autollm/reset.py:
 #!/usr/bin/env python3
@@ -1389,7 +1246,7 @@ class Handler(BaseHTTPRequestHandler):
 
             def restart_aios():
                 __import__('time').sleep(0.5)
-                subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_start.py"])
+                subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/aios_start.py"])
                 __import__('time').sleep(1)
                 os._exit(0)
 
@@ -1538,3 +1395,9 @@ async def main():
             await asyncio.Future()
 
 asyncio.run(main())
+
+README.md:
+aios start - launch web
+aios stop - shutdown system
+aios status - show processes
+aios <cmd> - run any command

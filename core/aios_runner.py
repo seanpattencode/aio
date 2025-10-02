@@ -1,38 +1,24 @@
 #!/usr/bin/env python3
-import subprocess, sys, signal, os, operator
+import subprocess, sys, signal, os
 
 cmd_str = ' '.join(sys.argv[1:]).lower()
 
-# Determine timeout based on command
-long_running_cmds = ['web.py', 'aios_api.py', 'scheduler.py', 'poll',
-                     'watch', 'serve', 'autollm', 'claude', 'codex']
-medium_cmds = ['wiki_fetcher', 'scraper', 'gdrive',
-               'curl', 'wget', 'git', 'npm', 'pip']
+timeout_map = {
+    'web.py': 999999, 'aios_api.py': 999999, 'scheduler.py': 999999,
+    'poll': 999999, 'watch': 999999, 'serve': 999999,
+    'autollm': 999999, 'claude': 999999, 'codex': 999999,
+    'wiki_fetcher': 5.0, 'scraper': 5.0, 'gdrive': 5.0,
+    'curl': 5.0, 'wget': 5.0, 'git': 5.0, 'npm': 5.0, 'pip': 5.0
+}
 
-# Check for long running commands (essentially infinite timeout)
-timeout_values = []
-for p in long_running_cmds:
-    if cmd_str.find(p) >= 0:
-        timeout_values.append(999999)
+matches = [timeout_map.get(p, 0) * (p in cmd_str) for p in timeout_map.keys()]
+timeout = float(os.getenv('AIOS_TIMEOUT', str(max(matches + [0.1]))))
 
-# Check for medium timeout commands
-for p in medium_cmds:
-    if cmd_str.find(p) >= 0:
-        timeout_values.append(5.0)
-
-# Default short timeout
-timeout_values.append(0.1)
-
-timeout = float(os.getenv('AIOS_TIMEOUT', max(timeout_values)))
-
-# Set timeout signal handler
 signal.signal(signal.SIGALRM, lambda *_: sys.exit(1))
 signal.setitimer(signal.ITIMER_REAL, timeout)
 
-# Run command
 result = subprocess.run(sys.argv[1:], capture_output=True, text=True)
 
-# Clear alarm and output results
 signal.alarm(0)
 sys.stdout.write(result.stdout)
 sys.stderr.write(result.stderr)

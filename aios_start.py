@@ -37,4 +37,4 @@ commands = {
     )[-1],
     "status": lambda: print(f"PIDs: {aios_db.read('aios_pids')}")
 }
-commands.get((sys.argv + ["start"])[1], commands["start"])()
+commands[(sys.argv + ["start"])[1]]()
