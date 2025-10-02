@@ -11,6 +11,17 @@ screenshot_dir = Path(__file__).parent / "screenshots"
 screenshot_dir.mkdir(exist_ok=True)
 
 async def test_all():
+    print("="*70)
+    print(" ⚠️  MANUAL INSPECTION REQUIRED")
+    print("="*70)
+    print(" This test captures screenshots but DOES NOT verify correctness.")
+    print(" A human or LLM must manually inspect each screenshot to confirm:")
+    print("   - UI elements are rendered correctly")
+    print("   - No visual bugs or layout issues")
+    print("   - All expected components are visible")
+    print("="*70)
+    print()
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(viewport={'width': 1280, 'height': 720})
@@ -37,5 +48,8 @@ async def test_all():
 
         await browser.close()
         print(f"\nSaved {sum(results)}/{len(pages)} screenshots to {screenshot_dir}")
+        print("\n" + "="*70)
+        print(" ⚠️  IMPORTANT: Manually inspect all screenshots to verify correctness")
+        print("="*70)
 
 asyncio.run(test_all())

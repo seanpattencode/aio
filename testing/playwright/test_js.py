@@ -15,6 +15,17 @@ async def test_page(page, name, url, actions=None):
     actions and await actions(page)
 
 async def run_tests():
+    print("="*70)
+    print(" ⚠️  MANUAL INSPECTION REQUIRED")
+    print("="*70)
+    print(" This test captures page screenshots but DOES NOT verify:")
+    print("   - JavaScript functions work correctly")
+    print("   - Page content is accurate")
+    print("   - All features are operational")
+    print(" Screenshots must be manually reviewed for correctness.")
+    print("="*70)
+    print()
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})

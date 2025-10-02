@@ -12,6 +12,17 @@ async def screenshot(page, name):
     await page.screenshot(path=str(screenshot_dir / f"{name}_{timestamp}.png"))
 
 async def test_interactions():
+    print("="*70)
+    print(" ⚠️  MANUAL INSPECTION REQUIRED")
+    print("="*70)
+    print(" This test captures interaction screenshots but DOES NOT verify:")
+    print("   - Forms submit correctly")
+    print("   - Data is saved properly")
+    print("   - UI responds as expected")
+    print(" Screenshots must be manually reviewed for correctness.")
+    print("="*70)
+    print()
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(viewport={'width': 1280, 'height': 720})
