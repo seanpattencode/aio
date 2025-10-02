@@ -6,10 +6,9 @@
 body{{background:#000;font:14px monospace;color:#dfdbd2;padding:20px;margin:0;overflow:hidden;height:100vh;box-sizing:border-box}}
 #add-terminal{{padding:10px 20px;background:#333;border:1px solid #555;color:#dfdbd2;cursor:pointer;margin-bottom:10px;border-radius:5px;display:block;width:fit-content}}
 #terminals-container{{height:calc(100vh - 70px);overflow-y:auto}}
-.terminal-box{{background:#111;border:1px solid #333;border-radius:10px;padding:10px;margin-bottom:10px;overflow:hidden;display:flex;flex-direction:column}}
+.terminal-box{{background:#111;border:1px solid #333;border-radius:10px;padding:5px;margin-bottom:10px;overflow:hidden;display:flex;flex-direction:column}}
 #term{{flex:1;overflow-x:auto;overflow-y:auto;min-height:0}}
-#xterm{{flex:1;width:100%;min-height:0}}
-.cmd-bar{{padding:10px;border-top:1px solid #333;flex-shrink:0;background:#111}}
+.cmd-bar{{padding:5px;border-top:1px solid #333;flex-shrink:0;background:#111}}
 .line{{white-space:pre-wrap;word-wrap:break-word;user-select:text}}
 #prompt-line{{white-space:pre;padding-left:12px;position:relative}}
 #prompt-line:before{{content:'$ ';position:absolute;left:0;top:0}}
@@ -33,7 +32,9 @@ body{{background:#000;font:14px monospace;color:#dfdbd2;padding:20px;margin:0;ov
   </div>
 </div>
 <div class="terminal-box">
-  <div id="xterm"></div>
+  <div style="flex:1;min-height:0;overflow:hidden">
+    <div id="xterm" style="width:100%;height:100%"></div>
+  </div>
   <div class="cmd-bar">
     <select id="xterm-preset" style="padding:5px;background:#222;border:1px solid #444;color:#dfdbd2;margin-right:5px">
       <option value="">Quick Commands</option>
@@ -193,7 +194,9 @@ function addTerminal() {{
   const termBox = document.createElement('div');
   termBox.className = 'terminal-box';
   termBox.innerHTML = `
-    <div id="${{termId}}"></div>
+    <div style="flex:1;min-height:0;overflow:hidden">
+      <div id="${{termId}}" style="width:100%;height:100%"></div>
+    </div>
     <div class="cmd-bar">
       <select id="${{presetId}}" style="padding:5px;background:#222;border:1px solid #444;color:#dfdbd2;margin-right:5px">
         <option value="">Quick Commands</option>
@@ -222,11 +225,7 @@ function addTerminal() {{
     terminals.push({{ id: termId, term: xterm, fit: xtermFit, ws: xtermWs }});
 
     updateTerminalSizes();
-    window.onresize = () => {{
-      updateTerminalSizes();
-      terminals.forEach(t => t.fit.fit());
-      xtermFit.fit();
-    }};
+    xtermFit.fit();
   }}, 100);
 }}
 
@@ -281,17 +280,28 @@ function sendXtermCmd() {{
 
 // XTerm setup
 let xtermWs;
+let mainXterm;
+let mainXtermFit;
 setTimeout(() => {{
-  const xterm = new Terminal();
-  const xtermFit = new FitAddon.FitAddon();
-  xterm.loadAddon(xtermFit);
-  xterm.open(document.getElementById('xterm'));
-  xtermFit.fit();
+  mainXterm = new Terminal();
+  mainXtermFit = new FitAddon.FitAddon();
+  mainXterm.loadAddon(mainXtermFit);
+  mainXterm.open(document.getElementById('xterm'));
+  mainXtermFit.fit();
   xtermWs = new WebSocket('ws://localhost:8766');
   xtermWs.binaryType = 'arraybuffer';
-  xtermWs.onmessage = e => xterm.write(new Uint8Array(e.data));
-  xterm.onData(d => xtermWs.send(new TextEncoder().encode(d)));
-  window.onresize = () => xtermFit.fit();
+  xtermWs.onmessage = e => mainXterm.write(new Uint8Array(e.data));
+  mainXterm.onData(d => xtermWs.send(new TextEncoder().encode(d)));
+
+  window.onresize = () => {{
+    updateTerminalSizes();
+    mainXtermFit.fit();
+    let i = 0;
+    while(i < terminals.length) {{
+      terminals[i].fit.fit();
+      i++;
+    }}
+  }};
 }}, 100);
 </script>
 </body></html>
