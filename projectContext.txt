@@ -1,4 +1,4 @@
-Generated: 2025-10-02 16:50:29
+Generated: 2025-10-02 17:18:10
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -45,20 +45,97 @@ commands.get((sys.argv + ["start"])[1], commands["start"])()
 core/aios_runner.py:
 #!/usr/bin/env python3
 import subprocess, sys, signal, os, operator
+
 cmd_str = ' '.join(sys.argv[1:]).lower()
-timeout = float(os.getenv('AIOS_TIMEOUT', max([*[999999 * bool(cmd_str.find(p) + 1) for p in ['web.py', 'aios_api.py', 'scheduler.py', 'poll', 'watch', 'serve', 'autollm', 'claude', 'codex']], *[5.0 * bool(cmd_str.find(p) + 1) for p in ['wiki_fetcher', 'scraper', 'gdrive', 'curl', 'wget', 'git', 'npm', 'pip']], 0.1])))
+
+# Determine timeout based on command
+long_running_cmds = ['web.py', 'aios_api.py', 'scheduler.py', 'poll',
+                     'watch', 'serve', 'autollm', 'claude', 'codex']
+medium_cmds = ['wiki_fetcher', 'scraper', 'gdrive',
+               'curl', 'wget', 'git', 'npm', 'pip']
+
+# Check for long running commands (essentially infinite timeout)
+timeout_values = []
+for p in long_running_cmds:
+    if cmd_str.find(p) >= 0:
+        timeout_values.append(999999)
+
+# Check for medium timeout commands
+for p in medium_cmds:
+    if cmd_str.find(p) >= 0:
+        timeout_values.append(5.0)
+
+# Default short timeout
+timeout_values.append(0.1)
+
+timeout = float(os.getenv('AIOS_TIMEOUT', max(timeout_values)))
+
+# Set timeout signal handler
 signal.signal(signal.SIGALRM, lambda *_: sys.exit(1))
 signal.setitimer(signal.ITIMER_REAL, timeout)
+
+# Run command
 result = subprocess.run(sys.argv[1:], capture_output=True, text=True)
+
+# Clear alarm and output results
 signal.alarm(0)
-sys.stdout.write(result.stdout), sys.stderr.write(result.stderr), sys.exit(result.returncode)
+sys.stdout.write(result.stdout)
+sys.stderr.write(result.stderr)
+sys.exit(result.returncode)
 
 
 core/aios_db.py:
 import json, sqlite3, pathlib
-d = sqlite3.connect(str(pathlib.Path(__file__).parent.parent / "data/aios.db"), isolation_level=None, check_same_thread=False)
+
+# Database connection
+db_path = pathlib.Path(__file__).parent.parent / "data/aios.db"
+d = sqlite3.connect(str(db_path), isolation_level=None, check_same_thread=False)
+
+# Set pragmas for performance
 [d.execute(p) for p in ["PRAGMA synchronous=0", "PRAGMA journal_mode=MEMORY"]]
-d.executescript("CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY,v TEXT);CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,name TEXT,status TEXT,output TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY,content TEXT,timestamp TEXT,source TEXT,priority INTEGER DEFAULT 0);CREATE TABLE IF NOT EXISTS worktrees(id INTEGER PRIMARY KEY,repo TEXT,branch TEXT,path TEXT,job_id INTEGER,model TEXT,task TEXT,status TEXT,output TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,target TEXT,data TEXT,created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+
+# Create tables
+tables = [
+    """CREATE TABLE IF NOT EXISTS kv(
+        k TEXT PRIMARY KEY,
+        v TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS jobs(
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        status TEXT,
+        output TEXT,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS messages(
+        id INTEGER PRIMARY KEY,
+        content TEXT,
+        timestamp TEXT,
+        source TEXT,
+        priority INTEGER DEFAULT 0
+    )""",
+    """CREATE TABLE IF NOT EXISTS worktrees(
+        id INTEGER PRIMARY KEY,
+        repo TEXT,
+        branch TEXT,
+        path TEXT,
+        job_id INTEGER,
+        model TEXT,
+        task TEXT,
+        status TEXT,
+        output TEXT,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS events(
+        id INTEGER PRIMARY KEY,
+        target TEXT,
+        data TEXT,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )"""
+]
+d.executescript(";".join(tables))
+
+# Database functions
 read = lambda n: json.loads(d.execute("SELECT v FROM kv WHERE k=?", (n,)).fetchone()[0])
 write = lambda n, x: (d.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (n, json.dumps(x, indent=2))), x)[1]
 query = lambda _, s, p=(): d.execute(s, p).fetchall()
@@ -101,7 +178,9 @@ from pathlib import Path
 import aios_db
 from datetime import datetime
 [aios_db.write(*x) for x in [("backup", {"source": str(Path.home()), "dest": "/tmp/backup"}), ("backup_log", [])]]
-dest = Path((c := aios_db.read("backup")).get("dest", "/tmp/backup")) / f"{(n := datetime.now()):%Y%m%d_%H%M%S}"
+c = aios_db.read("backup")
+n = datetime.now()
+dest = Path(c.get("dest", "/tmp/backup")) / f"{n:%Y%m%d_%H%M%S}"
 [dest.parent.mkdir(parents=True, exist_ok=True), shutil.copytree(Path(c.get("source", str(Path.home()))), dest, dirs_exist_ok=True), aios_db.write("backup_log", aios_db.read("backup_log") + [{"time": n.isoformat(), "dest": str(dest)}]), print(f"Backed up to {dest}")]
 
 services/service.py:
@@ -109,9 +188,42 @@ services/service.py:
 import sys
 [sys.path.append(p) for p in ["/home/seanpatten/projects/AIOS/core", "/home/seanpatten/projects/AIOS"]]
 import aios_db
+
+# Initialize services
 aios_db.write("services", {})
-s, c, n = aios_db.read("services"), (sys.argv + ["list"])[1], (sys.argv + ["", None])[2]
-{"list": lambda: list(map(print, [f"{k}: {v.get('status', 'unknown')}" for k, v in s.items()])), "start": lambda: aios_db.write("services", {**s, n: {**s.get(n, {}), "status": "running"}}), "stop": lambda: aios_db.write("services", {**s, n: {**s.get(n, {}), "status": "stopped"}}), "status": lambda: print({True: "specify service", False: s.get(n, {}).get("status", "unknown")}[n == None])}.get(c, lambda: list(map(print, [f"{k}: {v.get('status', 'unknown')}" for k, v in s.items()])))()
+
+# Parse arguments
+s = aios_db.read("services")
+c = (sys.argv + ["list"])[1]
+n = (sys.argv + ["", None])[2]
+
+# Define commands
+def list_services():
+    return list(map(print, [f"{k}: {v.get('status', 'unknown')}" for k, v in s.items()]))
+
+def start_service():
+    updated = {**s, n: {**s.get(n, {}), "status": "running"}}
+    return aios_db.write("services", updated)
+
+def stop_service():
+    updated = {**s, n: {**s.get(n, {}), "status": "stopped"}}
+    return aios_db.write("services", updated)
+
+def get_status():
+    if n == None:
+        return print("specify service")
+    return print(s.get(n, {}).get("status", "unknown"))
+
+# Execute command
+commands = {
+    "list": list_services,
+    "start": start_service,
+    "stop": stop_service,
+    "status": get_status
+}
+
+handler = commands.get(c, list_services)
+handler()
 
 services/scraper.py:
 #!/usr/bin/env python3
@@ -121,7 +233,8 @@ import aios_db
 from bs4 import BeautifulSoup
 from datetime import datetime
 aios_db.write("scraper", {"urls": ["https://news.ycombinator.com"]})
-results = [{"url": u, "title": (s := BeautifulSoup(requests.get(u, timeout=0.01).text, 'html.parser')).title.string or "No title", "time": datetime.now().isoformat()} for u in aios_db.read("scraper").get("urls", [])]
+get_title = lambda u: (lambda s: s.title.string or "No title")(BeautifulSoup(requests.get(u, timeout=0.01).text, 'html.parser'))
+results = [{"url": u, "title": get_title(u), "time": datetime.now().isoformat()} for u in aios_db.read("scraper").get("urls", [])]
 [aios_db.write("scraper_results", results), list(map(lambda r: print(f"{r['url']}: {r['title']}"), results))]
 
 services/context_generator.py:
@@ -149,7 +262,8 @@ pj = lambda x: print(f"{x[0]}: {x[1]} - {x[2]} - {({True: (x[3] or 'No output')[
 pr = lambda x: print(f'<div class="job-item">{x[1]} <span class="status running">Running...</span></div>')
 prv = lambda x: [print(f'<div class="job-item">{x[1]} <span class="output">{({True: (x[3] or "")[:50] + "...", False: ""}[x[3] != None])}</span>'), print(f'<form action="/job/accept" method="POST" style="display:inline"><input type="hidden" name="id" value="{x[0]}"><button class="action-btn">Accept</button></form>'), print(f'<form action="/job/redo" method="POST" style="display:inline"><input type="hidden" name="id" value="{x[0]}"><button class="action-btn">Redo</button></form></div>')]
 pd = lambda x: print(f'<div class="job-item">{x[1]} <span class="output">{({True: (x[3] or "")[:50] + "...", False: ""}[x[3] != None])}</span></div>')
-{"summary": lambda: (r := list(filter(lambda x: x[2] == "running", j)), rv := list(filter(lambda x: x[2] == "review", j)), d := list(filter(lambda x: x[2] == "done", j))[:5], s := [], list(map(s.extend, [[f"RUN {x[1]}" for x in r[:2]], [f"? {x[1]}" for x in rv[:1]], [f"DONE {x[1]}" for x in d[:1]]])), list(map(print, s[:4])))[-1], "running": lambda: list(map(pr, filter(lambda x: x[2] == "running", j[:10]))), "review": lambda: list(map(prv, filter(lambda x: x[2] == "review", j[:10]))), "done": lambda: list(map(pd, filter(lambda x: x[2] == "done", j[:50]))), "run_wiki": lambda: (aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')"), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0])]))[-1], "accept": lambda: {True: None, False: aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(jid),))}[jid == None], "redo": lambda: {True: None, False: (aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (int(jid),)), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(jid)]))}[jid == None], "list": lambda: list(map(pj, j[:20]))}.get(c, lambda: list(map(pj, j[:20])))()
+print_summary = lambda: (lambda r, rv, d, s: (list(map(s.extend, [[f"RUN {x[1]}" for x in r[:2]], [f"? {x[1]}" for x in rv[:1]], [f"DONE {x[1]}" for x in d[:1]]])), list(map(print, s[:4]))))((list(filter(lambda x: x[2] == "running", j))), (list(filter(lambda x: x[2] == "review", j))), (list(filter(lambda x: x[2] == "done", j))[:5]), [])[-1]
+{"summary": print_summary, "running": lambda: list(map(pr, filter(lambda x: x[2] == "running", j[:10]))), "review": lambda: list(map(prv, filter(lambda x: x[2] == "review", j[:10]))), "done": lambda: list(map(pd, filter(lambda x: x[2] == "done", j[:50]))), "run_wiki": lambda: (aios_db.execute("jobs", "INSERT INTO jobs(name, status) VALUES ('wiki', 'running')"), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(aios_db.query("jobs", "SELECT MAX(id) FROM jobs")[0][0])]))[-1], "accept": lambda: {True: None, False: aios_db.execute("jobs", "UPDATE jobs SET status='done' WHERE id=?", (int(jid),))}[jid == None], "redo": lambda: {True: None, False: (aios_db.execute("jobs", "UPDATE jobs SET status='running' WHERE id=?", (int(jid),)), subprocess.Popen(["python3", "programs/wiki_fetcher/wiki_fetcher.py", str(jid)]))}[jid == None], "list": lambda: list(map(pj, j[:20]))}.get(c, lambda: list(map(pj, j[:20])))()
 
 services/processes.py:
 #!/usr/bin/env python3
@@ -157,11 +271,86 @@ import sys, subprocess, json
 [sys.path.append(p) for p in ["/home/seanpatten/projects/AIOS/core", "/home/seanpatten/projects/AIOS"]]
 import aios_db
 from pathlib import Path
-c, n = (sys.argv + ["json"])[1], (sys.argv + ["", None])[2]
+
+# Parse arguments
+c = (sys.argv + ["json"])[1]
+n = (sys.argv + ["", None])[2]
+
+# Initialize database entries
 [aios_db.write(k, v) for k, v in [("schedule", {}), ("aios_pids", {})]]
-gap = lambda: (lambda s: {"scheduled": sorted([{"path": cmd, "type": "daily", "time": time, "status": "scheduled"} for time, cmd in s.get("daily", {}).items()] + [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"} for m, cmd in s.get("hourly", {}).items()], key=lambda x: x["time"]), "ongoing": [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"} for k, v in aios_db.read("aios_pids").items()], "core": [{"path": str(f.relative_to(Path('/home/seanpatten/projects/AIOS'))), "type": "file", "status": "available"} for f in list(Path('/home/seanpatten/projects/AIOS').rglob('*.py')) if ('archive' not in f.parts) * ('__pycache__' not in f.parts)]})(aios_db.read("schedule"))
-pp = lambda p: print(f"{p['path']}: {p['status']}")
-{"json": lambda: print(json.dumps(gap())), "list": lambda: (lambda ap: (list(map(pp, ap.get("scheduled", []))), list(map(pp, ap.get("ongoing", []))), list(map(pp, ap.get("core", []))))[-1])(gap()), "start": lambda: {True: None, False: subprocess.Popen(['python3', n])}[n == None], "stop": lambda: {True: None, False: subprocess.run(['pkill', '-f', n], timeout=5)}[n == None]}.get(c, lambda: print(json.dumps(gap())))()
+
+def get_all_processes():
+    """Get all process information"""
+    schedule = aios_db.read("schedule")
+    pids = aios_db.read("aios_pids")
+    aios_path = Path('/home/seanpatten/projects/AIOS')
+
+    # Build scheduled tasks
+    daily_tasks = [{"path": cmd, "type": "daily", "time": time, "status": "scheduled"}
+                   for time, cmd in schedule.get("daily", {}).items()]
+
+    hourly_tasks = [{"path": cmd, "type": "hourly", "time": f":{int(m):02d}", "status": "scheduled"}
+                    for m, cmd in schedule.get("hourly", {}).items()]
+
+    scheduled = sorted(daily_tasks + hourly_tasks, key=lambda x: x["time"])
+
+    # Build ongoing processes
+    ongoing = [{"path": f"{k}_pid_{v}", "type": "running", "status": "active"}
+               for k, v in pids.items()]
+
+    # Build core files list
+    py_files = aios_path.rglob('*.py')
+    core = []
+    for f in py_files:
+        if 'archive' not in f.parts and '__pycache__' not in f.parts:
+            core.append({
+                "path": str(f.relative_to(aios_path)),
+                "type": "file",
+                "status": "available"
+            })
+
+    return {
+        "scheduled": scheduled,
+        "ongoing": ongoing,
+        "core": core
+    }
+
+def print_process(p):
+    """Print a single process"""
+    print(f"{p['path']}: {p['status']}")
+
+def cmd_json():
+    """Output JSON format"""
+    print(json.dumps(get_all_processes()))
+
+def cmd_list():
+    """List all processes"""
+    ap = get_all_processes()
+    list(map(print_process, ap.get("scheduled", [])))
+    list(map(print_process, ap.get("ongoing", [])))
+    list(map(print_process, ap.get("core", [])))
+
+def cmd_start():
+    """Start a process"""
+    if n is not None:
+        subprocess.Popen(['python3', n])
+
+def cmd_stop():
+    """Stop a process"""
+    if n is not None:
+        subprocess.run(['pkill', '-f', n], timeout=5)
+
+# Command dispatch
+commands = {
+    "json": cmd_json,
+    "list": cmd_list,
+    "start": cmd_start,
+    "stop": cmd_stop
+}
+
+# Execute command (default to json)
+handler = commands.get(c, cmd_json)
+handler()
 
 services/feed.py:
 #!/usr/bin/env python3
@@ -169,10 +358,72 @@ import sys
 [sys.path.append(p) for p in ["/home/seanpatten/projects/AIOS/core", "/home/seanpatten/projects/AIOS"]]
 import aios_db
 from datetime import datetime
+
+# Get command
 c = (sys.argv + ["list"])[1]
-pm = lambda r: print({True: f"{r[2].split('T')[1][:5]} {r[1]}", False: f"{r[2].split('T')[0]} {r[2].split('T')[1][:5]} {r[1]}"}[datetime.fromisoformat(r[2]).date() == datetime.now().date()])
-pv = lambda r, f: print({True: f"{datetime.fromisoformat(r[2]).strftime(f)} {r[1]}", False: f"{r[2].split('T')[0]} {datetime.fromisoformat(r[2]).strftime(f)} {r[1]}"}[datetime.fromisoformat(r[2]).date() == datetime.now().date()])
-{"add": lambda: aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (" ".join(sys.argv[2:]), datetime.now().isoformat(), "manual")), "list": lambda: list(map(pm, aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50"))), "view": lambda: (aios_db.write('settings', {}), list(map(lambda r: pv(r, {True: '%I:%M %p', False: '%H:%M'}[aios_db.read('settings').get('time_format', '12h') == '12h']), aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50")))), "clear": lambda: aios_db.execute("feed", "DELETE FROM messages WHERE timestamp < datetime('now', '-7 days')")}.get(c, lambda: list(map(pm, aios_db.query("feed", "SELECT id, content, timestamp, source FROM messages ORDER BY timestamp DESC LIMIT 50"))))()
+
+# Message formatting functions
+def print_message(r):
+    """Print message with standard formatting"""
+    is_today = datetime.fromisoformat(r[2]).date() == datetime.now().date()
+    time_part = r[2].split('T')[1][:5]
+
+    if is_today:
+        print(f"{time_part} {r[1]}")
+    else:
+        date_part = r[2].split('T')[0]
+        print(f"{date_part} {time_part} {r[1]}")
+
+def print_message_with_format(r, time_format):
+    """Print message with custom time format"""
+    dt = datetime.fromisoformat(r[2])
+    is_today = dt.date() == datetime.now().date()
+    time_str = dt.strftime(time_format)
+
+    if is_today:
+        print(f"{time_str} {r[1]}")
+    else:
+        date_part = r[2].split('T')[0]
+        print(f"{date_part} {time_str} {r[1]}")
+
+# Command functions
+def add_message():
+    content = " ".join(sys.argv[2:])
+    timestamp = datetime.now().isoformat()
+    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)",
+                   (content, timestamp, "manual"))
+
+def list_messages():
+    messages = aios_db.query("feed",
+                            "SELECT id, content, timestamp, source FROM messages "
+                            "ORDER BY timestamp DESC LIMIT 50")
+    list(map(print_message, messages))
+
+def view_messages():
+    aios_db.write('settings', {})
+    settings = aios_db.read('settings')
+    is_12h = settings.get('time_format', '12h') == '12h'
+    time_format = '%I:%M %p' if is_12h else '%H:%M'
+
+    messages = aios_db.query("feed",
+                            "SELECT id, content, timestamp, source FROM messages "
+                            "ORDER BY timestamp DESC LIMIT 50")
+    list(map(lambda r: print_message_with_format(r, time_format), messages))
+
+def clear_old_messages():
+    aios_db.execute("feed", "DELETE FROM messages WHERE timestamp < datetime('now', '-7 days')")
+
+# Command dispatch
+commands = {
+    "add": add_message,
+    "list": list_messages,
+    "view": view_messages,
+    "clear": clear_old_messages
+}
+
+# Execute command (default to list)
+handler = commands.get(c, list_messages)
+handler()
 
 programs/job_status.py:
 #!/usr/bin/env python3
@@ -805,7 +1056,8 @@ if __name__ == "__main__":
 
 services/web/web.py:
 #!/usr/bin/env python3
-import sys; sys.path.extend(['/home/seanpatten/projects/AIOS', '/home/seanpatten/projects/AIOS/core'])
+import sys
+sys.path.extend(['/home/seanpatten/projects/AIOS', '/home/seanpatten/projects/AIOS/core'])
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, aios_db, subprocess, os, asyncio, websockets, pty, struct, fcntl, termios, signal
 from urllib.parse import parse_qs, urlparse
@@ -813,42 +1065,476 @@ from datetime import datetime
 from pathlib import Path
 from threading import Thread
 
-TEMPLATE_DIR, WEB_PORT = Path(__file__).parent / 'templates', int(sys.argv[2]) if len(sys.argv) > 2 else 8080
-T = {k: (TEMPLATE_DIR / v).read_text() for k, v in {'index': 'index.html', 'todo': 'todo.html', 'jobs': 'jobs.html', 'feed': 'feed.html', 'autollm': 'autollm.html', 'autollm_output': 'autollm_output.html', 'terminal': 'terminal.html', 'terminal_emulator': 'terminal-emulator.html', 'terminal_xterm': 'terminal-xterm.html', 'settings': 'settings.html', 'workflow': 'workflow.html', 'workflow_manager': 'workflow_manager.html'}.items()}
+TEMPLATE_DIR = Path(__file__).parent / 'templates'
+WEB_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8080
+
+# Load templates
+T = {}
+template_files = {
+    'index': 'index.html',
+    'todo': 'todo.html',
+    'jobs': 'jobs.html',
+    'feed': 'feed.html',
+    'autollm': 'autollm.html',
+    'autollm_output': 'autollm_output.html',
+    'terminal': 'terminal.html',
+    'terminal_emulator': 'terminal-emulator.html',
+    'terminal_xterm': 'terminal-xterm.html',
+    'settings': 'settings.html',
+    'workflow': 'workflow.html',
+    'workflow_manager': 'workflow_manager.html'
+}
+for k, v in template_files.items():
+    T[k] = (TEMPLATE_DIR / v).read_text()
 
 class Handler(BaseHTTPRequestHandler):
-    def _ctx(self): s, c = aios_db.read("settings") or {}, {}; c.update({'bg': {'light': '#fff'}.get(s.get('theme'), '#000'), 'fg': {'light': '#000'}.get(s.get('theme'), '#fff'), 'bg2': {'light': '#f0f0f0'}.get(s.get('theme'), '#1a1a1a')}); return s, c
+    def _ctx(self):
+        s = aios_db.read("settings") or {}
+        c = {}
+        c.update({
+            'bg': {'light': '#fff'}.get(s.get('theme'), '#000'),
+            'fg': {'light': '#000'}.get(s.get('theme'), '#fff'),
+            'bg2': {'light': '#f0f0f0'}.get(s.get('theme'), '#1a1a1a')
+        })
+        return s, c
+
+    def _get_todo_html(self, c):
+        cmd = ["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        tasks = result.stdout.strip().split('\n') if result.stdout.strip() else []
+
+        task_html = []
+        for i, t in enumerate(tasks):
+            done_class = "done" if "[x]" in t else ""
+            task_id = t.split(".")[0] if "." in t else str(i+1)
+            html = f'''<div class="task {done_class}">{t}
+                <form style="display:inline" action="/todo/done" method="POST">
+                    <input type="hidden" name="id" value="{task_id}">
+                    <button>Done</button>
+                </form>
+            </div>'''
+            task_html.append(html)
+
+        tasks_content = "".join(task_html) or '<div style="color:#888">No tasks yet</div>'
+        return T['todo'].format(**c, tasks=tasks_content)
+
+    def _get_feed_html(self, s, c):
+        messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100")
+
+        if not messages:
+            feed_content = "<div style='color:#888'>No messages yet</div>"
+        else:
+            seen_dates = []
+            feed_items = []
+            time_fmt = "12h" if s.get("time_format", "12h") == "12h" else "24h"
+
+            for content, timestamp in messages:
+                msg_date = datetime.fromisoformat(timestamp).date()
+
+                # Add date header if new date
+                if msg_date not in seen_dates:
+                    seen_dates.append(msg_date)
+                    date_html = f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{msg_date}</div>'
+                    feed_items.append(date_html)
+
+                # Format time
+                dt = datetime.fromisoformat(timestamp)
+                if time_fmt == "12h":
+                    time_str = dt.strftime("%I:%M %p")
+                else:
+                    time_str = dt.strftime("%H:%M")
+
+                # Add message
+                msg_html = f'<div style="padding:8px;margin:2px 0">{time_str} - {content}</div>'
+                feed_items.append(msg_html)
+
+            feed_content = "".join(feed_items)
+
+        return T['feed'].format(**c, feed_content=feed_content)
+
+    def _get_settings_html(self, s, c):
+        styles = {
+            'theme_dark_style': 'style="font-weight:bold"' if s.get('theme', 'dark') == 'dark' else '',
+            'theme_light_style': 'style="font-weight:bold"' if s.get('theme') == 'light' else '',
+            'time_12h_style': 'style="font-weight:bold"' if s.get('time_format', '12h') == '12h' else '',
+            'time_24h_style': 'style="font-weight:bold"' if s.get('time_format') == '24h' else ''
+        }
+        return T['settings'].format(**c, **styles)
+
+    def _get_jobs_html(self, c):
+        job_types = {'running_jobs': 'running', 'review_jobs': 'review', 'done_jobs': 'done'}
+        job_data = {}
+
+        for key, job_type in job_types.items():
+            cmd = f"python3 services/jobs.py {job_type}"
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+            content = result.stdout.strip()
+            job_data[key] = content or f'<div style="color:#888;padding:10px">No {job_type} jobs</div>'
+
+        return T['jobs'].format(**c, **job_data)
+
+    def _get_autollm_html(self, c):
+        def format_running(w):
+            branch, path, job_id, status, task, model = w
+            output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
+            if output_file.exists():
+                output_text = output_file.read_text()[-200:]
+            else:
+                output_text = "Waiting for output..."
+
+            return f'''<div class="worktree">
+                <span class="status running">{branch}</span><br>
+                {model}: {task[:30]}<br>
+                <pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{output_text}</pre>
+                <a href="/autollm/output?job_id={job_id}" style="padding:5px 10px;background:{c["fg"]};color:{c["bg"]};text-decoration:none;border-radius:3px">Full Output</a>
+                <a href="/terminal?job_id={job_id}" style="padding:5px 10px;background:{c["fg"]};color:{c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a>
+            </div>'''
+
+        def format_review(w):
+            branch, path, job_id, status, task, model, output = w
+            output_preview = (output or "")[:50]
+            return f'''<div class="worktree">
+                <span class="status review">{branch}</span><br>
+                {model}: {task[:30]}<br>
+                Output: {output_preview}<br>
+                <form action="/autollm/accept" method="POST" style="display:inline">
+                    <input type="hidden" name="job_id" value="{job_id}">
+                    <button>Accept</button>
+                </form>
+                <form action="/autollm/vscode" method="POST" style="display:inline">
+                    <input type="hidden" name="path" value="{path}">
+                    <button>VSCode</button>
+                </form>
+            </div>'''
+
+        def format_done(w):
+            branch = w[0]
+            return f'<div class="worktree"><span class="status done">{branch}</span></div>'
+
+        # Get worktrees
+        all_worktrees = aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees")
+
+        # Filter and format
+        running = [w for w in all_worktrees if len(w) > 3 and w[3] == 'running']
+        review = [w for w in all_worktrees if len(w) > 3 and w[3] == 'review']
+        done = [w for w in all_worktrees if len(w) > 3 and w[3] == 'done']
+
+        worktree_data = {
+            'running_worktrees': "".join([format_running(w[:6]) for w in running]) or '<div style="color:#888">No running worktrees</div>',
+            'review_worktrees': "".join([format_review(w) for w in review]) or '<div style="color:#888">No review worktrees</div>',
+            'done_worktrees': "".join([format_done(w) for w in done]) or '<div style="color:#888">No done worktrees</div>'
+        }
+
+        return T['autollm'].format(**c, **worktree_data)
+
+    def _get_autollm_output(self, c, job_id):
+        output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
+
+        if output_file.exists():
+            output_content = output_file.read_text()
+        else:
+            result = aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", (job_id,))
+            output_content = result[0][0] if result else "No output yet"
+
+        return T['autollm_output'].format(**c, output_content=output_content)
+
+    def _get_terminal(self, c, job_id):
+        output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
+        terminal_content = output_file.read_text() if output_file.exists() else "Waiting for output..."
+        return T['terminal'].format(**c, terminal_content=terminal_content, job_id=job_id)
+
+    def _get_workflow_worktrees(self):
+        cmd = ["git", "worktree", "list"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+
+        worktrees = []
+        for line in lines:
+            if line and len(line.split()) >= 3:
+                parts = line.split()
+                worktrees.append({
+                    "path": parts[0],
+                    "branch": parts[2].strip('[]')
+                })
+
+        return json.dumps(worktrees)
 
     def do_GET(self):
-        p, q, s, c = urlparse(self.path), parse_qs(urlparse(self.path).query), *self._ctx()
-        H = {'/': lambda: (T['index'].format(**c), 'text/html'), '/api/jobs': lambda: (json.dumps([{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")]), 'application/json'), '/todo': lambda: (T['todo'].format(**c, tasks="".join([f'<div class="task {"done" * ("[x]" in t)}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] or str(i+1)}"><button>Done</button></form></div>' for i, t in enumerate(subprocess.run(["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"], capture_output=True, text=True).stdout.strip().split('\n') or [])]) or '<div style="color:#888">No tasks yet</div>'), 'text/html'), '/feed': lambda: (T['feed'].format(**c, feed_content=(lambda m, d=[]: "".join([d.append(datetime.fromisoformat(x[1]).date()) or (f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(x[1]).date()}</div>' if datetime.fromisoformat(x[1]).date() not in d else '') + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(x[1]).strftime({"12h": "%I:%M %p"}.get(s.get("time_format", "12h"), "%H:%M"))} - {x[0]}</div>' for x in m]) or "<div style='color:#888'>No messages yet</div>")(aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100"))), 'text/html'), '/settings': lambda: (T['settings'].format(**c, theme_dark_style={'dark': 'style="font-weight:bold"'}.get(s.get('theme', 'dark'), ''), theme_light_style={'light': 'style="font-weight:bold"'}.get(s.get('theme'), ''), time_12h_style={'12h': 'style="font-weight:bold"'}.get(s.get('time_format', '12h'), ''), time_24h_style={'24h': 'style="font-weight:bold"'}.get(s.get('time_format'), '')), 'text/html'), '/jobs': lambda: (T['jobs'].format(**c, **{k: subprocess.run(f"python3 services/jobs.py {v}", shell=True, capture_output=True, text=True, timeout=5).stdout.strip() or f'<div style="color:#888;padding:10px">No {v} jobs</div>' for k, v in {'running_jobs': 'running', 'review_jobs': 'review', 'done_jobs': 'done'}.items()}), 'text/html'), '/autollm': lambda: (T['autollm'].format(**c, **{f'{k}_worktrees': "".join([h(w) for w in g]) or f'<div style="color:#888">No {k} worktrees</div>' for k, g, h in [('running', [w for w in aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model FROM worktrees") if w[3] == 'running'], lambda w: f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[5]}: {w[4][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{((Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").read_text()[-200:] if (Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").exists() else "Waiting for output...")}</pre><a href="/autollm/output?job_id={w[2]}" style="padding:5px 10px;background:{c["fg"]};color:{c["bg"]};text-decoration:none;border-radius:3px">Full Output</a><a href="/terminal?job_id={w[2]}" style="padding:5px 10px;background:{c["fg"]};color:{c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a></div>'), ('review', [w for w in aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees") if w[3] == 'review'], lambda w: f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[5]}: {w[4][:30]}<br>Output: {(w[6] or "")[:50]}<br><form action="/autollm/accept" method="POST" style="display:inline"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form><form action="/autollm/vscode" method="POST" style="display:inline"><input type="hidden" name="path" value="{w[1]}"><button>VSCode</button></form></div>'), ('done', [w for w in aios_db.query("autollm", "SELECT branch, path FROM worktrees") if len(w) > 3 and w[3] == 'done'], lambda w: f'<div class="worktree"><span class="status done">{w[0]}</span></div>')]}), 'text/html'), '/autollm/output': lambda: (T['autollm_output'].format(**c, output_content=(lambda j, f: f.read_text() if f.exists() else ((lambda d: d[0][0] if d else "No output yet")(aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", (j,)))))(q.get('job_id', [''])[0], Path.home() / ".aios" / f"autollm_output_{q.get('job_id', [''])[0]}.txt")), 'text/html'), '/terminal': lambda: (T['terminal'].format(**c, terminal_content=(lambda j, f: f.read_text() if f.exists() else "Waiting for output...")(q.get('job_id', [''])[0], Path.home() / ".aios" / f"autollm_output_{q.get('job_id', [''])[0]}.txt"), job_id=q.get('job_id', [''])[0]), 'text/html'), '/terminal-emulator': lambda: (T['terminal_emulator'].replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'), 'text/html'), '/terminal-xterm': lambda: (T['terminal_xterm'].replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'), 'text/html'), '/workflow': lambda: (T['workflow'].format(**c), 'text/html'), '/workflow-manager': lambda: (T['workflow_manager'].format(**c), 'text/html'), '/workflow/list_worktrees': lambda: (json.dumps([{"path": l.split()[0], "branch": l.split()[2].strip('[]')} for l in subprocess.run(["git", "worktree", "list"], capture_output=True, text=True, timeout=5).stdout.strip().split('\n') if l and len(l.split()) >= 3]), 'application/json'), '/api/workflow/nodes': lambda: (json.dumps(aios_db.read("workflow_nodes") or []), 'application/json')}
-        ct, ty = H.get(p.path, lambda: (T['index'].format(**c), 'text/html'))(); self.send_response(200); self.send_header('Content-type', ty); self.end_headers(); self.wfile.write(ct.encode())
+        p = urlparse(self.path)
+        q = parse_qs(p.query)
+        s, c = self._ctx()
+
+        # Route handlers
+        routes = {
+            '/': lambda: (T['index'].format(**c), 'text/html'),
+            '/api/jobs': lambda: (
+                json.dumps([
+                    {"id": j[0], "name": j[1], "status": j[2], "output": j[3]}
+                    for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")
+                ]),
+                'application/json'
+            ),
+            '/todo': lambda: (self._get_todo_html(c), 'text/html'),
+            '/feed': lambda: (self._get_feed_html(s, c), 'text/html'),
+            '/settings': lambda: (self._get_settings_html(s, c), 'text/html'),
+            '/jobs': lambda: (self._get_jobs_html(c), 'text/html'),
+            '/autollm': lambda: (self._get_autollm_html(c), 'text/html'),
+            '/autollm/output': lambda: (
+                self._get_autollm_output(c, q.get('job_id', [''])[0]),
+                'text/html'
+            ),
+            '/terminal': lambda: (
+                self._get_terminal(c, q.get('job_id', [''])[0]),
+                'text/html'
+            ),
+            '/terminal-emulator': lambda: (
+                T['terminal_emulator'].replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'),
+                'text/html'
+            ),
+            '/terminal-xterm': lambda: (
+                T['terminal_xterm'].replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'),
+                'text/html'
+            ),
+            '/workflow': lambda: (T['workflow'].format(**c), 'text/html'),
+            '/workflow-manager': lambda: (T['workflow_manager'].format(**c), 'text/html'),
+            '/workflow/list_worktrees': lambda: (self._get_workflow_worktrees(), 'application/json'),
+            '/api/workflow/nodes': lambda: (
+                json.dumps(aios_db.read("workflow_nodes") or []),
+                'application/json'
+            )
+        }
+
+        # Get handler or default to index
+        handler = routes.get(p.path, lambda: (T['index'].format(**c), 'text/html'))
+        content, content_type = handler()
+
+        # Send response
+        self.send_response(200)
+        self.send_header('Content-type', content_type)
+        self.end_headers()
+        self.wfile.write(content.encode())
 
     def do_POST(self):
-        p, b = urlparse(self.path).path, self.rfile.read(int(self.headers.get('Content-Length', 0))) or b''
-        if p.startswith('/workflow/'): d = json.loads(b.decode() or '{}'); (p == '/workflow/worktree_terminal' and (lambda r: (self.send_response(200), self.send_header('Content-type', 'application/json'), self.end_headers(), self.wfile.write(json.dumps(json.loads(r.stdout) if r.stdout else {"error": "No output"}).encode())))(subprocess.run(["python3", "programs/workflow/workflow.py", "worktree_terminal", d.get('repo', '/home/seanpatten/projects/AIOS'), d.get('branch', '')], capture_output=True, text=True, timeout=10)) or p == '/workflow/remove_worktree' and (subprocess.run(["git", "worktree", "remove", d.get('path', '')], check=True, timeout=5), self.send_response(200), self.send_header('Content-type', 'application/json'), self.end_headers(), self.wfile.write(b'{"success":true}')) or (subprocess.run({'/workflow/add': f"python3 programs/workflow/workflow.py add {d.get('col', 0)} {d.get('text', '')}", '/workflow/expand': f"python3 programs/workflow/workflow.py expand {d.get('id', 0)} {d.get('text', '')}", '/workflow/branch': f"python3 programs/workflow/workflow.py branch {d.get('id', 0)}", '/workflow/exec': f"python3 programs/workflow/workflow.py exec {d.get('id', 0)}", '/workflow/push': f"python3 programs/workflow/workflow.py push {d.get('id', 0)}", '/workflow/term': f"python3 programs/workflow/workflow.py term {d.get('id', 0)}", '/workflow/comment': f"python3 programs/workflow/workflow.py comment {d.get('id', 0)} {d.get('text', '')}", '/workflow/save': f"python3 programs/workflow/workflow.py save {d.get('name', 'default')}", '/workflow/load': f"python3 programs/workflow/workflow.py load {d.get('name', 'default')}"}.get(p, ""), shell=True, timeout=5, capture_output=True), self.send_response(200), self.send_header('Content-type', 'application/json'), self.end_headers(), self.wfile.write(b'{"status":"ok"}'))); return
-        if p == '/shutdown': self.send_response(200); self.send_header('Content-type', 'text/html'); self.end_headers(); self.wfile.write(b'<html><body><h1>Shutting down AIOS...</h1><script>setTimeout(function(){window.close();}, 2000);</script></body></html>'); [os.kill(pid, signal.SIGTERM) for pid in (aios_db.read("aios_pids") or {}).values() if True]; os._exit(0)
-        if p == '/restart': self.send_response(200); self.send_header('Content-type', 'text/html'); self.end_headers(); self.wfile.write(b'<html><body><h1>Restarting AIOS...</h1><script>setTimeout(function(){location.href="/";}, 3000);</script></body></html>'); Thread(target=lambda: (__import__('time').sleep(0.5), subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_start.py"]), __import__('time').sleep(1), os._exit(0))[-1], daemon=True).start(); return
-        if p == '/worktree/create': d, r = parse_qs(b.decode()) or {}, subprocess.run(["python3", "/home/seanpatten/projects/AIOS/programs/worktree/worktree_manager.py", "create", d.get('repo', [''])[0], d.get('branch', [''])[0]], capture_output=True, text=True, timeout=10); self.send_response(200); self.send_header('Content-type', 'text/html'); self.end_headers(); self.wfile.write(f'<html><body><h2>Worktree Created</h2><pre>{r.stdout if r.returncode == 0 else f"Error: {r.stderr}"}</pre><br><a href="/">Back to Control Center</a></body></html>'.encode()); return
-        d = parse_qs(b.decode()) or {}; subprocess.run({'/job/run': "python3 services/jobs.py run_wiki", '/job/accept': f"python3 services/jobs.py accept {d.get('id', [''])[0]}", '/job/redo': f"python3 services/jobs.py redo {d.get('id', [''])[0]}", '/run': d.get('cmd', [''])[0], '/todo/add': f"python3 programs/todo/todo.py add {d.get('task', [''])[0]}", '/todo/done': f"python3 programs/todo/todo.py done {d.get('id', [''])[0]}", '/todo/clear': "python3 programs/todo/todo.py clear", '/settings/theme': f"python3 programs/settings/settings.py set theme {d.get('theme', ['dark'])[0]}", '/settings/time': f"python3 programs/settings/settings.py set time_format {d.get('format', ['12h'])[0]}", '/autollm/run': f"python3 programs/autollm/autollm.py run {d.get('repo', [''])[0]} {d.get('branches', ['1'])[0]} {d.get('model', ['claude-3-5-sonnet-20241022'])[0]} {d.get('task', [''])[0]}", '/autollm/accept': f"python3 programs/autollm/autollm.py accept {d.get('job_id', [''])[0]}", '/autollm/vscode': f"code {d.get('path', [''])[0]}", '/autollm/clean': "python3 programs/autollm/autollm.py clean"}.get(p, ""), shell=True, timeout=5, capture_output=True); self.send_response(303); self.send_header('Location', '/autollm' if 'autollm' in p else '/settings' if 'settings' in p else p.replace('/add', '').replace('/done', '').replace('/clear', '')); self.end_headers()
+        p = urlparse(self.path).path
+        content_length = int(self.headers.get('Content-Length', 0))
+        b = self.rfile.read(content_length) if content_length else b''
 
-    def log_message(self, *args): pass
+        # Handle workflow routes
+        if p.startswith('/workflow/'):
+            d = json.loads(b.decode() or '{}')
+
+            if p == '/workflow/worktree_terminal':
+                cmd = ["python3", "programs/workflow/workflow.py", "worktree_terminal",
+                       d.get('repo', '/home/seanpatten/projects/AIOS'), d.get('branch', '')]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                output = json.loads(r.stdout) if r.stdout else {"error": "No output"}
+                self.wfile.write(json.dumps(output).encode())
+                return
+
+            if p == '/workflow/remove_worktree':
+                subprocess.run(["git", "worktree", "remove", d.get('path', '')], check=True, timeout=5)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"success":true}')
+                return
+
+            # Other workflow commands
+            workflow_cmds = {
+                '/workflow/add': f"python3 programs/workflow/workflow.py add {d.get('col', 0)} {d.get('text', '')}",
+                '/workflow/expand': f"python3 programs/workflow/workflow.py expand {d.get('id', 0)} {d.get('text', '')}",
+                '/workflow/branch': f"python3 programs/workflow/workflow.py branch {d.get('id', 0)}",
+                '/workflow/exec': f"python3 programs/workflow/workflow.py exec {d.get('id', 0)}",
+                '/workflow/push': f"python3 programs/workflow/workflow.py push {d.get('id', 0)}",
+                '/workflow/term': f"python3 programs/workflow/workflow.py term {d.get('id', 0)}",
+                '/workflow/comment': f"python3 programs/workflow/workflow.py comment {d.get('id', 0)} {d.get('text', '')}",
+                '/workflow/save': f"python3 programs/workflow/workflow.py save {d.get('name', 'default')}",
+                '/workflow/load': f"python3 programs/workflow/workflow.py load {d.get('name', 'default')}"
+            }
+
+            if p in workflow_cmds:
+                subprocess.run(workflow_cmds[p], shell=True, timeout=5, capture_output=True)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
+            return
+
+        # Handle shutdown
+        if p == '/shutdown':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            html = b'<html><body><h1>Shutting down AIOS...</h1>'
+            html += b'<script>setTimeout(function(){window.close();}, 2000);</script></body></html>'
+            self.wfile.write(html)
+
+            pids = aios_db.read("aios_pids") or {}
+            for pid in pids.values():
+                os.kill(pid, signal.SIGTERM)
+            os._exit(0)
+
+        # Handle restart
+        if p == '/restart':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            html = b'<html><body><h1>Restarting AIOS...</h1>'
+            html += b'<script>setTimeout(function(){location.href="/";}, 3000);</script></body></html>'
+            self.wfile.write(html)
+
+            def restart_aios():
+                __import__('time').sleep(0.5)
+                subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_start.py"])
+                __import__('time').sleep(1)
+                os._exit(0)
+
+            Thread(target=restart_aios, daemon=True).start()
+            return
+
+        # Handle worktree creation
+        if p == '/worktree/create':
+            d = parse_qs(b.decode()) or {}
+            cmd = ["python3", "/home/seanpatten/projects/AIOS/programs/worktree/worktree_manager.py",
+                   "create", d.get('repo', [''])[0], d.get('branch', [''])[0]]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+
+            if r.returncode == 0:
+                output = r.stdout
+            else:
+                output = f"Error: {r.stderr}"
+
+            html = f'<html><body><h2>Worktree Created</h2><pre>{output}</pre>'
+            html += '<br><a href="/">Back to Control Center</a></body></html>'
+            self.wfile.write(html.encode())
+            return
+
+        # Handle other commands
+        d = parse_qs(b.decode()) or {}
+
+        commands = {
+            '/job/run': "python3 services/jobs.py run_wiki",
+            '/job/accept': f"python3 services/jobs.py accept {d.get('id', [''])[0]}",
+            '/job/redo': f"python3 services/jobs.py redo {d.get('id', [''])[0]}",
+            '/run': d.get('cmd', [''])[0],
+            '/todo/add': f"python3 programs/todo/todo.py add {d.get('task', [''])[0]}",
+            '/todo/done': f"python3 programs/todo/todo.py done {d.get('id', [''])[0]}",
+            '/todo/clear': "python3 programs/todo/todo.py clear",
+            '/settings/theme': f"python3 programs/settings/settings.py set theme {d.get('theme', ['dark'])[0]}",
+            '/settings/time': f"python3 programs/settings/settings.py set time_format {d.get('format', ['12h'])[0]}",
+            '/autollm/run': f"python3 programs/autollm/autollm.py run {d.get('repo', [''])[0]} "
+                           f"{d.get('branches', ['1'])[0]} {d.get('model', ['claude-3-5-sonnet-20241022'])[0]} "
+                           f"{d.get('task', [''])[0]}",
+            '/autollm/accept': f"python3 programs/autollm/autollm.py accept {d.get('job_id', [''])[0]}",
+            '/autollm/vscode': f"code {d.get('path', [''])[0]}",
+            '/autollm/clean': "python3 programs/autollm/autollm.py clean"
+        }
+
+        if p in commands:
+            subprocess.run(commands[p], shell=True, timeout=5, capture_output=True)
+
+        # Redirect based on path
+        if 'autollm' in p:
+            redirect = '/autollm'
+        elif 'settings' in p:
+            redirect = '/settings'
+        else:
+            redirect = p.replace('/add', '').replace('/done', '').replace('/clear', '')
+
+        self.send_response(303)
+        self.send_header('Location', redirect)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
 
 async def client_handler(ws):
-    m, s = pty.openpty(); fcntl.ioctl(s, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0)); proc = await asyncio.create_subprocess_exec('bash', stdin=s, stdout=s, stderr=s, preexec_fn=os.setsid); os.close(s); os.set_blocking(m, False); loop = asyncio.get_event_loop(); loop.add_reader(m, lambda: (lambda d: d and asyncio.create_task(ws.send(d)))(os.read(m, 65536) if True else None))
+    # Open PTY
+    master, slave = pty.openpty()
+
+    # Set terminal size
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+
+    # Start bash process
+    proc = await asyncio.create_subprocess_exec(
+        'bash',
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        preexec_fn=os.setsid
+    )
+
+    os.close(slave)
+    os.set_blocking(master, False)
+
+    # Setup reading from PTY
+    loop = asyncio.get_event_loop()
+
+    def read_and_send():
+        try:
+            data = os.read(master, 65536)
+            if data:
+                asyncio.create_task(ws.send(data))
+        except:
+            pass
+
+    loop.add_reader(master, read_and_send)
+
     try:
         async for msg in ws:
-            isinstance(msg, bytes) and (msg[0:1] == b'{' and (lambda d: 'resize' in d and fcntl.ioctl(m, termios.TIOCSWINSZ, struct.pack('HHHH', d['resize']['rows'], d['resize']['cols'], 0, 0)))(json.loads(msg.decode())) or os.write(m, msg))
-    finally: loop.remove_reader(m); proc.terminate(); await proc.wait(); os.close(m)
+            if isinstance(msg, bytes):
+                # Check if it's a resize command
+                if msg[0:1] == b'{':
+                    try:
+                        d = json.loads(msg.decode())
+                        if 'resize' in d:
+                            rows = d['resize']['rows']
+                            cols = d['resize']['cols']
+                            fcntl.ioctl(master, termios.TIOCSWINSZ,
+                                       struct.pack('HHHH', rows, cols, 0, 0))
+                    except:
+                        os.write(master, msg)
+                else:
+                    os.write(master, msg)
+    finally:
+        loop.remove_reader(master)
+        proc.terminate()
+        await proc.wait()
+        os.close(master)
 
-def serve_http(sock=None): s = HTTPServer(('', WEB_PORT), Handler, bind_and_activate=(sock is None)); s.socket = sock if sock else s.socket; s.serve_forever()
+def serve_http(sock=None):
+    s = HTTPServer(('', WEB_PORT), Handler, bind_and_activate=(sock is None))
+    s.socket = sock if sock else s.socket
+    s.serve_forever()
 
 async def main():
-    import socket; sock = socket.fromfd(int(sys.argv[1]), socket.AF_INET, socket.SOCK_STREAM) if len(sys.argv) > 1 else None; Thread(target=serve_http, args=(sock,), daemon=True).start(); ws_port = WEB_PORT + 1000
+    import socket
+
+    # Get socket from parent if provided
+    if len(sys.argv) > 1:
+        sock = socket.fromfd(int(sys.argv[1]), socket.AF_INET, socket.SOCK_STREAM)
+    else:
+        sock = None
+
+    # Start HTTP server in thread
+    Thread(target=serve_http, args=(sock,), daemon=True).start()
+
+    # Start WebSocket server
+    ws_port = WEB_PORT + 1000
     try:
-        async with websockets.serve(client_handler, 'localhost', ws_port): await asyncio.Future()
+        async with websockets.serve(client_handler, 'localhost', ws_port):
+            await asyncio.Future()
     except OSError:
-        async with websockets.serve(client_handler, 'localhost', WEB_PORT + 2000): await asyncio.Future()
+        # Try alternate port if primary is busy
+        async with websockets.serve(client_handler, 'localhost', WEB_PORT + 2000):
+            await asyncio.Future()
 
 asyncio.run(main())
-
