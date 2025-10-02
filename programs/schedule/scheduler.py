@@ -1,25 +1,10 @@
 #!/usr/bin/env python3
-import sys
+import sys, subprocess, schedule as sched
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
-import schedule as sched
-import subprocess
 import aios_db
-
 schedules = aios_db.read("schedule")
-
-def run_cmd(cmd):
-    return subprocess.run(cmd, shell=True, timeout=300)
-
-def schedule_daily(item):
-    t, cmd = item
-    sched.every().day.at(t).do(run_cmd, cmd)
-
-def schedule_hourly(item):
-    m, cmd = item
-    sched.every().hour.at(f":{int(m):02d}").do(run_cmd, cmd)
-
-list(map(schedule_daily, schedules.get("daily", {}).items()))
-list(map(schedule_hourly, schedules.get("hourly", {}).items()))
-
+run_cmd = lambda cmd: subprocess.run(cmd, shell=True, timeout=300)
+list(map(lambda item: sched.every().day.at(item[0]).do(run_cmd, item[1]), schedules.get("daily", {}).items()))
+list(map(lambda item: sched.every().hour.at(f":{int(item[0]):02d}").do(run_cmd, item[1]), schedules.get("hourly", {}).items()))
 sched.run_pending()

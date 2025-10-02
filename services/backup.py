@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 import sys, shutil
-sys.path.append("/home/seanpatten/projects/AIOS/core")
-sys.path.append('/home/seanpatten/projects/AIOS')
+[sys.path.append(p) for p in ["/home/seanpatten/projects/AIOS/core", "/home/seanpatten/projects/AIOS"]]
 from pathlib import Path
 import aios_db
 from datetime import datetime
-aios_db.write("backup", {"source": str(Path.home()), "dest": "/tmp/backup"})
-aios_db.write("backup_log", [])
-config = aios_db.read("backup")
-source = Path(config.get("source", Path.home()))
-dest = Path(config.get("dest", "/tmp/backup")) / f"{datetime.now():%Y%m%d_%H%M%S}"
-dest.parent.mkdir(parents=True, exist_ok=True)
-shutil.copytree(source, dest, dirs_exist_ok=True)
-aios_db.write("backup_log", aios_db.read("backup_log") + [{"time": datetime.now().isoformat(), "dest": str(dest)}])
-print(f"Backed up to {dest}")
+[aios_db.write(*x) for x in [("backup", {"source": str(Path.home()), "dest": "/tmp/backup"}), ("backup_log", [])]]
+dest = Path((c := aios_db.read("backup")).get("dest", "/tmp/backup")) / f"{(n := datetime.now()):%Y%m%d_%H%M%S}"
+[dest.parent.mkdir(parents=True, exist_ok=True), shutil.copytree(Path(c.get("source", str(Path.home()))), dest, dirs_exist_ok=True), aios_db.write("backup_log", aios_db.read("backup_log") + [{"time": n.isoformat(), "dest": str(dest)}]), print(f"Backed up to {dest}")]

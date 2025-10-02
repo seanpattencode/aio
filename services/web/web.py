@@ -1,321 +1,47 @@
 #!/usr/bin/env python3
-import sys
-sys.path.append('/home/seanpatten/projects/AIOS')
-sys.path.append('/home/seanpatten/projects/AIOS/core')
+import sys; sys.path.extend(['/home/seanpatten/projects/AIOS', '/home/seanpatten/projects/AIOS/core'])
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import json, aios_db, subprocess, os, asyncio, websockets, pty, struct, fcntl, termios
+import json, aios_db, subprocess, os, asyncio, websockets, pty, struct, fcntl, termios, signal
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime
 from pathlib import Path
 from threading import Thread
-import signal
 
-TEMPLATE_DIR = Path(__file__).parent / 'templates'
-DEV_MODE = os.getenv('DEV_MODE', 'true').lower() in ('1', 'true', 'yes')
-
-# Get ports from arguments
-WEB_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8080
-API_PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8000
-
-def get_template(name):
-    return (TEMPLATE_DIR / name).read_text() if DEV_MODE else globals().get(f'TEMPLATE_{name.replace(".html", "").replace("-", "_").upper()}', '')
-
-TEMPLATE_INDEX = (TEMPLATE_DIR / 'index.html').read_text()
-TEMPLATE_TODO = (TEMPLATE_DIR / 'todo.html').read_text()
-TEMPLATE_JOBS = (TEMPLATE_DIR / 'jobs.html').read_text()
-TEMPLATE_FEED = (TEMPLATE_DIR / 'feed.html').read_text()
-TEMPLATE_AUTOLLM = (TEMPLATE_DIR / 'autollm.html').read_text()
-TEMPLATE_AUTOLLM_OUTPUT = (TEMPLATE_DIR / 'autollm_output.html').read_text()
-TEMPLATE_TERMINAL = (TEMPLATE_DIR / 'terminal.html').read_text()
-TEMPLATE_TERMINAL_EMULATOR = (TEMPLATE_DIR / 'terminal-emulator.html').read_text()
-TEMPLATE_TERMINAL_XTERM = (TEMPLATE_DIR / 'terminal-xterm.html').read_text()
-TEMPLATE_SETTINGS = (TEMPLATE_DIR / 'settings.html').read_text()
-TEMPLATE_WORKFLOW = (TEMPLATE_DIR / 'workflow.html').read_text()
-TEMPLATE_WORKFLOW_MANAGER = (TEMPLATE_DIR / 'workflow_manager.html').read_text() if (TEMPLATE_DIR / 'workflow_manager.html').exists() else ''
+TEMPLATE_DIR, WEB_PORT = Path(__file__).parent / 'templates', int(sys.argv[2]) if len(sys.argv) > 2 else 8080
+T = {k: (TEMPLATE_DIR / v).read_text() for k, v in {'index': 'index.html', 'todo': 'todo.html', 'jobs': 'jobs.html', 'feed': 'feed.html', 'autollm': 'autollm.html', 'autollm_output': 'autollm_output.html', 'terminal': 'terminal.html', 'terminal_emulator': 'terminal-emulator.html', 'terminal_xterm': 'terminal-xterm.html', 'settings': 'settings.html', 'workflow': 'workflow.html', 'workflow_manager': 'workflow_manager.html'}.items()}
 
 class Handler(BaseHTTPRequestHandler):
+    def _ctx(self): s, c = aios_db.read("settings") or {}, {}; c.update({'bg': {'light': '#fff'}.get(s.get('theme'), '#000'), 'fg': {'light': '#000'}.get(s.get('theme'), '#fff'), 'bg2': {'light': '#f0f0f0'}.get(s.get('theme'), '#1a1a1a')}); return s, c
+
     def do_GET(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
-        query = parse_qs(parsed.query)
-        s = aios_db.read("settings") or {}
-        c = {'bg': {'light': '#fff'}.get(s.get('theme'), '#000'), 'fg': {'light': '#000'}.get(s.get('theme'), '#fff'), 'bg2': {'light': '#f0f0f0'}.get(s.get('theme'), '#1a1a1a')}
-        self.s = s
-        self.c = c
-        self.query = query
-        handlers = {'/api/jobs': self.handle_api_jobs, '/api/workflow/nodes': self.handle_api_workflow_nodes, '/': self.handle_home, '/todo': self.handle_todo, '/feed': self.handle_feed, '/settings': self.handle_settings, '/jobs': self.handle_jobs, '/autollm': self.handle_autollm, '/autollm/output': self.handle_autollm_output, '/terminal': self.handle_terminal, '/terminal-emulator': self.handle_terminal_emulator, '/terminal-xterm': self.handle_terminal_xterm, '/workflow': self.handle_workflow, '/workflow-manager': self.handle_workflow_manager, '/workflow/list_worktrees': self.handle_list_worktrees}
-        content, ctype = handlers.get(path, self.handle_default)()
-        self.send_response(200)
-        self.send_header('Content-type', ctype)
-        self.end_headers()
-        self.wfile.write(content.encode())
-
-    def handle_default(self):
-        return (TEMPLATE_INDEX.format(**self.c, vp="", tasks="", feed_content="", running_jobs="", review_jobs="", done_jobs=""), 'text/html')
-
-    def handle_api_jobs(self):
-        return (json.dumps(list(map(lambda j: {"id": j[0], "name": j[1], "status": j[2], "output": j[3]}, aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")))), 'application/json')
-
-    def handle_home(self):
-        return (TEMPLATE_INDEX.format(**self.c), 'text/html')
-
-    def handle_todo(self):
-        result = subprocess.run(["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"], capture_output=True, text=True)
-        tasks = result.stdout.strip().split('\n') or []
-        tasks_html = "".join(list(map(lambda it: f'<div class="task {"done" * ("[x]" in it[1])}">{it[1]} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{it[1].split(".")[0] or str(it[0]+1)}"><button>Done</button></form></div>', enumerate(tasks))))
-        return TEMPLATE_TODO.format(**self.c, tasks=tasks_html or '<div style="color:#888">No tasks yet</div>'), 'text/html'
-
-    def handle_feed(self):
-        messages = aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100")
-        time_format = self.s.get("time_format", "12h")
-        feed_html = []
-        self._dates = []
-        def process_message(m):
-            date_header = {True: f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(m[1]).date()}</div>', False: ''}.get(datetime.fromisoformat(m[1]).date() not in self._dates, '')
-            feed_html.append(date_header + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(m[1]).strftime({"12h": "%I:%M %p"}.get(time_format, "%H:%M"))} - {m[0]}</div>')
-            self._dates.append(datetime.fromisoformat(m[1]).date())
-        list(map(process_message, messages))
-        return TEMPLATE_FEED.format(**self.c, feed_content="".join(feed_html) or "<div style='color:#888'>No messages yet</div>"), 'text/html'
-
-    def handle_settings(self):
-        theme_dark_style = {'dark': 'style="font-weight:bold"'}.get(self.s.get('theme', 'dark'), '')
-        theme_light_style = {'light': 'style="font-weight:bold"'}.get(self.s.get('theme'), '')
-        time_12h_style = {'12h': 'style="font-weight:bold"'}.get(self.s.get('time_format', '12h'), '')
-        time_24h_style = {'24h': 'style="font-weight:bold"'}.get(self.s.get('time_format'), '')
-        return TEMPLATE_SETTINGS.format(**self.c, theme_dark_style=theme_dark_style, theme_light_style=theme_light_style, time_12h_style=time_12h_style, time_24h_style=time_24h_style), 'text/html'
-
-    def handle_jobs(self):
-        running = subprocess.run("python3 services/jobs.py running", shell=True, capture_output=True, text=True, timeout=5)
-        review = subprocess.run("python3 services/jobs.py review", shell=True, capture_output=True, text=True, timeout=5)
-        done = subprocess.run("python3 services/jobs.py done", shell=True, capture_output=True, text=True, timeout=5)
-        running_html = running.stdout.strip() or '<div style="color:#888;padding:10px">No running jobs</div>'
-        review_html = review.stdout.strip() or '<div style="color:#888;padding:10px">No jobs in review</div>'
-        done_html = done.stdout.strip() or '<div style="color:#888;padding:10px">No completed jobs</div>'
-        return TEMPLATE_JOBS.format(**self.c, running_jobs=running_html, review_jobs=review_html, done_jobs=done_html), 'text/html'
-
-    def handle_autollm(self):
-        worktrees = aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees")
-        running = []
-        review = []
-        done = []
-        for w in worktrees:
-            if w[3] == 'running': running.append((w[0], w[1], w[2], w[4], w[5]))
-            elif w[3] == 'review': review.append((w[0], w[1], w[2], w[4], w[5], w[6]))
-            elif w[3] == 'done': done.append((w[0], w[1]))
-        running_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{((Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").read_text()[-200:] if (Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").exists() else "Waiting for output...")}</pre><a href="/autollm/output?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px">Full Output</a><a href="/terminal?job_id={w[2]}" style="padding:5px 10px;background:{self.c["fg"]};color:{self.c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a></div>', running))) or '<div style="color:#888">No running worktrees</div>'
-        review_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[4]}: {w[3][:30]}<br>Output: {(w[5] or "")[:50]}<br><form action="/autollm/accept" method="POST" style="display:inline"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form><form action="/autollm/vscode" method="POST" style="display:inline"><input type="hidden" name="path" value="{w[1]}"><button>VSCode</button></form></div>', review))) or '<div style="color:#888">No worktrees in review</div>'
-        done_html = "".join(list(map(lambda w: f'<div class="worktree"><span class="status done">{w[0]}</span></div>', done))) or '<div style="color:#888">No completed worktrees</div>'
-        return TEMPLATE_AUTOLLM.format(**self.c, running_worktrees=running_html, review_worktrees=review_html, done_worktrees=done_html), 'text/html'
-
-    def handle_autollm_output(self):
-        job_id = self.query.get('job_id', [''])[0]
-        output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
-        db_output = aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", (job_id,))
-        output_content = output_file.read_text() * output_file.exists() or (db_output[0][0] or "No output yet") * bool(db_output) or "No output yet"
-        return TEMPLATE_AUTOLLM_OUTPUT.format(**self.c, output_content=output_content), 'text/html'
-
-    def handle_terminal(self):
-        job_id = self.query.get('job_id', [''])[0]
-        output_file = Path.home() / ".aios" / f"autollm_output_{job_id}.txt"
-        terminal_content = (output_file.exists() and output_file.read_text()) or "Waiting for output..."
-        return TEMPLATE_TERMINAL.format(**self.c, terminal_content=terminal_content, job_id=job_id), 'text/html'
-
-    def handle_terminal_emulator(self):
-        return (TEMPLATE_TERMINAL_EMULATOR, 'text/html')
-
-    def handle_terminal_xterm(self):
-        return (TEMPLATE_TERMINAL_XTERM, 'text/html')
-
-    def handle_workflow(self):
-        template = get_template('workflow.html') if DEV_MODE else TEMPLATE_WORKFLOW
-        return (template.format(**self.c), 'text/html')
-
-    def handle_workflow_manager(self):
-        template = get_template('workflow_manager.html') if DEV_MODE else TEMPLATE_WORKFLOW_MANAGER
-        return (template.format(**self.c), 'text/html')
-
-    def handle_list_worktrees(self):
-        # Get list of worktrees from git
-        result = subprocess.run(["git", "worktree", "list"], capture_output=True, text=True, timeout=5)
-        worktrees = []
-        for line in result.stdout.strip().split('\n'):
-            if line:
-                parts = line.split()
-                if len(parts) >= 3:
-                    path = parts[0]
-                    branch = parts[2].strip('[]')
-                    worktrees.append({"path": path, "branch": branch})
-        return (json.dumps(worktrees), 'application/json')
-
-    def handle_api_workflow_nodes(self):
-        try:
-            nodes = aios_db.read("workflow_nodes")
-        except:
-            nodes = []
-        return (json.dumps(nodes), 'application/json')
+        p, q, s, c = urlparse(self.path), parse_qs(urlparse(self.path).query), *self._ctx()
+        H = {'/': lambda: (T['index'].format(**c), 'text/html'), '/api/jobs': lambda: (json.dumps([{"id": j[0], "name": j[1], "status": j[2], "output": j[3]} for j in aios_db.query("jobs", "SELECT id, name, status, output FROM jobs ORDER BY created DESC")]), 'application/json'), '/todo': lambda: (T['todo'].format(**c, tasks="".join([f'<div class="task {"done" * ("[x]" in t)}">{t} <form style="display:inline" action="/todo/done" method="POST"><input type="hidden" name="id" value="{t.split(".")[0] or str(i+1)}"><button>Done</button></form></div>' for i, t in enumerate(subprocess.run(["python3", "core/aios_runner.py", "python3", "programs/todo/todo.py", "list"], capture_output=True, text=True).stdout.strip().split('\n') or [])]) or '<div style="color:#888">No tasks yet</div>'), 'text/html'), '/feed': lambda: (T['feed'].format(**c, feed_content=(lambda m, d=[]: "".join([d.append(datetime.fromisoformat(x[1]).date()) or (f'<div style="color:#888;font-weight:bold;margin:15px 0 5px">{datetime.fromisoformat(x[1]).date()}</div>' if datetime.fromisoformat(x[1]).date() not in d else '') + f'<div style="padding:8px;margin:2px 0">{datetime.fromisoformat(x[1]).strftime({"12h": "%I:%M %p"}.get(s.get("time_format", "12h"), "%H:%M"))} - {x[0]}</div>' for x in m]) or "<div style='color:#888'>No messages yet</div>")(aios_db.query("feed", "SELECT content, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100"))), 'text/html'), '/settings': lambda: (T['settings'].format(**c, theme_dark_style={'dark': 'style="font-weight:bold"'}.get(s.get('theme', 'dark'), ''), theme_light_style={'light': 'style="font-weight:bold"'}.get(s.get('theme'), ''), time_12h_style={'12h': 'style="font-weight:bold"'}.get(s.get('time_format', '12h'), ''), time_24h_style={'24h': 'style="font-weight:bold"'}.get(s.get('time_format'), '')), 'text/html'), '/jobs': lambda: (T['jobs'].format(**c, **{k: subprocess.run(f"python3 services/jobs.py {v}", shell=True, capture_output=True, text=True, timeout=5).stdout.strip() or f'<div style="color:#888;padding:10px">No {v} jobs</div>' for k, v in {'running_jobs': 'running', 'review_jobs': 'review', 'done_jobs': 'done'}.items()}), 'text/html'), '/autollm': lambda: (T['autollm'].format(**c, **{f'{k}_worktrees': "".join([h(w) for w in g]) or f'<div style="color:#888">No {k} worktrees</div>' for k, g, h in [('running', [w for w in aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model FROM worktrees") if w[3] == 'running'], lambda w: f'<div class="worktree"><span class="status running">{w[0]}</span><br>{w[5]}: {w[4][:30]}<br><pre style="background:#000;padding:5px;margin:5px 0;max-height:100px;overflow-y:auto;font-size:10px">{((Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").read_text()[-200:] if (Path.home() / ".aios" / f"autollm_output_{w[2]}.txt").exists() else "Waiting for output...")}</pre><a href="/autollm/output?job_id={w[2]}" style="padding:5px 10px;background:{c["fg"]};color:{c["bg"]};text-decoration:none;border-radius:3px">Full Output</a><a href="/terminal?job_id={w[2]}" style="padding:5px 10px;background:{c["fg"]};color:{c["bg"]};text-decoration:none;border-radius:3px;margin-left:5px">Terminal</a></div>'), ('review', [w for w in aios_db.query("autollm", "SELECT branch, path, job_id, status, task, model, output FROM worktrees") if w[3] == 'review'], lambda w: f'<div class="worktree"><span class="status review">{w[0]}</span><br>{w[5]}: {w[4][:30]}<br>Output: {(w[6] or "")[:50]}<br><form action="/autollm/accept" method="POST" style="display:inline"><input type="hidden" name="job_id" value="{w[2]}"><button>Accept</button></form><form action="/autollm/vscode" method="POST" style="display:inline"><input type="hidden" name="path" value="{w[1]}"><button>VSCode</button></form></div>'), ('done', [w for w in aios_db.query("autollm", "SELECT branch, path FROM worktrees") if len(w) > 3 and w[3] == 'done'], lambda w: f'<div class="worktree"><span class="status done">{w[0]}</span></div>')]}), 'text/html'), '/autollm/output': lambda: (T['autollm_output'].format(**c, output_content=(lambda j, f: f.read_text() if f.exists() else ((lambda d: d[0][0] if d else "No output yet")(aios_db.query("autollm", "SELECT output FROM worktrees WHERE job_id=?", (j,)))))(q.get('job_id', [''])[0], Path.home() / ".aios" / f"autollm_output_{q.get('job_id', [''])[0]}.txt")), 'text/html'), '/terminal': lambda: (T['terminal'].format(**c, terminal_content=(lambda j, f: f.read_text() if f.exists() else "Waiting for output...")(q.get('job_id', [''])[0], Path.home() / ".aios" / f"autollm_output_{q.get('job_id', [''])[0]}.txt"), job_id=q.get('job_id', [''])[0]), 'text/html'), '/terminal-emulator': lambda: (T['terminal_emulator'].replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'), 'text/html'), '/terminal-xterm': lambda: (T['terminal_xterm'].replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'), 'text/html'), '/workflow': lambda: (T['workflow'].format(**c), 'text/html'), '/workflow-manager': lambda: (T['workflow_manager'].format(**c), 'text/html'), '/workflow/list_worktrees': lambda: (json.dumps([{"path": l.split()[0], "branch": l.split()[2].strip('[]')} for l in subprocess.run(["git", "worktree", "list"], capture_output=True, text=True, timeout=5).stdout.strip().split('\n') if l and len(l.split()) >= 3]), 'application/json'), '/api/workflow/nodes': lambda: (json.dumps(aios_db.read("workflow_nodes") or []), 'application/json')}
+        ct, ty = H.get(p.path, lambda: (T['index'].format(**c), 'text/html'))(); self.send_response(200); self.send_header('Content-type', ty); self.end_headers(); self.wfile.write(ct.encode())
 
     def do_POST(self):
-        path = urlparse(self.path).path
-        length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length) or b''
-        if path.startswith('/workflow/'):
-            jdata = json.loads(body.decode() or '{}')
-
-            # Handle worktree creation with terminal
-            if path == '/workflow/worktree_terminal':
-                repo = jdata.get('repo', '/home/seanpatten/projects/AIOS')
-                branch = jdata.get('branch', '')
-                result = subprocess.run(
-                    ["python3", "programs/workflow/workflow.py", "worktree_terminal", repo, branch],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                try:
-                    output = json.loads(result.stdout) if result.stdout else {"error": "No output from command"}
-                except:
-                    output = {"error": result.stderr or "Unknown error"}
-                self.wfile.write(json.dumps(output).encode())
-                return
-
-            # Handle worktree removal
-            if path == '/workflow/remove_worktree':
-                worktree_path = jdata.get('path', '')
-                try:
-                    subprocess.run(["git", "worktree", "remove", worktree_path], check=True, timeout=5)
-                    response = {"success": True}
-                except Exception as e:
-                    response = {"success": False, "error": str(e)}
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps(response).encode())
-                return
-
-            # Existing workflow commands
-            wf_cmds = {'/workflow/add': f"python3 programs/workflow/workflow.py add {jdata.get('col', 0)} {jdata.get('text', '')}", '/workflow/expand': f"python3 programs/workflow/workflow.py expand {jdata.get('id', 0)} {jdata.get('text', '')}", '/workflow/branch': f"python3 programs/workflow/workflow.py branch {jdata.get('id', 0)}", '/workflow/exec': f"python3 programs/workflow/workflow.py exec {jdata.get('id', 0)}", '/workflow/push': f"python3 programs/workflow/workflow.py push {jdata.get('id', 0)}", '/workflow/term': f"python3 programs/workflow/workflow.py term {jdata.get('id', 0)}", '/workflow/comment': f"python3 programs/workflow/workflow.py comment {jdata.get('id', 0)} {jdata.get('text', '')}", '/workflow/save': f"python3 programs/workflow/workflow.py save {jdata.get('name', 'default')}", '/workflow/load': f"python3 programs/workflow/workflow.py load {jdata.get('name', 'default')}"}
-            subprocess.run(wf_cmds.get(path, ""), shell=True, timeout=5, capture_output=True)
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
-            return
-        # Handle shutdown and restart
-        if path == '/shutdown':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(b'<html><body><h1>Shutting down AIOS...</h1><script>setTimeout(function(){window.close();}, 2000);</script></body></html>')
-            # Kill API and web processes
-            pids = aios_db.read("aios_pids")
-            for pid in pids.values():
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                except:
-                    pass
-            os._exit(0)
-            return
-        elif path == '/restart':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(b'<html><body><h1>Restarting AIOS...</h1><script>setTimeout(function(){location.reload();}, 3000);</script></body></html>')
-            # Start new instance and shutdown current
-            subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_start.py"])
-            # Kill current processes after delay
-            def delayed_shutdown():
-                import time
-                time.sleep(1)
-                pids = aios_db.read("aios_pids")
-                for pid in pids.values():
-                    try:
-                        os.kill(pid, signal.SIGTERM)
-                    except:
-                        pass
-                os._exit(0)
-            Thread(target=delayed_shutdown, daemon=True).start()
-            return
-
-        # Handle worktree creation
-        if path == '/worktree/create':
-            data = parse_qs(body.decode()) or {}
-            repo = data.get('repo', [''])[0]
-            branch = data.get('branch', [''])[0]
-            result = subprocess.run(
-                ["python3", "/home/seanpatten/projects/AIOS/programs/worktree/worktree_manager.py", "create", repo, branch],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            output = result.stdout if result.returncode == 0 else f"Error: {result.stderr}"
-            self.wfile.write(f'<html><body><h2>Worktree Created</h2><pre>{output}</pre><br><a href="/">Back to Control Center</a></body></html>'.encode())
-            return
-
-        data = parse_qs(body.decode()) or {}
-        commands = {'/job/run': "python3 services/jobs.py run_wiki", '/job/accept': f"python3 services/jobs.py accept {data.get('id', [''])[0]}", '/job/redo': f"python3 services/jobs.py redo {data.get('id', [''])[0]}", '/run': data.get('cmd', [''])[0], '/todo/add': f"python3 programs/todo/todo.py add {data.get('task', [''])[0]}", '/todo/done': f"python3 programs/todo/todo.py done {data.get('id', [''])[0]}", '/todo/clear': "python3 programs/todo/todo.py clear", '/settings/theme': f"python3 programs/settings/settings.py set theme {data.get('theme', ['dark'])[0]}", '/settings/time': f"python3 programs/settings/settings.py set time_format {data.get('format', ['12h'])[0]}", '/autollm/run': f"python3 programs/autollm/autollm.py run {data.get('repo', [''])[0]} {data.get('branches', ['1'])[0]} {data.get('model', ['claude-3-5-sonnet-20241022'])[0]} {data.get('task', [''])[0]}", '/autollm/accept': f"python3 programs/autollm/autollm.py accept {data.get('job_id', [''])[0]}", '/autollm/vscode': f"code {data.get('path', [''])[0]}", '/autollm/clean': "python3 programs/autollm/autollm.py clean"}
-        cmd = commands.get(path, "")
-        subprocess.run(cmd, shell=True, timeout=5, capture_output=True)
-        self.send_response(303)
-        self.send_header('Location', {True: '/autollm', False: {True: '/settings', False: path.replace('/add', '').replace('/done', '').replace('/clear', '')}['settings' in path]}['autollm' in path])
-        self.end_headers()
+        p, b = urlparse(self.path).path, self.rfile.read(int(self.headers.get('Content-Length', 0))) or b''
+        if p.startswith('/workflow/'): d = json.loads(b.decode() or '{}'); (p == '/workflow/worktree_terminal' and (lambda r: (self.send_response(200), self.send_header('Content-type', 'application/json'), self.end_headers(), self.wfile.write(json.dumps(json.loads(r.stdout) if r.stdout else {"error": "No output"}).encode())))(subprocess.run(["python3", "programs/workflow/workflow.py", "worktree_terminal", d.get('repo', '/home/seanpatten/projects/AIOS'), d.get('branch', '')], capture_output=True, text=True, timeout=10)) or p == '/workflow/remove_worktree' and (subprocess.run(["git", "worktree", "remove", d.get('path', '')], check=True, timeout=5), self.send_response(200), self.send_header('Content-type', 'application/json'), self.end_headers(), self.wfile.write(b'{"success":true}')) or (subprocess.run({'/workflow/add': f"python3 programs/workflow/workflow.py add {d.get('col', 0)} {d.get('text', '')}", '/workflow/expand': f"python3 programs/workflow/workflow.py expand {d.get('id', 0)} {d.get('text', '')}", '/workflow/branch': f"python3 programs/workflow/workflow.py branch {d.get('id', 0)}", '/workflow/exec': f"python3 programs/workflow/workflow.py exec {d.get('id', 0)}", '/workflow/push': f"python3 programs/workflow/workflow.py push {d.get('id', 0)}", '/workflow/term': f"python3 programs/workflow/workflow.py term {d.get('id', 0)}", '/workflow/comment': f"python3 programs/workflow/workflow.py comment {d.get('id', 0)} {d.get('text', '')}", '/workflow/save': f"python3 programs/workflow/workflow.py save {d.get('name', 'default')}", '/workflow/load': f"python3 programs/workflow/workflow.py load {d.get('name', 'default')}"}.get(p, ""), shell=True, timeout=5, capture_output=True), self.send_response(200), self.send_header('Content-type', 'application/json'), self.end_headers(), self.wfile.write(b'{"status":"ok"}'))); return
+        if p == '/shutdown': self.send_response(200); self.send_header('Content-type', 'text/html'); self.end_headers(); self.wfile.write(b'<html><body><h1>Shutting down AIOS...</h1><script>setTimeout(function(){window.close();}, 2000);</script></body></html>'); [os.kill(pid, signal.SIGTERM) for pid in (aios_db.read("aios_pids") or {}).values() if True]; os._exit(0)
+        if p == '/restart': self.send_response(200); self.send_header('Content-type', 'text/html'); self.end_headers(); self.wfile.write(b'<html><body><h1>Restarting AIOS...</h1><script>setTimeout(function(){location.href="/";}, 3000);</script></body></html>'); Thread(target=lambda: (__import__('time').sleep(0.5), subprocess.Popen(["python3", "/home/seanpatten/projects/AIOS/core/aios_start.py"]), __import__('time').sleep(1), os._exit(0))[-1], daemon=True).start(); return
+        if p == '/worktree/create': d, r = parse_qs(b.decode()) or {}, subprocess.run(["python3", "/home/seanpatten/projects/AIOS/programs/worktree/worktree_manager.py", "create", d.get('repo', [''])[0], d.get('branch', [''])[0]], capture_output=True, text=True, timeout=10); self.send_response(200); self.send_header('Content-type', 'text/html'); self.end_headers(); self.wfile.write(f'<html><body><h2>Worktree Created</h2><pre>{r.stdout if r.returncode == 0 else f"Error: {r.stderr}"}</pre><br><a href="/">Back to Control Center</a></body></html>'.encode()); return
+        d = parse_qs(b.decode()) or {}; subprocess.run({'/job/run': "python3 services/jobs.py run_wiki", '/job/accept': f"python3 services/jobs.py accept {d.get('id', [''])[0]}", '/job/redo': f"python3 services/jobs.py redo {d.get('id', [''])[0]}", '/run': d.get('cmd', [''])[0], '/todo/add': f"python3 programs/todo/todo.py add {d.get('task', [''])[0]}", '/todo/done': f"python3 programs/todo/todo.py done {d.get('id', [''])[0]}", '/todo/clear': "python3 programs/todo/todo.py clear", '/settings/theme': f"python3 programs/settings/settings.py set theme {d.get('theme', ['dark'])[0]}", '/settings/time': f"python3 programs/settings/settings.py set time_format {d.get('format', ['12h'])[0]}", '/autollm/run': f"python3 programs/autollm/autollm.py run {d.get('repo', [''])[0]} {d.get('branches', ['1'])[0]} {d.get('model', ['claude-3-5-sonnet-20241022'])[0]} {d.get('task', [''])[0]}", '/autollm/accept': f"python3 programs/autollm/autollm.py accept {d.get('job_id', [''])[0]}", '/autollm/vscode': f"code {d.get('path', [''])[0]}", '/autollm/clean': "python3 programs/autollm/autollm.py clean"}.get(p, ""), shell=True, timeout=5, capture_output=True); self.send_response(303); self.send_header('Location', '/autollm' if 'autollm' in p else '/settings' if 'settings' in p else p.replace('/add', '').replace('/done', '').replace('/clear', '')); self.end_headers()
 
     def log_message(self, *args): pass
 
 async def client_handler(ws):
-    master, slave = pty.openpty()
-    winsize = struct.pack('HHHH', 24, 80, 0, 0)
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
-    proc = await asyncio.create_subprocess_exec('bash', stdin=slave, stdout=slave, stderr=slave, preexec_fn=os.setsid)
-    os.close(slave)
-    os.set_blocking(master, False)
-    loop = asyncio.get_event_loop()
-    def read_output():
-        try:
-            data = os.read(master, 65536)
-            if data: asyncio.create_task(ws.send(data))
-        except (OSError, BlockingIOError): pass
-    loop.add_reader(master, read_output)
+    m, s = pty.openpty(); fcntl.ioctl(s, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0)); proc = await asyncio.create_subprocess_exec('bash', stdin=s, stdout=s, stderr=s, preexec_fn=os.setsid); os.close(s); os.set_blocking(m, False); loop = asyncio.get_event_loop(); loop.add_reader(m, lambda: (lambda d: d and asyncio.create_task(ws.send(d)))(os.read(m, 65536) if True else None))
     try:
         async for msg in ws:
-            if isinstance(msg, bytes):
-                try:
-                    data = json.loads(msg.decode('utf-8'))
-                    if 'resize' in data:
-                        size = data['resize']
-                        winsize = struct.pack('HHHH', size['rows'], size['cols'], 0, 0)
-                        fcntl.ioctl(master, termios.TIOCSWINSZ, winsize)
-                        if 'term' in data: os.environ['TERM'] = data['term']
-                except: os.write(master, msg)
-    finally:
-        loop.remove_reader(master)
-        proc.terminate()
-        await proc.wait()
-        os.close(master)
+            isinstance(msg, bytes) and (msg[0:1] == b'{' and (lambda d: 'resize' in d and fcntl.ioctl(m, termios.TIOCSWINSZ, struct.pack('HHHH', d['resize']['rows'], d['resize']['cols'], 0, 0)))(json.loads(msg.decode())) or os.write(m, msg))
+    finally: loop.remove_reader(m); proc.terminate(); await proc.wait(); os.close(m)
 
-def serve_http(sock=None):
-    server = HTTPServer(('', 8080), Handler, bind_and_activate=(sock is None))
-    {True: setattr(server, 'socket', sock), False: None}[sock is not None]
-    server.serve_forever()
+def serve_http(sock=None): s = HTTPServer(('', WEB_PORT), Handler, bind_and_activate=(sock is None)); s.socket = sock if sock else s.socket; s.serve_forever()
 
 async def main():
-    import socket
-    sock = socket.fromfd(int(sys.argv[1]), socket.AF_INET, socket.SOCK_STREAM) if len(sys.argv) > 1 else None
-    Thread(target=serve_http, args=(sock,), daemon=True).start()
-    # Use dynamic websocket port based on web port
-    ws_port = WEB_PORT + 1000  # e.g., 8080 -> 9080
+    import socket; sock = socket.fromfd(int(sys.argv[1]), socket.AF_INET, socket.SOCK_STREAM) if len(sys.argv) > 1 else None; Thread(target=serve_http, args=(sock,), daemon=True).start(); ws_port = WEB_PORT + 1000
     try:
-        async with websockets.serve(client_handler, 'localhost', ws_port):
-            await asyncio.Future()
+        async with websockets.serve(client_handler, 'localhost', ws_port): await asyncio.Future()
     except OSError:
-        # Try alternative port if first one is taken
-        ws_port = WEB_PORT + 2000
-        async with websockets.serve(client_handler, 'localhost', ws_port):
-            await asyncio.Future()
+        async with websockets.serve(client_handler, 'localhost', WEB_PORT + 2000): await asyncio.Future()
 
 asyncio.run(main())

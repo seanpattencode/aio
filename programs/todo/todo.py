@@ -1,35 +1,17 @@
 #!/usr/bin/env python3
 import sys
+from datetime import datetime
 sys.path.append("/home/seanpatten/projects/AIOS/core")
 sys.path.append('/home/seanpatten/projects/AIOS')
 import aios_db
-from datetime import datetime, timedelta
-command = (sys.argv + ["list"])[1]
-def get_tasks():
-    return aios_db.read("tasks")
+command, get_tasks = (sys.argv + ["list"])[1], lambda: aios_db.read("tasks")
 tasks = get_tasks()
-def add_task():
-    task_text = ' '.join(sys.argv[2:])
-    task_desc = task_text.split('@')[0].strip()
-    new_task = f"[ ] {datetime.now():%Y-%m-%d %H:%M} {task_desc}"
-    aios_db.write("tasks", get_tasks() + [new_task])
-    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Task: {task_desc}", datetime.now().isoformat(), "todo"))
-def done_task():
-    current_tasks = get_tasks()
-    task_id = int(sys.argv[2]) - 1
-    task = current_tasks[task_id]
-    task_text = ' '.join(task.split()[3:])
-    updated = list(current_tasks)
-    updated[task_id] = task.replace("[ ]", "[x]")
-    aios_db.write("tasks", updated)
-    aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Completed: {task_text}", datetime.now().isoformat(), "todo"))
-def print_task(item):
-    i, t = item
-    print(f"{i+1}. {t}")
-def list_tasks():
-    list(map(print_task, enumerate(tasks)))
-def is_not_done(t):
-    return t.startswith("[x]") == False
-def clear_done():
-    return aios_db.write("tasks", list(filter(is_not_done, tasks)))
-{"list": list_tasks, "add": add_task, "done": done_task, "clear": clear_done}.get(command, list_tasks)()
+commands = {
+    "add": lambda: (aios_db.write("tasks", get_tasks() + [f"[ ] {datetime.now():%Y-%m-%d %H:%M} {' '.join(sys.argv[2:]).split('@')[0].strip()}"]),
+                   aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Task: {' '.join(sys.argv[2:]).split('@')[0].strip()}", datetime.now().isoformat(), "todo"))),
+    "done": lambda: (lambda ts, tid, t: (aios_db.write("tasks", ts[:tid] + [t.replace("[ ]", "[x]")] + ts[tid+1:]),
+                                          aios_db.execute("feed", "INSERT INTO messages(content, timestamp, source) VALUES (?, ?, ?)", (f"Completed: {' '.join(t.split()[3:])}", datetime.now().isoformat(), "todo"))))(get_tasks(), int(sys.argv[2])-1, get_tasks()[int(sys.argv[2])-1]),
+    "list": lambda: list(map(lambda x: print(f"{x[0]+1}. {x[1]}"), enumerate(tasks))),
+    "clear": lambda: aios_db.write("tasks", [t for t in tasks if not t.startswith("[x]")])
+}
+commands.get(command, commands["list"])()
