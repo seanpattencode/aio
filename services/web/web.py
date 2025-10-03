@@ -244,6 +244,14 @@ class Handler(BaseHTTPRequestHandler):
             '/api/workflow/nodes': lambda: (
                 json.dumps(aios_db.read("workflow_nodes") or []),
                 'application/json'
+            ),
+            '/api/workflow/list': lambda: (
+                json.dumps([str(f.relative_to('/home/seanpatten/projects/AIOS')) for f in Path('/home/seanpatten/projects/AIOS/workflows').glob('*.md')] if Path('/home/seanpatten/projects/AIOS/workflows').exists() else []),
+                'application/json'
+            ),
+            '/api/terminal/sessions': lambda: (
+                json.dumps(aios_db.read("terminal_sessions") or {}),
+                'application/json'
             )
         }
 
@@ -280,6 +288,25 @@ class Handler(BaseHTTPRequestHandler):
 
             if p == '/workflow/remove_worktree':
                 subprocess.run(["git", "worktree", "remove", d.get('path', '')], check=True, timeout=5)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"success":true}')
+                return
+
+            if p == '/workflow/execute':
+                cmd = ["python3", "services/workflow_executor.py", "execute",
+                       d.get('worktree_id', 'default'), d.get('workflow_path', '')]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(r.stdout.encode() if r.stdout else b'{"status":"error"}')
+                return
+
+            if p == '/workflow/open_vscode':
+                path = d.get('path', '')
+                subprocess.Popen(['code', path])
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
@@ -399,59 +426,81 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+# Global persistent terminal sessions
+_terminal_sessions = {}
+
+def get_or_create_terminal(worktree_id, worktree_path):
+    if worktree_id not in _terminal_sessions:
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            os.dup2(slave, 0)
+            os.dup2(slave, 1)
+            os.dup2(slave, 2)
+            os.close(master)
+            os.close(slave)
+            os.chdir(worktree_path)
+            os.execv('/bin/bash', ['bash'])
+
+        os.close(slave)
+        os.set_blocking(master, False)
+        _terminal_sessions[worktree_id] = {"master": master, "pid": pid, "path": worktree_path}
+
+        sessions = aios_db.read("terminal_sessions") or {}
+        sessions[worktree_id] = {"pid": pid, "path": worktree_path, "created": __import__('time').time()}
+        aios_db.write("terminal_sessions", sessions)
+
+    return _terminal_sessions[worktree_id]["master"]
+
 async def client_handler(ws):
-    # Open PTY
-    master, slave = pty.openpty()
-
-    # Set terminal size
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
-
-    # Start bash process
-    proc = await asyncio.create_subprocess_exec(
-        'bash',
-        stdin=slave,
-        stdout=slave,
-        stderr=slave,
-        preexec_fn=os.setsid
-    )
-
-    os.close(slave)
-    os.set_blocking(master, False)
-
-    # Setup reading from PTY
-    loop = asyncio.get_event_loop()
-
-    def read_and_send():
-        try:
-            data = os.read(master, 65536)
-            if data:
-                asyncio.create_task(ws.send(data))
-        except:
-            pass
-
-    loop.add_reader(master, read_and_send)
+    worktree_id, master = None, None
 
     try:
+        init_msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+        if isinstance(init_msg, bytes):
+            try:
+                init_data = json.loads(init_msg.decode())
+                worktree_id = init_data.get('worktree_id', 'default')
+            except:
+                worktree_id = 'default'
+
+        sessions = aios_db.read("terminal_sessions") or {}
+        wt_path = sessions.get(worktree_id, {}).get('path', '/home/seanpatten/projects/AIOS')
+        master = get_or_create_terminal(worktree_id, wt_path)
+
+        loop = asyncio.get_event_loop()
+
+        def read_and_send():
+            try:
+                data = os.read(master, 65536)
+                if data:
+                    asyncio.create_task(ws.send(data))
+            except:
+                pass
+
+        loop.add_reader(master, read_and_send)
+
         async for msg in ws:
             if isinstance(msg, bytes):
-                # Check if it's a resize command
                 if msg[0:1] == b'{':
                     try:
                         d = json.loads(msg.decode())
                         if 'resize' in d:
-                            rows = d['resize']['rows']
-                            cols = d['resize']['cols']
-                            fcntl.ioctl(master, termios.TIOCSWINSZ,
-                                       struct.pack('HHHH', rows, cols, 0, 0))
+                            rows, cols = d['resize']['rows'], d['resize']['cols']
+                            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
                     except:
                         os.write(master, msg)
                 else:
                     os.write(master, msg)
     finally:
-        loop.remove_reader(master)
-        proc.terminate()
-        await proc.wait()
-        os.close(master)
+        if master:
+            try:
+                loop.remove_reader(master)
+            except:
+                pass
 
 def serve_http(sock=None):
     s = HTTPServer(('', WEB_PORT), Handler, bind_and_activate=(sock is None))

@@ -1,4 +1,4 @@
-Generated: 2025-10-02 19:53:49
+Generated: 2025-10-02 21:08:24
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -168,6 +168,44 @@ n = datetime.now()
 dest = Path(c.get("dest", "/tmp/backup")) / f"{n:%Y%m%d_%H%M%S}"
 [dest.parent.mkdir(parents=True, exist_ok=True), shutil.copytree(Path(c.get("source", str(Path.home()))), dest, dirs_exist_ok=True), aios_db.write("backup_log", aios_db.read("backup_log") + [{"time": n.isoformat(), "dest": str(dest)}]), print(f"Backed up to {dest}")]
 
+services/terminal_manager.py:
+#!/usr/bin/env python3
+import sys, os, pty, termios, struct, fcntl, signal
+from pathlib import Path
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import aios_db
+
+_pty_sessions = {}
+
+def create_session(worktree_id, worktree_path):
+    master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    pid = os.fork()
+    if pid == 0:
+        [os.dup2(slave, fd) for fd in [0, 1, 2]]
+        [os.close(fd) for fd in [master, slave]]
+        os.setsid()
+        os.chdir(worktree_path)
+        os.execv('/bin/bash', ['bash'])
+    os.close(slave)
+    os.set_blocking(master, False)
+    _pty_sessions[worktree_id] = {"master": master, "pid": pid, "path": worktree_path}
+    sessions = aios_db.read("terminal_sessions") or {}
+    sessions[worktree_id] = {"pid": pid, "path": worktree_path, "created": __import__('time').time()}
+    aios_db.write("terminal_sessions", sessions)
+    return master
+
+get_session = lambda wt_id: _pty_sessions.get(wt_id)
+send_data = lambda wt_id, data: os.write(_pty_sessions[wt_id]["master"], data) if wt_id in _pty_sessions else None
+read_data = lambda wt_id, size=65536: (lambda s: os.read(s["master"], size) if s else b'')(_pty_sessions.get(wt_id))
+kill_session = lambda wt_id: (os.kill(_pty_sessions[wt_id]["pid"], signal.SIGTERM), os.close(_pty_sessions[wt_id]["master"]), _pty_sessions.pop(wt_id)) if wt_id in _pty_sessions else None
+
+if __name__ == "__main__":
+    cmd, wt_id, wt_path = (sys.argv + ["list", "default", str(Path.cwd())])[:3]
+    {"create": lambda: (create_session(wt_id, wt_path), print(f"Created: {wt_id}")),
+     "list": lambda: [print(f"{k}: pid={v['pid']} -> {v['path']}") for k, v in (aios_db.read("terminal_sessions") or {}).items()]}.get(cmd, lambda: None)()
+
+
 services/service.py:
 #!/usr/bin/env python3
 import sys
@@ -199,6 +237,66 @@ aios_db.write("scraper", {"urls": ["https://news.ycombinator.com"]})
 get_title = lambda u: (lambda s: s.title.string or "No title")(BeautifulSoup(requests.get(u, timeout=0.01).text, 'html.parser'))
 results = [{"url": u, "title": get_title(u), "time": datetime.now().isoformat()} for u in aios_db.read("scraper").get("urls", [])]
 [aios_db.write("scraper_results", results), list(map(lambda r: print(f"{r['url']}: {r['title']}"), results))]
+
+services/workflow_executor.py:
+#!/usr/bin/env python3
+import sys, subprocess
+from pathlib import Path
+sys.path.append('/home/seanpatten/projects/AIOS/core')
+import aios_db
+
+def parse_workflow_md(md_path):
+    steps, in_code, current = [], False, []
+    for line in Path(md_path).read_text().split('\n'):
+        if line.strip().startswith('```bash') or line.strip().startswith('```sh'):
+            in_code, current = True, []
+        elif in_code and line.strip().startswith('```'):
+            steps.append('\n'.join(current))
+            in_code = False
+        elif in_code:
+            current.append(line)
+    return steps
+
+def execute_workflow(worktree_id, workflow_path):
+    steps = parse_workflow_md(workflow_path)
+    workflows = aios_db.read("active_workflows") or {}
+    workflows[worktree_id] = {"steps": steps, "current_step": 0, "results": [], "status": "ready", "workflow_path": workflow_path}
+    aios_db.write("active_workflows", workflows)
+
+    results = []
+    for i, step in enumerate(steps):
+        workflows[worktree_id].update({"current_step": i, "status": "executing"})
+        aios_db.write("active_workflows", workflows)
+
+        try:
+            result = subprocess.run(step, shell=True, capture_output=True, text=True, timeout=300, cwd=Path.home() / ".aios")
+            output = result.stdout + result.stderr
+        except subprocess.TimeoutExpired:
+            output = "Timeout"
+        except Exception as e:
+            output = f"Error: {e}"
+
+        results.append({"step": i, "command": step, "output": output[-500:]})
+        workflows[worktree_id]["results"] = results
+        aios_db.write("active_workflows", workflows)
+
+    workflows[worktree_id]["status"] = "completed"
+    aios_db.write("active_workflows", workflows)
+    return {"status": "completed", "results": results}
+
+if __name__ == "__main__":
+    cmd = (sys.argv + ["execute"])[1]
+    if cmd == "execute":
+        wt_id = (sys.argv + ["", "default"])[2]
+        wf_path = (sys.argv + ["", "", "workflow.md"])[3]
+        result = execute_workflow(wt_id, wf_path)
+        print(result)
+    elif cmd == "parse":
+        wf_path = (sys.argv + ["", "", "workflow.md"])[2]
+        steps = parse_workflow_md(wf_path)
+        for i, step in enumerate(steps):
+            print(f"{i+1}. {step}")
+
 
 services/context_generator.py:
 from pathlib import Path
@@ -1166,6 +1264,14 @@ class Handler(BaseHTTPRequestHandler):
             '/api/workflow/nodes': lambda: (
                 json.dumps(aios_db.read("workflow_nodes") or []),
                 'application/json'
+            ),
+            '/api/workflow/list': lambda: (
+                json.dumps([str(f.relative_to('/home/seanpatten/projects/AIOS')) for f in Path('/home/seanpatten/projects/AIOS/workflows').glob('*.md')] if Path('/home/seanpatten/projects/AIOS/workflows').exists() else []),
+                'application/json'
+            ),
+            '/api/terminal/sessions': lambda: (
+                json.dumps(aios_db.read("terminal_sessions") or {}),
+                'application/json'
             )
         }
 
@@ -1202,6 +1308,25 @@ class Handler(BaseHTTPRequestHandler):
 
             if p == '/workflow/remove_worktree':
                 subprocess.run(["git", "worktree", "remove", d.get('path', '')], check=True, timeout=5)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"success":true}')
+                return
+
+            if p == '/workflow/execute':
+                cmd = ["python3", "services/workflow_executor.py", "execute",
+                       d.get('worktree_id', 'default'), d.get('workflow_path', '')]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(r.stdout.encode() if r.stdout else b'{"status":"error"}')
+                return
+
+            if p == '/workflow/open_vscode':
+                path = d.get('path', '')
+                subprocess.Popen(['code', path])
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
@@ -1321,59 +1446,81 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+# Global persistent terminal sessions
+_terminal_sessions = {}
+
+def get_or_create_terminal(worktree_id, worktree_path):
+    if worktree_id not in _terminal_sessions:
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+
+        pid = os.fork()
+        if pid == 0:
+            os.setsid()
+            os.dup2(slave, 0)
+            os.dup2(slave, 1)
+            os.dup2(slave, 2)
+            os.close(master)
+            os.close(slave)
+            os.chdir(worktree_path)
+            os.execv('/bin/bash', ['bash'])
+
+        os.close(slave)
+        os.set_blocking(master, False)
+        _terminal_sessions[worktree_id] = {"master": master, "pid": pid, "path": worktree_path}
+
+        sessions = aios_db.read("terminal_sessions") or {}
+        sessions[worktree_id] = {"pid": pid, "path": worktree_path, "created": __import__('time').time()}
+        aios_db.write("terminal_sessions", sessions)
+
+    return _terminal_sessions[worktree_id]["master"]
+
 async def client_handler(ws):
-    # Open PTY
-    master, slave = pty.openpty()
-
-    # Set terminal size
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
-
-    # Start bash process
-    proc = await asyncio.create_subprocess_exec(
-        'bash',
-        stdin=slave,
-        stdout=slave,
-        stderr=slave,
-        preexec_fn=os.setsid
-    )
-
-    os.close(slave)
-    os.set_blocking(master, False)
-
-    # Setup reading from PTY
-    loop = asyncio.get_event_loop()
-
-    def read_and_send():
-        try:
-            data = os.read(master, 65536)
-            if data:
-                asyncio.create_task(ws.send(data))
-        except:
-            pass
-
-    loop.add_reader(master, read_and_send)
+    worktree_id, master = None, None
 
     try:
+        init_msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+        if isinstance(init_msg, bytes):
+            try:
+                init_data = json.loads(init_msg.decode())
+                worktree_id = init_data.get('worktree_id', 'default')
+            except:
+                worktree_id = 'default'
+
+        sessions = aios_db.read("terminal_sessions") or {}
+        wt_path = sessions.get(worktree_id, {}).get('path', '/home/seanpatten/projects/AIOS')
+        master = get_or_create_terminal(worktree_id, wt_path)
+
+        loop = asyncio.get_event_loop()
+
+        def read_and_send():
+            try:
+                data = os.read(master, 65536)
+                if data:
+                    asyncio.create_task(ws.send(data))
+            except:
+                pass
+
+        loop.add_reader(master, read_and_send)
+
         async for msg in ws:
             if isinstance(msg, bytes):
-                # Check if it's a resize command
                 if msg[0:1] == b'{':
                     try:
                         d = json.loads(msg.decode())
                         if 'resize' in d:
-                            rows = d['resize']['rows']
-                            cols = d['resize']['cols']
-                            fcntl.ioctl(master, termios.TIOCSWINSZ,
-                                       struct.pack('HHHH', rows, cols, 0, 0))
+                            rows, cols = d['resize']['rows'], d['resize']['cols']
+                            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
                     except:
                         os.write(master, msg)
                 else:
                     os.write(master, msg)
     finally:
-        loop.remove_reader(master)
-        proc.terminate()
-        await proc.wait()
-        os.close(master)
+        if master:
+            try:
+                loop.remove_reader(master)
+            except:
+                pass
 
 def serve_http(sock=None):
     s = HTTPServer(('', WEB_PORT), Handler, bind_and_activate=(sock is None))

@@ -42,6 +42,17 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:300p
 </div>
 </div>
 
+<div class="worktree-section">
+<h2>Workflows</h2>
+<div>
+<select id="workflow-select" style="background:{bg2};color:{fg};border:1px solid {fg};padding:10px;margin:10px;border-radius:5px;width:400px">
+<option value="">Select a workflow...</option>
+</select>
+<button class="create-btn" onclick="executeWorkflow()">▶️ Execute Workflow</button>
+</div>
+<div id="workflow-status" style="margin-top:10px;color:#888"></div>
+</div>
+
 <div class="terminal-section">
 <h2 style="color:{fg};margin-bottom:10px">Terminal</h2>
 <div id="terminal-container" class="terminal-container">
@@ -59,23 +70,14 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:300p
 let currentTerminal = null;
 let currentWs = null;
 let fitAddon = null;
+let currentWorktreeId = 'default';
 
-function initTerminal(path) {{
-    // Clean up existing terminal
-    if (currentTerminal) {{
-        currentTerminal.dispose();
-    }}
-    if (currentWs) {{
-        currentWs.close();
-    }}
+function initTerminal(path, worktreeId) {{
+    if (currentTerminal) currentTerminal.dispose();
+    if (currentWs) currentWs.close();
 
-    // Create new terminal
-    currentTerminal = new Terminal({{
-        cursorBlink: true,
-        fontSize: 14,
-        fontFamily: 'monospace'
-    }});
-
+    currentWorktreeId = worktreeId || 'default';
+    currentTerminal = new Terminal({{cursorBlink: true, fontSize: 14, fontFamily: 'monospace'}});
     fitAddon = new FitAddon.FitAddon();
     currentTerminal.loadAddon(fitAddon);
 
@@ -84,32 +86,23 @@ function initTerminal(path) {{
     currentTerminal.open(container);
     fitAddon.fit();
 
-    // Connect to websocket
     currentWs = new WebSocket('ws://localhost:' + (parseInt(window.location.port) + 1000));
     currentWs.binaryType = 'arraybuffer';
 
     currentWs.onopen = () => {{
-        // Send initial directory change command
+        // Send handshake with worktree_id
+        currentWs.send(new TextEncoder().encode(JSON.stringify({{worktree_id: currentWorktreeId}})));
         if (path) {{
             setTimeout(() => {{
-                const cmd = 'cd ' + path + '\r';
-                currentWs.send(new TextEncoder().encode(cmd));
-                // Also send a clear command to clean the terminal
-                setTimeout(() => {{
-                    currentWs.send(new TextEncoder().encode('clear\r'));
-                }}, 200);
+                currentWs.send(new TextEncoder().encode('cd ' + path + '\r'));
+                setTimeout(() => currentWs.send(new TextEncoder().encode('clear\r')), 200);
             }}, 500);
         }}
     }};
 
-    currentWs.onmessage = (e) => {{
-        currentTerminal.write(new Uint8Array(e.data));
-    }};
-
+    currentWs.onmessage = (e) => currentTerminal.write(new Uint8Array(e.data));
     currentTerminal.onData((data) => {{
-        if (currentWs.readyState === WebSocket.OPEN) {{
-            currentWs.send(new TextEncoder().encode(data));
-        }}
+        if (currentWs.readyState === WebSocket.OPEN) currentWs.send(new TextEncoder().encode(data));
     }});
 }}
 
@@ -133,11 +126,7 @@ async function createWorktreeWithTerminal() {{
         if (result.success) {{
             statusDiv.innerHTML = `✅ Created worktree: ${{result.branch}} at ${{result.path}}`;
             document.getElementById('branch-name').value = '';
-
-            // Initialize terminal with the new worktree path
-            initTerminal(result.path);
-
-            // Refresh worktree list
+            initTerminal(result.path, result.branch);
             loadWorktrees();
         }} else {{
             statusDiv.innerHTML = `❌ Error: ${{result.error}}`;
@@ -164,7 +153,8 @@ async function loadWorktrees() {{
                         <span style="color:#888;margin-left:10px">${{wt.path}}</span>
                     </div>
                     <div>
-                        <button onclick="openTerminalIn('${{wt.path}}')">Open Terminal</button>
+                        <button onclick="openTerminalIn('${{wt.path}}', '${{wt.branch}}')">Terminal</button>
+                        <button onclick="openInVSCode('${{wt.path}}')">VSCode</button>
                         <button onclick="removeWorktree('${{wt.path}}')" style="background:#dc3545">Remove</button>
                     </div>
                 </div>
@@ -175,9 +165,65 @@ async function loadWorktrees() {{
     }}
 }}
 
-function openTerminalIn(path) {{
-    initTerminal(path);
+function openTerminalIn(path, worktreeId) {{
+    initTerminal(path, worktreeId);
     document.getElementById('status-message').innerHTML = `Terminal opened in: ${{path}}`;
+}}
+
+async function openInVSCode(path) {{
+    try {{
+        await fetch('/workflow/open_vscode', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{path: path}})
+        }});
+        document.getElementById('status-message').innerHTML = `✅ Opening in VSCode: ${{path}}`;
+    }} catch (error) {{
+        document.getElementById('status-message').innerHTML = `❌ Error: ${{error.message}}`;
+    }}
+}}
+
+async function loadWorkflows() {{
+    try {{
+        const response = await fetch('/api/workflow/list');
+        const workflows = await response.json();
+        const select = document.getElementById('workflow-select');
+        select.innerHTML = '<option value="">Select a workflow...</option>';
+        workflows.forEach(wf => {{
+            select.innerHTML += `<option value="${{wf}}">${{wf}}</option>`;
+        }});
+    }} catch (error) {{
+        console.error('Error loading workflows:', error);
+    }}
+}}
+
+async function executeWorkflow() {{
+    const workflowPath = document.getElementById('workflow-select').value;
+    if (!workflowPath) {{
+        document.getElementById('workflow-status').innerHTML = '❌ Please select a workflow';
+        return;
+    }}
+
+    try {{
+        document.getElementById('workflow-status').innerHTML = 'Executing workflow...';
+        const response = await fetch('/workflow/execute', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{
+                worktree_id: currentWorktreeId,
+                workflow_path: '/home/seanpatten/projects/AIOS/' + workflowPath
+            }})
+        }});
+
+        const result = await response.json();
+        if (result.status === 'completed') {{
+            document.getElementById('workflow-status').innerHTML = `✅ Workflow completed with ${{result.results.length}} steps`;
+        }} else {{
+            document.getElementById('workflow-status').innerHTML = `❌ Workflow error: ${{result.error}}`;
+        }}
+    }} catch (error) {{
+        document.getElementById('workflow-status').innerHTML = `❌ Error: ${{error.message}}`;
+    }}
 }}
 
 async function removeWorktree(path) {{
@@ -205,8 +251,8 @@ async function removeWorktree(path) {{
 // Initialize on load
 window.addEventListener('load', () => {{
     loadWorktrees();
-    // Initialize terminal with default directory
-    initTerminal('/home/seanpatten/projects/AIOS');
+    loadWorkflows();
+    initTerminal('/home/seanpatten/projects/AIOS', 'default');
 }});
 
 // Handle window resize
