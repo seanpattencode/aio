@@ -1,4 +1,4 @@
-Generated: 2025-10-02 23:21:10
+Generated: 2025-10-02 23:30:53
 
 aios_start.py:
 #!/usr/bin/env python3
@@ -259,7 +259,10 @@ def parse_workflow_md(md_path):
 
 def execute_workflow(worktree_id, workflow_path):
     steps = parse_workflow_md(workflow_path)
-    workflows = aios_db.read("active_workflows") or {}
+    try:
+        workflows = aios_db.read("active_workflows")
+    except:
+        workflows = {}
     workflows[worktree_id] = {"steps": steps, "current_step": 0, "results": [], "status": "ready", "workflow_path": workflow_path}
     aios_db.write("active_workflows", workflows)
 
@@ -285,12 +288,16 @@ def execute_workflow(worktree_id, workflow_path):
     return {"status": "completed", "results": results}
 
 if __name__ == "__main__":
+    import json
     cmd = (sys.argv + ["execute"])[1]
     if cmd == "execute":
         wt_id = (sys.argv + ["", "default"])[2]
         wf_path = (sys.argv + ["", "", "workflow.md"])[3]
-        result = execute_workflow(wt_id, wf_path)
-        print(result)
+        try:
+            result = execute_workflow(wt_id, wf_path)
+            print(json.dumps(result))
+        except Exception as e:
+            print(json.dumps({"status": "error", "error": str(e)}))
     elif cmd == "parse":
         wf_path = (sys.argv + ["", "", "workflow.md"])[2]
         steps = parse_workflow_md(wf_path)
@@ -1320,11 +1327,17 @@ class Handler(BaseHTTPRequestHandler):
             if p == '/workflow/execute':
                 cmd = ["python3", "services/workflow_executor.py", "execute",
                        d.get('worktree_id', 'default'), d.get('workflow_path', '')]
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                try:
+                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    output = r.stdout if r.stdout else json.dumps({"status": "error", "error": "No output from workflow executor"})
+                except subprocess.TimeoutExpired:
+                    output = json.dumps({"status": "error", "error": "Workflow execution timed out"})
+                except Exception as e:
+                    output = json.dumps({"status": "error", "error": str(e)})
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(r.stdout.encode() if r.stdout else b'{"status":"error"}')
+                self.wfile.write(output.encode())
                 return
 
             if p == '/workflow/open_vscode':

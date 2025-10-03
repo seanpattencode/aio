@@ -18,7 +18,10 @@ def parse_workflow_md(md_path):
 
 def execute_workflow(worktree_id, workflow_path):
     steps = parse_workflow_md(workflow_path)
-    workflows = aios_db.read("active_workflows") or {}
+    try:
+        workflows = aios_db.read("active_workflows")
+    except:
+        workflows = {}
     workflows[worktree_id] = {"steps": steps, "current_step": 0, "results": [], "status": "ready", "workflow_path": workflow_path}
     aios_db.write("active_workflows", workflows)
 
@@ -44,12 +47,16 @@ def execute_workflow(worktree_id, workflow_path):
     return {"status": "completed", "results": results}
 
 if __name__ == "__main__":
+    import json
     cmd = (sys.argv + ["execute"])[1]
     if cmd == "execute":
         wt_id = (sys.argv + ["", "default"])[2]
         wf_path = (sys.argv + ["", "", "workflow.md"])[3]
-        result = execute_workflow(wt_id, wf_path)
-        print(result)
+        try:
+            result = execute_workflow(wt_id, wf_path)
+            print(json.dumps(result))
+        except Exception as e:
+            print(json.dumps({"status": "error", "error": str(e)}))
     elif cmd == "parse":
         wf_path = (sys.argv + ["", "", "workflow.md"])[2]
         steps = parse_workflow_md(wf_path)

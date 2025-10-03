@@ -38,7 +38,7 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:300p
 <div>
 <input id="repo-path" placeholder="Repository path (default: /home/seanpatten/projects/AIOS)" value="/home/seanpatten/projects/AIOS">
 <input id="branch-name" placeholder="Branch name (auto-generated if empty)">
-<button class="create-btn" onclick="createWorktreeWithTerminal()">🌳 Create Worktree + Terminal</button>
+<button class="create-btn" onclick="createWorktreeWithTerminal()">Create Worktree + Terminal</button>
 </div>
 <div id="status-message" style="margin-top:10px;color:#888"></div>
 </div>
@@ -56,7 +56,7 @@ input{{background:{bg2};color:{fg};border:1px solid {fg};padding:10px;width:300p
 <select id="workflow-select" style="background:{bg2};color:{fg};border:1px solid {fg};padding:10px;margin:10px;border-radius:5px;width:400px">
 <option value="">Select a workflow...</option>
 </select>
-<button class="create-btn" onclick="executeWorkflow()">▶️ Execute Workflow</button>
+<button class="create-btn" onclick="executeWorkflow()">Execute Workflow</button>
 </div>
 <div id="workflow-status" style="margin-top:10px;color:#888"></div>
 </div>
@@ -132,15 +132,15 @@ async function createWorktreeWithTerminal() {{
         const result = await response.json();
 
         if (result.success) {{
-            statusDiv.innerHTML = `✅ Created worktree: ${{result.branch}} at ${{result.path}}`;
+            statusDiv.innerHTML = `Created worktree: ${{result.branch}} at ${{result.path}}`;
             document.getElementById('branch-name').value = '';
             initTerminal(result.path, result.branch);
             loadWorktrees();
         }} else {{
-            statusDiv.innerHTML = `❌ Error: ${{result.error}}`;
+            statusDiv.innerHTML = `Error: ${{result.error}}`;
         }}
     }} catch (error) {{
-        statusDiv.innerHTML = `❌ Error: ${{error.message}}`;
+        statusDiv.innerHTML = `Error: ${{error.message}}`;
     }}
 }}
 
@@ -185,9 +185,9 @@ async function openInVSCode(path) {{
             headers: {{'Content-Type': 'application/json'}},
             body: JSON.stringify({{path: path}})
         }});
-        document.getElementById('status-message').innerHTML = `✅ Opening in VSCode: ${{path}}`;
+        document.getElementById('status-message').innerHTML = `Opening in VSCode: ${{path}}`;
     }} catch (error) {{
-        document.getElementById('status-message').innerHTML = `❌ Error: ${{error.message}}`;
+        document.getElementById('status-message').innerHTML = `Error: ${{error.message}}`;
     }}
 }}
 
@@ -208,7 +208,7 @@ async function loadWorkflows() {{
 async function executeWorkflow() {{
     const workflowPath = document.getElementById('workflow-select').value;
     if (!workflowPath) {{
-        document.getElementById('workflow-status').innerHTML = '❌ Please select a workflow';
+        document.getElementById('workflow-status').innerHTML = 'Please select a workflow';
         return;
     }}
 
@@ -225,12 +225,12 @@ async function executeWorkflow() {{
 
         const result = await response.json();
         if (result.status === 'completed') {{
-            document.getElementById('workflow-status').innerHTML = `✅ Workflow completed with ${{result.results.length}} steps`;
+            document.getElementById('workflow-status').innerHTML = `Workflow completed with ${{result.results.length}} steps`;
         }} else {{
-            document.getElementById('workflow-status').innerHTML = `❌ Workflow error: ${{result.error}}`;
+            document.getElementById('workflow-status').innerHTML = `Workflow error: ${{result.error}}`;
         }}
     }} catch (error) {{
-        document.getElementById('workflow-status').innerHTML = `❌ Error: ${{error.message}}`;
+        document.getElementById('workflow-status').innerHTML = `Error: ${{error.message}}`;
     }}
 }}
 
@@ -247,12 +247,12 @@ async function removeWorktree(path) {{
         const result = await response.json();
         if (result.success) {{
             loadWorktrees();
-            document.getElementById('status-message').innerHTML = `✅ Removed worktree: ${{path}}`;
+            document.getElementById('status-message').innerHTML = `Removed worktree: ${{path}}`;
         }} else {{
-            document.getElementById('status-message').innerHTML = `❌ Error: ${{result.error}}`;
+            document.getElementById('status-message').innerHTML = `Error: ${{result.error}}`;
         }}
     }} catch (error) {{
-        document.getElementById('status-message').innerHTML = `❌ Error: ${{error.message}}`;
+        document.getElementById('status-message').innerHTML = `Error: ${{error.message}}`;
     }}
 }}
 

@@ -300,11 +300,17 @@ class Handler(BaseHTTPRequestHandler):
             if p == '/workflow/execute':
                 cmd = ["python3", "services/workflow_executor.py", "execute",
                        d.get('worktree_id', 'default'), d.get('workflow_path', '')]
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                try:
+                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    output = r.stdout if r.stdout else json.dumps({"status": "error", "error": "No output from workflow executor"})
+                except subprocess.TimeoutExpired:
+                    output = json.dumps({"status": "error", "error": "Workflow execution timed out"})
+                except Exception as e:
+                    output = json.dumps({"status": "error", "error": str(e)})
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(r.stdout.encode() if r.stdout else b'{"status":"error"}')
+                self.wfile.write(output.encode())
                 return
 
             if p == '/workflow/open_vscode':
