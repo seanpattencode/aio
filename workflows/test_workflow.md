@@ -1,15 +1,15 @@
-# Test Workflow
+# New Workflow
 
-This is a test workflow created via the editor.
+Description of what this workflow does.
 
-## Step 1: Test echo
+## Step 1: First step
 
 ```bash
-echo "This is a test"
+echo "Hello from workflow"
 ```
 
-## Step 2: List files
+## Step 2: Second step
 
 ```bash
-ls -la
+echo "Add more steps as needed"
 ```
