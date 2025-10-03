@@ -94,7 +94,7 @@ function initTerminal(path, worktreeId) {{
     currentTerminal.open(container);
     fitAddon.fit();
 
-    currentWs = new WebSocket('ws://localhost:' + (parseInt(window.location.port) + 1000));
+    currentWs = new WebSocket('ws://localhost:8766');
     currentWs.binaryType = 'arraybuffer';
 
     currentWs.onopen = () => {{

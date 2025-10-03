@@ -239,7 +239,10 @@ class Handler(BaseHTTPRequestHandler):
                 'text/html'
             ),
             '/workflow': lambda: (T['workflow'].format(**c), 'text/html'),
-            '/workflow-manager': lambda: (T['workflow_manager'].format(**c), 'text/html'),
+            '/workflow-manager': lambda: (
+                T['workflow_manager'].format(**c).replace('ws://localhost:8766', f'ws://localhost:{WEB_PORT + 1000}'),
+                'text/html'
+            ),
             '/workflow/list_worktrees': lambda: (self._get_workflow_worktrees(), 'application/json'),
             '/api/workflow/nodes': lambda: (
                 json.dumps(aios_db.read("workflow_nodes") or []),
