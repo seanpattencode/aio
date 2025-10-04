@@ -28,6 +28,8 @@ task_queue = Queue()
 task_builder = {}
 builder_lock = Lock()
 running = True
+processed_files = set()  # Track files already queued from menu
+processed_files_lock = Lock()
 
 JOBS_DIR = Path("jobs")
 MAX_JOB_DIRS = 20  # Keep last 20 job directories
@@ -232,19 +234,19 @@ def watch_folder():
     """Watch tasks/ folder for new .json files"""
     tasks_dir = Path("tasks")
     tasks_dir.mkdir(exist_ok=True)
-    processed = set()
 
     while running:
         try:
             for json_file in tasks_dir.glob("*.json"):
-                if json_file in processed:
-                    continue
+                with processed_files_lock:
+                    if json_file in processed_files:
+                        continue
+                    processed_files.add(json_file)
 
                 try:
                     with open(json_file) as f:
                         task = json.load(f)
                     task_queue.put(task)
-                    processed.add(json_file)
                 except:
                     pass
 
@@ -337,6 +339,11 @@ def show_task_menu():
                 print(f"  {i}. [{has_worktree}] {task_name:30} ({filepath.name})")
         except:
             pass
+
+    # Mark ALL task files as processed so watch_folder won't auto-queue them
+    with processed_files_lock:
+        for filepath, _ in tasks:
+            processed_files.add(filepath)
 
     print("="*80)
     print("Select tasks to run:")
