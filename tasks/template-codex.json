@@ -1,0 +1,16 @@
+{
+  "name": "template-codex",
+  "repo": "{{repo_path}}",
+  "branch": "{{branch_name}}",
+  "variables": {
+    "repo_path": "/home/seanpatten/projects/testRepoPrivate",
+    "branch_name": "main",
+    "task_description": "create a function to calculate fibonacci"
+  },
+  "steps": [
+    {"desc": "Show directory", "cmd": "pwd"},
+    {"desc": "Generate code via codex", "cmd": "codex exec --sandbox workspace-write -- \"{{task_description}}\""},
+    {"desc": "List created files", "cmd": "ls -la"},
+    {"desc": "Show first Python file", "cmd": "find . -name '*.py' -type f | head -1 | xargs cat"}
+  ]
+}

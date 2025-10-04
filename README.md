@@ -206,7 +206,7 @@ All will queue and run in parallel!
 
 ## Tasks Folder
 
-Place your task JSON files in the `tasks/` directory. AIOS automatically scans this folder at startup and displays them in an interactive menu.
+Place your task JSON files in the `tasks/` directory. AIOS automatically scans this folder at startup and displays them in an interactive menu with steps preview.
 
 ### Task Organization
 
@@ -214,9 +214,30 @@ Place your task JSON files in the `tasks/` directory. AIOS automatically scans t
 tasks/
 ├── basic-worktree.json     # ✓ With worktree
 ├── codex-worktree.json     # ✓ With worktree
+├── template-codex.json     # ✓⚙ Worktree + Variables
+├── template-parallel.json  # ✓⚙ Worktree + Variables
 ├── example_task.json       # Regular task
 ├── parallel_task.json      # Regular task
 └── test_task.json          # Regular task
+```
+
+### Enhanced Menu Display
+
+The menu now shows:
+- **Task indicators**: `[✓]` = Worktree, `[⚙]` = Variables
+- **Steps preview**: First 5 steps of each task
+- **Variable list**: All {{variables}} in the task
+- **Default values**: Number of defaults provided
+
+Example:
+```
+  5. [✓] [⚙] template-codex
+      1. Show directory
+      2. Generate code via codex
+      3. List created files
+      4. Show first Python file
+      Variables: branch_name, repo_path, task_description
+      Defaults: 3 provided
 ```
 
 ### Interactive Menu
@@ -245,6 +266,115 @@ For a simpler, non-UI experience:
 echo "1 2" | python run.py   # Run tasks 1 and 2
 echo "all" | python run.py   # Run all tasks
 ```
+
+## Template Variables
+
+Create reusable task templates with dynamic `{{variable}}` placeholders. AIOS prompts you for values at runtime, with optional defaults.
+
+### Variable Syntax
+
+Use `{{variable_name}}` anywhere in your task JSON:
+
+```json
+{
+  "name": "template-example",
+  "repo": "{{repo_path}}",
+  "branch": "{{branch_name}}",
+  "variables": {
+    "repo_path": "/default/path",
+    "branch_name": "main",
+    "task_description": "create a hello world function"
+  },
+  "steps": [
+    {"desc": "Generate code", "cmd": "codex exec -- \"{{task_description}}\""},
+    {"desc": "Test with {{test_size}}", "cmd": "python test.py {{test_size}}"}
+  ]
+}
+```
+
+### How It Works
+
+1. **Menu displays variables**: Shows which tasks have `[⚙]` variables
+2. **Selection triggers prompts**: After selecting a task, you're prompted for each variable
+3. **Defaults offered**: Press Enter to use default values
+4. **Substitution happens**: All `{{placeholders}}` replaced before execution
+
+### Example Session
+
+```bash
+$ python run.py
+
+  5. [✓] [⚙] template-codex
+      1. Show directory
+      2. Generate code via codex
+      Variables: branch_name, repo_path, task_description
+      Defaults: 3 provided
+
+Selection: 5
+
+================================================================================
+TASK VARIABLES
+================================================================================
+branch_name [main]:
+repo_path [/home/user/repo]: /home/user/myproject
+task_description [create a function to calculate fibonacci]: create a sorting algorithm
+================================================================================
+
+Starting 1 task(s)...
+```
+
+### Template Use Cases
+
+**1. Codex Workflows**
+```json
+{
+  "name": "codex-template",
+  "repo": "{{repo_path}}",
+  "variables": {
+    "repo_path": "/home/user/project",
+    "feature_description": "add user authentication"
+  },
+  "steps": [
+    {"desc": "Generate", "cmd": "codex exec -- \"{{feature_description}}\""}
+  ]
+}
+```
+
+**2. Multi-Environment Deployments**
+```json
+{
+  "name": "deploy-template",
+  "variables": {
+    "environment": "staging",
+    "region": "us-east-1"
+  },
+  "steps": [
+    {"desc": "Deploy to {{environment}}", "cmd": "deploy.sh {{environment}} {{region}}"}
+  ]
+}
+```
+
+**3. Testing Different Configurations**
+```json
+{
+  "name": "test-template",
+  "variables": {
+    "test_size": "1000",
+    "algorithm": "quicksort"
+  },
+  "steps": [
+    {"desc": "Test {{algorithm}}", "cmd": "python benchmark.py {{algorithm}} {{test_size}}"}
+  ]
+}
+```
+
+### Variable Features
+
+- **Recursive substitution**: Variables work in all fields (repo, branch, steps, commands)
+- **Default values**: Optional `variables` object provides defaults
+- **Interactive prompts**: User-friendly prompting with `[default]` shown
+- **Multiple variables**: Use as many as needed
+- **No variables required**: Works with or without variables
 
 ## Git Worktree Support
 

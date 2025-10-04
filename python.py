@@ -34,6 +34,60 @@ processed_files_lock = Lock()
 JOBS_DIR = Path("jobs")
 MAX_JOB_DIRS = 20  # Keep last 20 job directories
 
+import re
+
+def extract_variables(obj):
+    """Extract {{variable}} placeholders from object"""
+    variables = set()
+    if isinstance(obj, str):
+        variables.update(re.findall(r'\{\{(\w+)\}\}', obj))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            variables.update(extract_variables(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            variables.update(extract_variables(item))
+    return variables
+
+def substitute_variables(obj, values):
+    """Replace {{variable}} with values recursively"""
+    if isinstance(obj, str):
+        for var, val in values.items():
+            obj = obj.replace(f'{{{{{var}}}}}', str(val))
+        return obj
+    elif isinstance(obj, dict):
+        return {k: substitute_variables(v, values) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [substitute_variables(item, values) for item in obj]
+    return obj
+
+def prompt_for_variables(task):
+    """Prompt user for variable values, using defaults if available"""
+    variables = extract_variables(task)
+    if not variables:
+        return task
+
+    defaults = task.get('variables', {})
+    values = {}
+
+    print("\n" + "="*80)
+    print("TASK VARIABLES")
+    print("="*80)
+
+    for var in sorted(variables):
+        default = defaults.get(var, '')
+        if default:
+            prompt = f"{var} [{default}]: "
+        else:
+            prompt = f"{var}: "
+
+        user_input = input(prompt).strip()
+        values[var] = user_input if user_input else default
+
+    print("="*80)
+
+    return substitute_variables(task, values)
+
 def cleanup_old_jobs():
     """Remove old job directories, keeping only the most recent MAX_JOB_DIRS"""
     if not JOBS_DIR.exists():
@@ -315,7 +369,7 @@ def process_command(cmd):
         return "✗ Unknown command"
 
 def show_task_menu():
-    """Scan tasks/ folder and show interactive menu"""
+    """Scan tasks/ folder and show interactive menu with steps"""
     tasks_dir = Path("tasks")
     if not tasks_dir.exists():
         return []
@@ -336,7 +390,25 @@ def show_task_menu():
                 tasks.append((filepath, task))
                 task_name = task.get('name', filepath.stem)
                 has_worktree = '✓' if task.get('repo') else ' '
-                print(f"  {i}. [{has_worktree}] {task_name:30} ({filepath.name})")
+                has_vars = '⚙' if extract_variables(task) else ' '
+
+                print(f"\n  {i}. [{has_worktree}] [{has_vars}] {task_name}")
+
+                # Show steps
+                steps = task.get('steps', [])
+                for j, step in enumerate(steps[:5], 1):  # Show first 5 steps
+                    desc = step.get('desc', 'No description')[:50]
+                    print(f"      {j}. {desc}")
+                if len(steps) > 5:
+                    print(f"      ... and {len(steps) - 5} more steps")
+
+                # Show variables if present
+                variables = extract_variables(task)
+                if variables:
+                    defaults = task.get('variables', {})
+                    print(f"      Variables: {', '.join(sorted(variables))}")
+                    if defaults:
+                        print(f"      Defaults: {len(defaults)} provided")
         except:
             pass
 
@@ -345,6 +417,8 @@ def show_task_menu():
         for filepath, _ in tasks:
             processed_files.add(filepath)
 
+    print("\n" + "="*80)
+    print("Legend: [✓]=Worktree [⚙]=Variables")
     print("="*80)
     print("Select tasks to run:")
     print("  - Enter numbers (e.g., '1 3 5' or '1,3,5')")
@@ -358,20 +432,26 @@ def show_task_menu():
         return []
 
     if selection.lower() == 'all':
-        return [task for _, task in tasks]
+        selected_tasks = [task for _, task in tasks]
+    else:
+        # Parse selection
+        selected_tasks = []
+        parts = selection.replace(',', ' ').split()
+        for part in parts:
+            try:
+                idx = int(part) - 1
+                if 0 <= idx < len(tasks):
+                    selected_tasks.append(tasks[idx][1])
+            except:
+                pass
 
-    # Parse selection
-    selected = []
-    parts = selection.replace(',', ' ').split()
-    for part in parts:
-        try:
-            idx = int(part) - 1
-            if 0 <= idx < len(tasks):
-                selected.append(tasks[idx][1])
-        except:
-            pass
+    # Prompt for variables in selected tasks
+    processed_tasks = []
+    for task in selected_tasks:
+        processed_task = prompt_for_variables(task)
+        processed_tasks.append(processed_task)
 
-    return selected
+    return processed_tasks
 
 def main():
     global running

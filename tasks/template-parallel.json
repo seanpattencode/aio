@@ -1,0 +1,18 @@
+{
+  "name": "template-parallel",
+  "repo": "{{repo_path}}",
+  "branch": "{{branch_name}}",
+  "variables": {
+    "repo_path": "/home/seanpatten/projects/testRepoPrivate",
+    "branch_name": "main",
+    "algorithm": "bubble sort",
+    "test_size": "1000"
+  },
+  "steps": [
+    {"desc": "Show working directory", "cmd": "pwd"},
+    {"desc": "Generate {{algorithm}} implementation", "cmd": "codex exec --sandbox workspace-write -- \"implement {{algorithm}} in Python with detailed comments\""},
+    {"desc": "List Python files", "cmd": "ls *.py"},
+    {"desc": "Test with {{test_size}} elements", "cmd": "echo 'Testing with {{test_size}} elements'"},
+    {"desc": "Show generated code", "cmd": "find . -name '*.py' -type f | head -1 | xargs head -30"}
+  ]
+}
