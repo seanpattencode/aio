@@ -1,0 +1,11 @@
+{
+  "name": "test-preview",
+  "variables": {
+    "message": "Hello World",
+    "count": "3"
+  },
+  "steps": [
+    {"desc": "Echo {{message}}", "cmd": "echo '{{message}}'"},
+    {"desc": "Count to {{count}}", "cmd": "seq 1 {{count}}"}
+  ]
+}

@@ -68,25 +68,40 @@ def prompt_for_variables(task):
         return task
 
     defaults = task.get('variables', {})
-    values = {}
+
+    print("\n" + "="*80)
+    print("TEMPLATE PREVIEW")
+    print("="*80)
+    print(json.dumps(task, indent=2))
+    print("="*80)
 
     print("\n" + "="*80)
     print("TASK VARIABLES")
     print("="*80)
 
+    values = {}
     for var in sorted(variables):
         default = defaults.get(var, '')
-        if default:
-            prompt = f"{var} [{default}]: "
-        else:
-            prompt = f"{var}: "
-
+        prompt = f"{var} [{default}]: " if default else f"{var}: "
         user_input = input(prompt).strip()
         values[var] = user_input if user_input else default
 
     print("="*80)
 
-    return substitute_variables(task, values)
+    substituted_task = substitute_variables(task, values)
+
+    print("\n" + "="*80)
+    print("FINAL PREVIEW")
+    print("="*80)
+    print(json.dumps(substituted_task, indent=2))
+    print("="*80)
+
+    confirmation = input("Launch this task? [Y/n]: ").strip().lower()
+    if confirmation and confirmation not in ['y', 'yes']:
+        print("Task cancelled")
+        return None
+
+    return substituted_task
 
 def cleanup_old_jobs():
     """Remove old job directories, keeping only the most recent MAX_JOB_DIRS"""
@@ -449,7 +464,8 @@ def show_task_menu():
     processed_tasks = []
     for task in selected_tasks:
         processed_task = prompt_for_variables(task)
-        processed_tasks.append(processed_task)
+        if processed_task is not None:
+            processed_tasks.append(processed_task)
 
     return processed_tasks
 
