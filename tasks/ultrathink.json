@@ -1,0 +1,33 @@
+{
+  "name": "ultrathink",
+  "repo": "{{repo_path}}",
+  "branch": "{{branch_name}}",
+  "variables": {
+    "repo_path": "/home/seanpatten/projects/testRepoPrivate",
+    "branch_name": "main",
+    "dynamic_prompt": "ask the user for the problem that occurs when they actually try to use the code for their vision, what they complain about, and the simplest change to fix it",
+    "static_prompt": "Do this using almost entirely direct library calls every line, minimizing line count, keeping logic simple, and keeping it fast as possible, make python code to do this. Run and debug every time a change is made. Keep the code with readability standards. No stuffing tons of stuff on one line. It should be short by simplicity of logic."
+  },
+  "steps": [
+    {
+      "desc": "Show working directory",
+      "cmd": "pwd"
+    },
+    {
+      "desc": "Execute ultrathink with conditional prompt",
+      "cmd": "if [ -z '{{dynamic_prompt}}' ]; then codex exec --sandbox workspace-write -- 'ultrathink'; else codex exec --sandbox workspace-write -- \"ultrathink. {{dynamic_prompt}}. {{static_prompt}}\"; fi"
+    },
+    {
+      "desc": "List all files",
+      "cmd": "ls -lah"
+    },
+    {
+      "desc": "Show Python files created",
+      "cmd": "find . -name '*.py' -type f -exec ls -lh {} +"
+    },
+    {
+      "desc": "Preview first Python file",
+      "cmd": "find . -name '*.py' -type f | head -1 | xargs cat"
+    }
+  ]
+}
