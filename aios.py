@@ -18,11 +18,11 @@ Examples:
     ./aios.py --test             # Run tests
 
 Commands in TUI:
-    m        - Show workflow menu
-    r <job>  - Run job from builder
-    a <job>  - Attach terminal to job
-    c <job>  - Clear job from builder
-    q        - Quit
+    m          - Show workflow menu
+    a <#|name> - Attach terminal to job (e.g., "a 1" or "a jobname")
+    r <job>    - Run job from builder
+    c <job>    - Clear job from builder
+    q          - Quit
 """
 
 import libtmux, json, sys, re, shutil, asyncio, websockets, webbrowser, subprocess, pty, fcntl, termios, struct, os, signal
@@ -125,8 +125,8 @@ def prompt_for_variables(task):
 
     return None if (c := input("Launch? [Y/n]: ").strip().lower()) and c not in ['y', 'yes'] else sub
 
-@timed
 def cleanup_old_jobs():
+    """NOTE: Not timed - filesystem I/O (glob, stat, rmtree) varies with job count"""
     if JOBS_DIR.exists():
         for d in sorted(JOBS_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)[MAX_JOB_DIRS:]:
             try: shutil.rmtree(d)
@@ -413,10 +413,10 @@ def get_status_text():
 
     with jobs_lock:
         if jobs:
-            for jn, info in sorted(jobs.items()):
-                st, step = info["status"], info["step"][:50]
+            for i, (jn, info) in enumerate(sorted(jobs.items()), 1):
+                st, step = info["status"], info["step"][:45]
                 style = "class:success" if "✓" in st else "class:error" if "✗" in st else "class:running"
-                lines.extend([("class:text", f"  {jn:15} | {step:50} | "), (style, f"{st}\n")])
+                lines.extend([("class:text", f"  {i}. {jn:13} | {step:45} | "), (style, f"{st}\n")])
         else:
             lines.append(("class:dim", "  (none)\n"))
 
@@ -431,13 +431,20 @@ def get_status_text():
 
     lines.extend([("class:separator", f"\n{sep}\n"), ("class:help", "Commands: "),
                   ("class:command", "m"), ("class:help", " (menu)  "),
+                  ("class:command", "a <#|name>"), ("class:help", " (attach terminal)  "),
                   ("class:command", "r <job>"), ("class:help", " (run)  "),
-                  ("class:command", "a <job>"), ("class:help", " (attach)  "),
                   ("class:command", "c <job>"), ("class:help", " (clear)  "),
-                  ("class:command", "q"), ("class:help", " (quit)  "),
-                  ("class:command", "<job>:<desc>|<cmd>"), ("class:help", " (build)"),
+                  ("class:command", "q"), ("class:help", " (quit)"),
                   ("class:separator", f"\n{sep}\n\n")])
     return FormattedText(lines)
+
+def get_job_by_number(num):
+    """Get job name by display number (1-indexed)"""
+    with jobs_lock:
+        job_names = sorted(jobs.keys())
+        if 1 <= num <= len(job_names):
+            return job_names[num - 1]
+    return None
 
 @timed
 def parse_and_route_command(cmd):
@@ -454,7 +461,13 @@ def parse_and_route_command(cmd):
     if len(parts) == 2:
         action, arg = parts
         if action in ["r", "run"]: return ("run", arg)
-        if action in ["a", "attach"]: return ("attach", arg)
+        if action in ["a", "attach"]:
+            # Support numeric job reference (e.g., "a 1")
+            if arg.isdigit():
+                if job_name := get_job_by_number(int(arg)):
+                    return ("attach", job_name)
+                return ("attach_error", f"No job #{arg}")
+            return ("attach", arg)
         if action in ["c", "clear"]: return ("clear", arg)
 
     if " | " in cmd and ":" in (left := cmd.split(" | ", 1)[0]):
@@ -481,6 +494,7 @@ def process_command(cmd):
                 return f"✓ Queued: {data}"
             return f"✗ Not found: {data}"
     if action == "attach": return open_terminal(data)
+    if action == "attach_error": return data
     if action == "clear":
         with builder_lock:
             if data in task_builder:
@@ -645,23 +659,21 @@ def run_tests():
         if "run" not in str(sub) or "world" not in str(sub):
             raise Exception("Variable substitution failed")
 
-        # Test cleanup
-        cleanup_old_jobs()
-
         # Test UI rendering
         status = get_status_text()
         if len(status) < 5:
             raise Exception("Status rendering failed")
 
         # Test command parsing
-        for cmd in ["q", "m", "r test", "a job", "c job"]:
+        for cmd in ["q", "m", "r test", "a job", "c job", "a 1"]:
             if not parse_and_route_command(cmd):
                 raise Exception(f"Command parsing failed: {cmd}")
 
         print("   ✓ All overhead functions working")
-        print(f"   ✓ Overhead timings: extract={timings_current.get('extract_variables',0)*1000:.2f}ms, " +
+        print(f"   ✓ Timings: extract={timings_current.get('extract_variables',0)*1000:.2f}ms, " +
               f"substitute={timings_current.get('substitute_variables',0)*1000:.2f}ms, " +
-              f"parse={timings_current.get('parse_and_route_command',0)*1000:.2f}ms")
+              f"parse={timings_current.get('parse_and_route_command',0)*1000:.2f}ms, " +
+              f"render={timings_current.get('get_status_text',0)*1000:.2f}ms")
 
     except Exception as e:
         print(f"   ✗ Failed: {e}")

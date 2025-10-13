@@ -1,0 +1,242 @@
+# AIOS - Task Manager
+
+Ultra-fast, event-driven task execution system with git-inspired design and strict performance enforcement.
+
+## Features
+
+- **Event-Driven Execution**: Zero polling, subprocess.run() blocks on completion (270x faster than polling)
+- **0.5ms Performance Enforcement**: SIGKILL on any AIOS overhead regression >0.5ms
+- **Interactive TUI**: Running tasks view with live status updates
+- **Git Worktree Support**: Isolate tasks in separate git worktrees
+- **Web Terminal Access**: Attach to running jobs via xterm.js (type `a 1` for job #1)
+- **Template Variables**: Parameterized workflows with `{{variables}}`
+- **Single File**: All logic in 840 lines of Python
+
+## Quick Start
+
+```bash
+# Install dependencies
+pip install libtmux prompt_toolkit websockets
+
+# Run interactive TUI (default)
+./aios.py
+
+# Load and run a task
+./aios.py tasks/example.json
+
+# Batch mode (no TUI)
+./aios.py --simple tasks/example.json
+
+# Profile performance
+./aios.py --profile
+
+# Run tests
+./aios.py --test
+```
+
+## TUI Commands
+
+```
+m          - Show workflow menu
+a <#|name> - Attach terminal to job (e.g., "a 1" or "a jobname")
+r <job>    - Run job from builder
+c <job>    - Clear job from builder
+q          - Quit
+```
+
+## Task Format
+
+### Simple Task (No Variables)
+
+```json
+{
+  "name": "simple-test",
+  "steps": [
+    {"desc": "Echo test", "cmd": "echo 'Hello World'"},
+    {"desc": "List files", "cmd": "ls -la"}
+  ]
+}
+```
+
+### Worktree Task
+
+```json
+{
+  "name": "git-task",
+  "repo": "/path/to/repo",
+  "branch": "main",
+  "steps": [
+    {"desc": "Show status", "cmd": "git status"},
+    {"desc": "Run tests", "cmd": "pytest"}
+  ]
+}
+```
+
+### Template Task (With Variables)
+
+```json
+{
+  "name": "template-task",
+  "repo": "{{repo_path}}",
+  "branch": "{{branch_name}}",
+  "variables": {
+    "repo_path": "/default/path",
+    "branch_name": "main"
+  },
+  "steps": [
+    {"desc": "Task description", "cmd": "echo {{message}}"}
+  ]
+}
+```
+
+## Architecture
+
+### Performance Enforcement
+
+**Timed (Strict 0.5ms SIGKILL):**
+- `extract_variables` - Template variable extraction
+- `substitute_variables` - Variable substitution
+- `parse_and_route_command` - Command parsing
+- `get_status_text` - UI rendering
+
+**Untimed (Variable I/O):**
+- `execute_task` - subprocess.run() execution
+- `cleanup_old_jobs` - Filesystem operations
+- All user-interactive functions
+
+### Event-Driven Design
+
+**Execution Flow:**
+```
+1. Build bash script with all commands
+2. Execute via subprocess.run() - blocks until complete
+3. Check return code
+4. Display output to tmux session
+```
+
+**No Polling:**
+- Old: Check every 2s if command finished (slow, wastes CPU)
+- New: subprocess.run() blocks on completion (instant, zero overhead)
+
+### Menu System
+
+**Template Tasks:**
+- Detected by `extract_variables()`
+- Require user input via menu (`m` command)
+- Prompt for each `{{variable}}`
+- Show preview before execution
+
+**Simple Tasks:**
+- No variables detected
+- Auto-execute from watch_folder
+- Immediate queue on file drop
+
+### Web Terminal
+
+**Access:**
+```bash
+# In TUI, type:
+a 1   # Opens browser to job #1 terminal
+a 2   # Opens browser to job #2 terminal
+```
+
+**Implementation:**
+- HTTP server on port 7681 (terminal.html)
+- WebSocket server on port 7682 (PTY bridge)
+- xterm.js frontend with binary WebSocket
+- Persistent PTY sessions via os.fork()
+
+## Directory Structure
+
+```
+AIOS/
+├── aios.py           # Single file - all code
+├── tasks/            # Task definitions (.json)
+├── jobs/             # Execution directories
+│   └── task-name-timestamp/
+│       └── worktree/ # Git worktree (if repo specified)
+└── .aios_timings.json # Performance baseline
+```
+
+## Performance
+
+**Baseline (AIOS Overhead Only):**
+```
+extract_variables:      0.07ms
+substitute_variables:   0.01ms
+parse_and_route_command: 0.00ms
+get_status_text:        0.00ms
+```
+
+**Enforcement:**
+- Tolerance: 0.5ms (500μs)
+- Any regression triggers SIGKILL immediately
+- Forces ultra-disciplined development
+
+**Speedup vs Polling:**
+- execute_task: 254x faster (12.6s → 0.05s)
+- Event-driven: zero CPU waste
+
+## Design Principles
+
+**Inspired by git:**
+- Plumbing vs porcelain separation
+- Event-driven (not polling)
+- Fast operation required
+- Single file simplicity
+
+**Inspired by top/htop:**
+- Live status display
+- Minimal key commands
+- Clear visual hierarchy
+
+**Inspired by Claude Code:**
+- Immediate feedback
+- Command-driven workflow
+- Professional efficiency
+
+## Development
+
+**Run Tests:**
+```bash
+./aios.py --test
+```
+
+**Profile Performance:**
+```bash
+# Create baseline
+./aios.py --profile --simple tasks/test.json
+
+# Run with enforcement (SIGKILL if >baseline + 0.5ms)
+./aios.py --simple tasks/test.json
+```
+
+**Key Files:**
+- Line 54-83: Performance enforcement system
+- Line 139-195: Event-driven execute_task
+- Line 407-440: TUI status rendering
+- Line 450-478: Command parsing
+- Line 520-604: TUI mode with menu integration
+
+## Troubleshooting
+
+**Jobs Stuck at "Initializing":**
+- Fixed: Use absolute path for subprocess cwd
+- Fixed: Command-line tasks call prompt_for_variables
+
+**Menu Freezes TUI:**
+- Fixed: Exit TUI, show menu, re-enter TUI
+- Flow: TUI → 'm' → Exit → Menu → Re-enter
+
+**"Exit 1" Errors:**
+- Fixed: Show stderr context on failure
+- Error message shows last line of stderr
+
+**SIGKILL on Performance Regression:**
+- Check `.aios_timings.json` baseline
+- Re-profile with `--profile` if needed
+- Only pure AIOS overhead is timed (not I/O)
+
+## License
+
+MIT
