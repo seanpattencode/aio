@@ -24,7 +24,7 @@ pip install prompt_toolkit libtmux
 ### Start the Manager
 
 ```bash
-python python.py
+./aios.py
 ```
 
 **Task Menu** appears first, showing all tasks in `tasks/` folder:
@@ -193,13 +193,13 @@ Create a task file `deploy.json`:
 Load and run:
 
 ```bash
-python python.py deploy.json
+./aios.py deploy.json
 ```
 
 Or load multiple tasks:
 
 ```bash
-python python.py deploy-staging.json deploy-prod.json deploy-eu.json
+./aios.py deploy-staging.json deploy-prod.json deploy-eu.json
 ```
 
 All will queue and run in parallel!
@@ -242,19 +242,19 @@ Example:
 
 ### Interactive Menu
 
-When you run `python python.py` without arguments, you'll see a numbered menu of all tasks:
+When you run `./aios.py` without arguments, you'll see a numbered menu of all tasks:
 
 ```bash
 # Run specific tasks
-python python.py
+./aios.py
 # Select "1 3" to run tasks 1 and 3
 
 # Run all tasks
-python python.py
+./aios.py
 # Select "all"
 
 # Skip menu and use interactive mode
-python python.py
+./aios.py
 # Press Enter
 ```
 
@@ -442,14 +442,14 @@ cat > task2.json <<EOF
 EOF
 
 # Run both in parallel
-python python.py task1.json task2.json
+./aios.py task1.json task2.json
 ```
 
 Both tasks run in separate worktrees simultaneously - no conflicts!
 
 ### Worktree Cleanup
 
-By default, worktrees are **NOT** automatically removed (disabled at `python.py:201-207`). This allows inspection after execution.
+By default, worktrees are **NOT** automatically removed. This allows inspection after execution.
 
 To manually clean up worktrees:
 ```bash
@@ -554,7 +554,7 @@ ls -la
 
 ### Configuration
 
-Edit these constants in `python.py`:
+Edit these constants in `aios.py`:
 
 ```python
 MAX_JOB_DIRS = 20    # Number of job directories to keep
@@ -578,14 +578,14 @@ You're running without a TTY (e.g., via pipe or background).
 
 **Solution:** Run directly in a terminal:
 ```bash
-python python.py
+./aios.py
 ```
 
 Not via:
 ```bash
-python python.py < commands.txt  # ✗
-python python.py &               # ✗
-echo "quit" | python python.py   # ✗
+./aios.py < commands.txt  # ✗
+./aios.py &               # ✗
+echo "quit" | ./aios.py   # ✗
 ```
 
 ### Jobs stuck in "Running"
@@ -620,7 +620,7 @@ Ensure:
 
 Try them:
 ```bash
-python python.py test_task.json
+./aios.py test_task.json
 ```
 
 ## Similar Tools

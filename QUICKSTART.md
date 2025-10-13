@@ -9,7 +9,7 @@ pip install prompt_toolkit libtmux
 ## Run
 
 ```bash
-python python.py
+./aios.py
 ```
 
 You'll see a task menu at startup:
@@ -68,7 +68,7 @@ Or press `Ctrl+C`
 ## Load Tasks from JSON
 
 ```bash
-python python.py test_task.json
+./aios.py test_task.json
 ```
 
 ## Git Worktree Support
@@ -91,7 +91,7 @@ cat > worktree_test.json <<EOF
 EOF
 
 # Run it
-python python.py worktree_test.json
+./aios.py worktree_test.json
 
 # Or use the test script
 python test.py run basic
