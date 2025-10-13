@@ -2,16 +2,18 @@
 """AIOS Task Manager - git-inspired design
 
 Usage:
-    aios.py [--simple|-s] [task.json ...]
+    aios.py [--simple|-s] [--test] [task.json ...]
 
 Modes:
     Default: Interactive TUI with task builder
     --simple: Batch execution with simple monitoring
+    --test: Run built-in tests
 
 Examples:
     ./aios.py                    # Interactive menu + TUI
     ./aios.py task.json          # Load task, run in TUI
     ./aios.py --simple task.json # Batch mode
+    ./aios.py --test             # Run tests
 """
 
 import libtmux, json, sys, re, shutil, asyncio, websockets, webbrowser, subprocess, pty, fcntl, termios, struct, os
@@ -541,7 +543,141 @@ def run_simple_mode(selected_tasks):
     for t in threads: t.join()
     print("\n✓ All tasks complete!")
 
+# Test mode (like git fsck) - integrated testing
+def run_tests():
+    """Run built-in tests for AIOS functionality"""
+    print("="*80)
+    print("AIOS Built-in Tests")
+    print("="*80)
+    print()
+
+    failed = []
+
+    # Test 1: PTY terminal creation
+    print("1. Testing PTY terminal creation...")
+    try:
+        # Create test session
+        test_session = server.new_session("test-aios-pty", window_command="bash", attach=False)
+        sleep(1)
+
+        # Test PTY creation
+        master = get_or_create_terminal("test-aios-pty")
+        if master < 0:
+            raise Exception("Invalid master fd")
+
+        # Write and read
+        os.write(master, b"echo TEST_PTY_OK\n")
+        sleep(0.5)
+        os.set_blocking(master, False)
+        output = b""
+        try:
+            for _ in range(5):
+                output += os.read(master, 4096)
+        except BlockingIOError:
+            pass
+
+        if b"TEST_PTY_OK" in output:
+            print("   ✓ PTY creation and I/O working")
+        else:
+            raise Exception("PTY output not received")
+
+        # Cleanup
+        test_session.kill()
+        del _terminal_sessions["test-aios-pty"]
+
+    except Exception as e:
+        print(f"   ✗ Failed: {e}")
+        failed.append("PTY terminal creation")
+
+    # Test 2: WebSocket server
+    print("\n2. Testing WebSocket server...")
+    try:
+        # Create test session
+        test_session = server.new_session("test-aios-ws", window_command="bash", attach=False)
+        sleep(1)
+
+        # Start servers
+        start_ws_server()
+        sleep(2)
+
+        if not ws_server_running:
+            raise Exception("WebSocket server not running")
+
+        print(f"   ✓ Servers started (HTTP:{ws_port}, WS:{ws_port + 1})")
+
+        # Test WebSocket connection
+        async def test_ws():
+            try:
+                uri = f"ws://localhost:{ws_port + 1}/attach/test-aios-ws"
+                async with websockets.connect(uri) as ws:
+                    await ws.send(b"echo WS_TEST\n")
+                    for _ in range(10):
+                        try:
+                            msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                            if b"WS_TEST" in msg:
+                                return True
+                        except asyncio.TimeoutError:
+                            continue
+            except Exception as e:
+                raise Exception(f"WebSocket connection failed: {e}")
+            return False
+
+        if asyncio.run(test_ws()):
+            print("   ✓ WebSocket connection and communication working")
+        else:
+            raise Exception("WebSocket test failed")
+
+        # Cleanup
+        test_session.kill()
+        if "test-aios-ws" in _terminal_sessions:
+            del _terminal_sessions["test-aios-ws"]
+
+    except Exception as e:
+        print(f"   ✗ Failed: {e}")
+        failed.append("WebSocket server")
+
+    # Test 3: HTTP server with query strings
+    print("\n3. Testing HTTP server...")
+    try:
+        # Create terminal.html
+        html_file = Path("terminal.html")
+        html_file.write_text("<html><body>TEST_HTML</body></html>")
+
+        # Test HTTP GET
+        import urllib.request
+        response = urllib.request.urlopen(f"http://localhost:{ws_port}/terminal.html?session=test", timeout=5)
+        content = response.read().decode()
+
+        if "TEST_HTML" in content:
+            print("   ✓ HTTP server serving with query strings")
+        else:
+            raise Exception("HTTP server returned unexpected content")
+
+        # Cleanup
+        html_file.unlink()
+
+    except Exception as e:
+        print(f"   ✗ Failed: {e}")
+        failed.append("HTTP server")
+
+    # Summary
+    print("\n" + "="*80)
+    if not failed:
+        print("✓ ALL TESTS PASSED")
+        print("="*80)
+        return 0
+    else:
+        print(f"✗ {len(failed)} TEST(S) FAILED")
+        for test in failed:
+            print(f"  - {test}")
+        print("="*80)
+        return 1
+
 def main():
+    # Test mode (like git fsck)
+    if "--test" in sys.argv:
+        sys.exit(run_tests())
+
     print("Loading AIOS Task Manager...")
 
     # Mode detection inspired by git (--simple flag or default to TUI)
