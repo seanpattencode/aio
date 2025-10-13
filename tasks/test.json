@@ -1,0 +1,6 @@
+{
+  "name": "test",
+  "steps": [
+    {"desc": "Echo test", "cmd": "echo 'Test successful!'"}
+  ]
+}

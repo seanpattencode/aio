@@ -1,0 +1,9 @@
+README.md
+aios.py
+pyproject.toml
+aios_cli.egg-info/PKG-INFO
+aios_cli.egg-info/SOURCES.txt
+aios_cli.egg-info/dependency_links.txt
+aios_cli.egg-info/entry_points.txt
+aios_cli.egg-info/requires.txt
+aios_cli.egg-info/top_level.txt
