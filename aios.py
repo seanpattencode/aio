@@ -24,8 +24,9 @@ Examples:
     aios --auto-update-on             # Enable auto-updates
 
 Commands in TUI:
+    #                       - Watch job live in terminal (e.g., "1" to watch job 1)
     m                       - Show workflow menu
-    a <#|name>              - Attach terminal to job
+    a <#|name>              - Attach to job in browser terminal
     o <#|name>              - Open job in editor (VS Code by default)
     r <job>                 - Run job from builder
     c <job>                 - Clear job from builder
@@ -214,39 +215,59 @@ get_session = lambda name: next((s for s in server.sessions if s.name == name), 
 kill_session = lambda name: get_session(name).kill() if get_session(name) else None
 
 def execute_task(task):
-    """Event-driven execution"""
+    """Event-driven execution in real tmux session"""
     name, steps, repo, branch = task["name"], task["steps"], task.get("repo"), task.get("branch", "main")
     ts, session_name = datetime.now().strftime("%Y%m%d_%H%M%S"), f"aios-{name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     JOBS_DIR.mkdir(exist_ok=True)
     job_dir, worktree_dir = JOBS_DIR / f"{name}-{ts}", (JOBS_DIR / f"{name}-{ts}" / "worktree") if repo else None
     work_path = str(worktree_dir.absolute()) if repo else str(job_dir.absolute())
     try:
-        with jobs_lock: jobs[name] = {"step": "Initializing", "status": "⟳ Running", "path": work_path}
+        with jobs_lock: jobs[name] = {"step": "Initializing", "status": "⟳ Running", "path": work_path, "session": session_name}
         kill_session(session_name)
-        session = server.new_session(session_name, window_command="bash --norc --noprofile", attach=False)
-        cmds = ["set -e", f"mkdir -p {job_dir.name}"]
+        session = server.new_session(session_name, window_command="bash", attach=False, start_directory=str(job_dir.parent.absolute()))
+        pane = session.windows[0].panes[0]
+        # Setup commands
+        setup_cmds = ["set -e", f"mkdir -p {job_dir.name}"]
         if repo:
-            with jobs_lock: jobs[name] = {"step": f"Worktree: {work_path}", "status": "⟳ Running", "path": work_path}
-            cmds.extend([f"cd {repo}", f"git worktree add --detach {work_path} {branch}", f"cd {work_path}"])
+            with jobs_lock: jobs[name] = {"step": f"Worktree: {work_path}", "status": "⟳ Running", "path": work_path, "session": session_name}
+            setup_cmds.extend([f"cd {repo}", f"git worktree add --detach {work_path} {branch}", f"cd {work_path}"])
         else:
-            cmds.append(f"cd {job_dir.name}")
+            setup_cmds.append(f"cd {job_dir.name}")
+        # Send setup commands
+        for cmd in setup_cmds:
+            pane.send_keys(cmd)
+            sleep(0.1)
+        # Execute each step in the tmux session
         for i, step in enumerate(steps, 1):
-            with jobs_lock: jobs[name] = {"step": f"{i}/{len(steps)}: {step['desc']}", "status": "⟳ Running", "path": work_path}
-            cmds.append(step["cmd"])
-        result = subprocess.run(["bash", "-c", "\n".join(cmds)], cwd=str(job_dir.parent.absolute()), capture_output=True, text=True, timeout=120)
-        if session:
-            pane = session.windows[0].panes[0]
-            [pane.send_keys(line, literal=True) for line in (result.stdout + result.stderr).split('\n')[:50]]
-        if result.returncode == 0:
-            with jobs_lock: jobs[name] = {"step": f"✓ {job_dir.name}", "status": "✓ Done", "path": work_path}
-            cleanup_old_jobs()
-        else:
-            error_lines = result.stderr.strip().split('\n') if result.stderr else []
-            with jobs_lock: jobs[name] = {"step": f"✗ {error_lines[-1][:60] if error_lines else f'Exit {result.returncode}'}", "status": "✗ Error", "path": work_path}
-    except subprocess.TimeoutExpired:
-        with jobs_lock: jobs[name] = {"step": "Timeout", "status": "✗ Timeout", "path": work_path}
+            with jobs_lock: jobs[name] = {"step": f"{i}/{len(steps)}: {step['desc']}", "status": "⟳ Running", "path": work_path, "session": session_name}
+            pane.send_keys(step["cmd"])
+            sleep(0.2)  # Brief delay to ensure command is registered
+        # Send marker command to detect completion
+        marker = f"echo '__AIOS_COMPLETE_{name}_{ts}__'; echo $? > /tmp/aios-exit-{name}-{ts}"
+        pane.send_keys(marker)
+        # Monitor for completion (non-blocking)
+        max_wait, interval = 300, 0.5  # 5 minute timeout
+        for _ in range(int(max_wait / interval)):
+            try:
+                pane_content = pane.cmd('capture-pane', '-p').stdout
+                if f'__AIOS_COMPLETE_{name}_{ts}__' in pane_content:
+                    # Check exit status
+                    exit_file = Path(f"/tmp/aios-exit-{name}-{ts}")
+                    if exit_file.exists():
+                        exit_code = int(exit_file.read_text().strip())
+                        exit_file.unlink()
+                        if exit_code == 0:
+                            with jobs_lock: jobs[name] = {"step": f"✓ {job_dir.name}", "status": "✓ Done", "path": work_path, "session": session_name}
+                            cleanup_old_jobs()
+                        else:
+                            with jobs_lock: jobs[name] = {"step": f"✗ Exit {exit_code}", "status": "✗ Error", "path": work_path, "session": session_name}
+                        return
+            except: pass
+            sleep(interval)
+        # Timeout
+        with jobs_lock: jobs[name] = {"step": "Monitoring timeout", "status": "⟳ Running", "path": work_path, "session": session_name}
     except Exception as e:
-        with jobs_lock: jobs[name] = {"step": str(e)[:50], "status": "✗ Error", "path": work_path}
+        with jobs_lock: jobs[name] = {"step": str(e)[:50], "status": "✗ Error", "path": work_path, "session": session_name if 'session_name' in locals() else None}
 
 def show_task_menu():
     tasks_dir = Path("tasks")
@@ -277,25 +298,46 @@ def show_task_menu():
 
 # Websocket PTY server
 def get_or_create_terminal(session_name):
+    """Create PTY that attaches to tmux session (like gnome-terminal does)"""
     if session_name not in _terminal_sessions:
+        # Create a new PTY pair
         master, slave = pty.openpty()
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
-        if (pid := os.fork()) == 0:
-            os.setsid()
-            [os.dup2(slave, fd) for fd in [0, 1, 2]]
-            os.close(master)
+        # Set initial terminal size
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 0, 0))
+
+        # Check if tmux session exists
+        if sess := get_session(session_name):
+            # Fork and attach to existing tmux session in the PTY
+            if (pid := os.fork()) == 0:
+                os.setsid()
+                [os.dup2(slave, fd) for fd in [0, 1, 2]]
+                os.close(master)
+                os.close(slave)
+                # Attach to tmux session - tmux will detect PTY size automatically
+                os.execvp('tmux', ['tmux', 'attach-session', '-t', session_name])
             os.close(slave)
-            if sess := get_session(session_name):
-                try: os.chdir(sess.windows[0].panes[0].current_path)
-                except: pass
-            os.execv('/bin/bash', ['bash'])
-        os.close(slave)
-        os.set_blocking(master, False)
-        _terminal_sessions[session_name] = {"master": master, "pid": pid}
+            os.set_blocking(master, False)
+            _terminal_sessions[session_name] = {"master": master, "pid": pid}
+            return master
+        else:
+            # No tmux session, create a new PTY with bash
+            if (pid := os.fork()) == 0:
+                os.setsid()
+                [os.dup2(slave, fd) for fd in [0, 1, 2]]
+                os.close(master)
+                os.close(slave)
+                os.execv('/bin/bash', ['bash'])
+            os.close(slave)
+            os.set_blocking(master, False)
+            _terminal_sessions[session_name] = {"master": master, "pid": pid}
+            return master
     return _terminal_sessions[session_name]["master"]
 
 async def ws_pty_bridge(websocket, session_name):
     master, loop = get_or_create_terminal(session_name), asyncio.get_event_loop()
+    if master is None:
+        await websocket.close()
+        return
     def read_and_send():
         try:
             if data := os.read(master, 65536): asyncio.create_task(websocket.send(data))
@@ -308,7 +350,9 @@ async def ws_pty_bridge(websocket, session_name):
                     try:
                         d = json.loads(msg.decode())
                         if 'resize' in d:
-                            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', d['resize']['rows'], d['resize']['cols'], 0, 0))
+                            rows, cols = d['resize']['rows'], d['resize']['cols']
+                            # Resize the PTY - tmux will automatically detect and adjust
+                            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
                             continue
                     except: pass
                 os.write(master, msg)
@@ -381,39 +425,102 @@ def open_terminal(job_name):
     start_ws_server()
     url = f"http://localhost:{ws_port}/terminal.html?session={session_name}"
     Path("terminal.html").write_text(f'''<!DOCTYPE html>
-<html><head><title>AIOS Terminal</title>
-<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"/>
-<style>body{{margin:0;background:#000}}#terminal{{height:100vh}}</style>
+<html><head><title>AIOS Terminal - {{job_name}}</title>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"/>
+<style>
+body {{
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow: hidden;
+}}
+#terminal {{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}}
+</style>
 </head><body>
 <div id="terminal"></div>
 <script>
-const term = new Terminal();
-const fit = new FitAddon.FitAddon();
-term.loadAddon(fit);
+const term = new Terminal({{
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    theme: {{
+        background: '#000000',
+        foreground: '#ffffff'
+    }},
+    scrollback: 10000,
+    convertEol: true
+}});
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
-fit.fit();
+fitAddon.fit();
+
 const params = new URLSearchParams(window.location.search);
 const session = params.get('session');
 const ws = new WebSocket('ws://localhost:{ws_port + 1}/attach/' + session);
 ws.binaryType = 'arraybuffer';
-ws.onmessage = e => term.write(new Uint8Array(e.data));
-term.onData(d => ws.send(new TextEncoder().encode(d)));
-window.onresize = () => fit.fit();
+
+ws.onopen = () => {{
+    fitAddon.fit();
+    const {{ cols, rows }} = term;
+    ws.send(JSON.stringify({{ resize: {{ cols, rows }} }}));
+}};
+
+ws.onmessage = e => {{
+    term.write(new Uint8Array(e.data));
+}};
+
+term.onData(data => {{
+    ws.send(new TextEncoder().encode(data));
+}});
+
+window.addEventListener('resize', () => {{
+    fitAddon.fit();
+    const {{ cols, rows }} = term;
+    ws.send(JSON.stringify({{ resize: {{ cols, rows }} }}));
+}});
+
+// Initial resize after a short delay to ensure proper sizing
+setTimeout(() => {{
+    fitAddon.fit();
+    const {{ cols, rows }} = term;
+    ws.send(JSON.stringify({{ resize: {{ cols, rows }} }}));
+}}, 100);
 </script>
 </body></html>''')
     try:
         webbrowser.open(url)
-        return f"✓ Opening terminal for '{job_name}' at {url}"
+        return f"✓ Opening web terminal for '{job_name}' at {url}"
     except:
-        return f"✓ Terminal available at {url} (open manually)"
+        return f"✓ Web terminal available at {url} (open manually)"
+
+def attach_local_terminal(job_name):
+    """Attach to job's tmux session in current terminal"""
+    if not (session_name := get_job_session_name(job_name)):
+        return f"✗ No session found for job '{job_name}'"
+    try:
+        print(f"\n✓ Attaching to '{job_name}' session: {session_name}")
+        print("  (Press Ctrl+B then D to detach and return to AIOS)\n")
+        sleep(1)
+        # Attach to tmux session (blocks until detached)
+        subprocess.run(['tmux', 'attach-session', '-t', session_name])
+        return f"✓ Detached from '{job_name}'"
+    except Exception as e:
+        return f"✗ Failed to attach: {e}"
 
 # TUI mode
 @timed
 def get_status_text():
     sep = "=" * 80
-    lines = [("class:header", f"{sep}\nAIOS - Running Tasks\n{sep}\n"), ("class:label", "\nJobs:\n"), ("class:separator", "-" * 80 + "\n")]
+    lines = [("class:header", f"{sep}\nAIOS - Running Tasks\n{sep}\n"), ("class:label", "\nJobs:"), ("class:help", " (Press # to watch job live)\n"), ("class:separator", "-" * 80 + "\n")]
     with jobs_lock:
         if jobs:
             for i, (jn, info) in enumerate(sorted(jobs.items()), 1):
@@ -441,7 +548,7 @@ def get_status_text():
                 [lines.append(("class:text", f"    {i}. {s['desc'][:70]}\n")) for i, s in enumerate(steps, 1)]
         else:
             lines.append(("class:dim", "  (none)\n"))
-    lines.extend([("class:separator", f"\n{sep}\n"), ("class:help", "Commands: "), ("class:command", "m"), ("class:help", " (menu)  "), ("class:command", "a <#|name>"), ("class:help", " (attach)  "), ("class:command", "o <#|name>"), ("class:help", " (open)  "), ("class:command", "r <job>"), ("class:help", " (run)  "), ("class:command", "c <job>"), ("class:help", " (clear)  "), ("class:command", "t +<title> <deadline> [virtual]"), ("class:help", " (add todo)  "), ("class:command", "t ✓<id>"), ("class:help", " (complete)  "), ("class:command", "t ✗<id>"), ("class:help", " (delete)  "), ("class:command", "q"), ("class:help", " (quit)"), ("class:separator", f"\n{sep}\n\n")])
+    lines.extend([("class:separator", f"\n{sep}\n"), ("class:help", "# "), ("class:help", "(watch)  "), ("class:command", "m"), ("class:help", " (menu)  "), ("class:command", "o #"), ("class:help", " (editor)  "), ("class:command", "a #"), ("class:help", " (browser)  "), ("class:command", "r <job>"), ("class:help", " (run)  "), ("class:command", "c <job>"), ("class:help", " (clear)  "), ("class:command", "q"), ("class:help", " (quit)"), ("class:separator", f"\n{sep}\n\n")])
     return FormattedText(lines)
 
 def get_job_by_number(num):
@@ -458,6 +565,9 @@ def parse_and_route_command(cmd):
         running = False
         return ("quit", None)
     if cmd in ["m", "menu"]: return ("menu", None)
+    # Single number: attach to local terminal
+    if cmd.isdigit():
+        return ("local", job_name) if (job_name := get_job_by_number(int(cmd))) else ("local_error", f"No job #{cmd}")
     parts = cmd.split(None, 1)
     if len(parts) == 2:
         action, arg = parts
@@ -466,6 +576,10 @@ def parse_and_route_command(cmd):
             if arg.isdigit():
                 return ("attach", job_name) if (job_name := get_job_by_number(int(arg))) else ("attach_error", f"No job #{arg}")
             return ("attach", arg)
+        if action in ["l", "local"]:
+            if arg.isdigit():
+                return ("local", job_name) if (job_name := get_job_by_number(int(arg))) else ("local_error", f"No job #{arg}")
+            return ("local", arg)
         if action in ["o", "open"]:
             if arg.isdigit():
                 return ("open", job_name) if (job_name := get_job_by_number(int(arg))) else ("open_error", f"No job #{arg}")
@@ -499,6 +613,8 @@ def process_command(cmd):
             return f"✗ Not found: {data}"
     if action == "attach": return open_terminal(data)
     if action == "attach_error": return data
+    if action == "local": return attach_local_terminal(data)
+    if action == "local_error": return data
     if action == "open": return open_in_editor(data)
     if action == "open_error": return data
     if action == "clear":
