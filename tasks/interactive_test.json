@@ -1,0 +1,9 @@
+{
+  "name": "interactive",
+  "steps": [
+    {
+      "desc": "Start interactive shell session",
+      "cmd": "echo 'Interactive test started. Type commands or press Ctrl+C to exit.'; echo 'Try: ls, pwd, echo hello'; bash --norc --noprofile"
+    }
+  ]
+}

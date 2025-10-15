@@ -296,9 +296,17 @@ def show_task_menu():
     selected = [t for _, t in tasks] if sel.lower() == 'all' else [tasks[i][1] for i in [int(p)-1 for p in sel.replace(',', ' ').split() if p.isdigit()] if 0 <= i < len(tasks)]
     return [pt for task in selected if (pt := prompt_for_variables(task))]
 
-# Websocket PTY server
-def get_or_create_terminal(session_name):
-    """Create PTY that attaches to tmux session (like gnome-terminal does)"""
+# Websocket PTY server for WEB INTERFACE ONLY
+# NOTE: This is purely an endpoint for browser-based terminal access.
+# For debugging and interactive work, LLMs and developers should use LOCAL terminal attach (press job # in TUI)
+# which gives full native terminal control. Only use web interface (a #) when explicitly requested.
+def get_or_create_web_terminal(session_name):
+    """Create PTY that attaches to tmux session for WEB BROWSER access only
+
+    This creates a separate PTY subprocess that attaches to the tmux session,
+    allowing websocket clients to interact with it remotely. This is NOT for
+    local terminal access - use direct tmux attach for that (see attach_local_terminal).
+    """
     if session_name not in _terminal_sessions:
         # Create a new PTY pair
         master, slave = pty.openpty()
@@ -334,7 +342,8 @@ def get_or_create_terminal(session_name):
     return _terminal_sessions[session_name]["master"]
 
 async def ws_pty_bridge(websocket, session_name):
-    master, loop = get_or_create_terminal(session_name), asyncio.get_event_loop()
+    """Bridge websocket to PTY for web browser terminal access"""
+    master, loop = get_or_create_web_terminal(session_name), asyncio.get_event_loop()
     if master is None:
         await websocket.close()
         return
@@ -503,18 +512,16 @@ setTimeout(() => {{
         return f"✓ Web terminal available at {url} (open manually)"
 
 def attach_local_terminal(job_name):
-    """Attach to job's tmux session in current terminal"""
+    """Attach to job's tmux session in current terminal - PREFERRED method for debugging
+
+    This directly attaches the current terminal to the tmux session, giving full
+    native terminal control. This is the PRIMARY way to interact with jobs.
+    Use web terminal (open_terminal) only when browser access is explicitly needed.
+    """
     if not (session_name := get_job_session_name(job_name)):
-        return f"✗ No session found for job '{job_name}'"
-    try:
-        print(f"\n✓ Attaching to '{job_name}' session: {session_name}")
-        print("  (Press Ctrl+B then D to detach and return to AIOS)\n")
-        sleep(1)
-        # Attach to tmux session (blocks until detached)
-        subprocess.run(['tmux', 'attach-session', '-t', session_name])
-        return f"✓ Detached from '{job_name}'"
-    except Exception as e:
-        return f"✗ Failed to attach: {e}"
+        return ("error", f"✗ No session found for job '{job_name}'")
+    # Return signal to exit TUI and attach
+    return ("attach_tmux", session_name, job_name)
 
 # TUI mode
 @timed
@@ -613,7 +620,11 @@ def process_command(cmd):
             return f"✗ Not found: {data}"
     if action == "attach": return open_terminal(data)
     if action == "attach_error": return data
-    if action == "local": return attach_local_terminal(data)
+    if action == "local":
+        result = attach_local_terminal(data)
+        if isinstance(result, tuple) and result[0] == "attach_tmux":
+            return result  # Return signal to exit TUI and attach
+        return result[1] if isinstance(result, tuple) else result
     if action == "local_error": return data
     if action == "open": return open_in_editor(data)
     if action == "open_error": return data
@@ -689,7 +700,7 @@ def run_tui_mode(selected_tasks):
     [Thread(target=worker, daemon=True).start() for _ in range(4)]
     Thread(target=watch_folder, daemon=True).start()
     Thread(target=notification_worker, daemon=True).start()
-    show_menu_flag = False
+    show_menu_flag, attach_tmux_info = False, None
     while running:
         status_control = FormattedTextControl(text=get_status_text, focusable=False)
         status_window = Window(content=status_control, dont_extend_height=True)
@@ -699,7 +710,7 @@ def run_tui_mode(selected_tasks):
         kb = KeyBindings()
         @kb.add('enter')
         def _(event):
-            nonlocal show_menu_flag
+            nonlocal show_menu_flag, attach_tmux_info
             global running
             text, input_field.text = input_field.text, ""
             lines = text.split('\n') if '\n' in text else [text]
@@ -710,7 +721,12 @@ def run_tui_mode(selected_tasks):
                         show_menu_flag = True
                         event.app.exit()
                         return
-                    results.append(r)
+                    # Handle local terminal attach signal
+                    if isinstance(r, tuple) and r[0] == "attach_tmux":
+                        attach_tmux_info = r
+                        event.app.exit()
+                        return
+                    results.append(r if isinstance(r, str) else str(r))
             if results: output_field.text = '\n'.join(results) if len(results) > 1 else results[0]
             if not running: event.app.exit()
         @kb.add('c-c')
@@ -730,6 +746,23 @@ def run_tui_mode(selected_tasks):
         except KeyboardInterrupt:
             running = False
             break
+        # Handle local terminal attach - exit TUI, attach to tmux, return to TUI on detach
+        if attach_tmux_info:
+            _, session_name, job_name = attach_tmux_info
+            attach_tmux_info = None
+            print(f"\n✓ Attaching to '{job_name}' session: {session_name}")
+            print("  (Press Ctrl+B then D to detach and return to AIOS)\n")
+            sleep(1)
+            try:
+                # Direct tmux attach in current terminal - gives FULL interactive control
+                subprocess.run(['tmux', 'attach-session', '-t', session_name])
+                print(f"\n✓ Detached from '{job_name}'. Returning to AIOS TUI...\n")
+                sleep(1)
+            except Exception as e:
+                print(f"\n✗ Failed to attach: {e}\n")
+                sleep(2)
+            if not running: break
+            continue
         if show_menu_flag:
             show_menu_flag = False
             if tasks := show_task_menu():
@@ -924,7 +957,7 @@ def run_tests():
     try:
         test_session = server.new_session("test-aios-pty", window_command="bash", attach=False)
         sleep(1)
-        master = get_or_create_terminal("test-aios-pty")
+        master = get_or_create_web_terminal("test-aios-pty")
         if master < 0: raise Exception("Invalid master fd")
         os.write(master, b"echo TEST_PTY_OK\n")
         sleep(0.5)
