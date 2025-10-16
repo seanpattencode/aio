@@ -66,6 +66,7 @@ _terminal_sessions = {}
 TIMINGS_FILE, profile_mode = DATA_DIR / "timings.json", "--profile" in sys.argv
 DB_FILE, todos, todos_lock, notification_queue = DATA_DIR / "aios.db", {}, Lock(), Queue()
 CONFIG_FILE = DATA_DIR / "config.json"
+last_timed_op, last_timed_lock = {"name": None, "elapsed": 0, "baseline": 0, "threshold": 0}, Lock()
 
 # Config management (auto-update settings)
 def load_config():
@@ -105,40 +106,46 @@ def timed(func):
         start = time()
         result = func(*args, **kwargs)
         elapsed, fname = time() - start, func.__name__
+        baseline, threshold = timings_baseline.get(fname, 0), timings_baseline.get(fname, 0) + 0.0005
+        with last_timed_lock:
+            last_timed_op["name"], last_timed_op["elapsed"], last_timed_op["baseline"], last_timed_op["threshold"] = fname, elapsed, baseline, threshold
         if profile_mode:
             timings_current[fname] = elapsed
-        elif fname in timings_baseline and elapsed > timings_baseline[fname] + 0.0005:
-            print(f"\n✗ PERF REGRESSION: {fname} {elapsed*1000:.2f}ms (baseline {timings_baseline[fname]*1000:.2f}ms, +{(elapsed-timings_baseline[fname])*1000:.2f}ms over)")
+        elif fname in timings_baseline and elapsed > threshold:
+            print(f"\n✗ PERF REGRESSION: {fname} {elapsed*1000:.2f}ms (baseline {baseline*1000:.2f}ms, +{(elapsed-baseline)*1000:.2f}ms over)")
             os.kill(os.getpid(), signal.SIGKILL)
         return result
     return wrapper
 
 # AIOS DB
 def init_db():
-    with sqlite3.connect(DB_FILE) as db:
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db:
         db.execute('CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, real_deadline INTEGER NOT NULL, virtual_deadline INTEGER, created_at INTEGER NOT NULL, completed_at INTEGER)')
         db.execute('CREATE TABLE IF NOT EXISTS jobs (name TEXT PRIMARY KEY, step TEXT NOT NULL, status TEXT NOT NULL, path TEXT, session TEXT, updated_at INTEGER NOT NULL)')
 
 @timed
 def get_todos():
-    with sqlite3.connect(DB_FILE) as db:
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db:
         return db.execute('SELECT id,title,real_deadline,virtual_deadline,created_at FROM todos WHERE completed_at IS NULL ORDER BY real_deadline').fetchall()
 
+@timed
 def add_todo(title, real_deadline, virtual_deadline=None):
     now = int(time())
-    with sqlite3.connect(DB_FILE) as db:
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db:
         todo_id = db.execute('INSERT INTO todos (title,real_deadline,virtual_deadline,created_at) VALUES (?,?,?,?)', (title, real_deadline, virtual_deadline, now)).lastrowid
     if virtual_deadline: notification_queue.put(('virtual', todo_id, virtual_deadline))
     notification_queue.put(('real', todo_id, real_deadline))
     load_todos()
     return todo_id
 
+@timed
 def complete_todo(todo_id):
-    with sqlite3.connect(DB_FILE) as db: db.execute('UPDATE todos SET completed_at=? WHERE id=?', (int(time()), todo_id))
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db: db.execute('UPDATE todos SET completed_at=? WHERE id=?', (int(time()), todo_id))
     load_todos()
 
+@timed
 def delete_todo(todo_id):
-    with sqlite3.connect(DB_FILE) as db: db.execute('DELETE FROM todos WHERE id=?', (todo_id,))
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db: db.execute('DELETE FROM todos WHERE id=?', (todo_id,))
     load_todos()
 
 @timed
@@ -150,11 +157,12 @@ def load_todos():
 
 @timed
 def get_jobs():
-    with sqlite3.connect(DB_FILE) as db:
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db:
         return db.execute('SELECT name,step,status,path,session FROM jobs ORDER BY updated_at DESC').fetchall()
 
+@timed
 def update_job(name, step, status, path=None, session=None):
-    with sqlite3.connect(DB_FILE) as db:
+    with sqlite3.connect(DB_FILE, timeout=0.1) as db:
         db.execute('INSERT OR REPLACE INTO jobs (name,step,status,path,session,updated_at) VALUES (?,?,?,?,?,?)', (name, step, status, path, session, int(time())))
 
 @timed
@@ -545,7 +553,15 @@ def attach_local_terminal(job_name):
 def get_status_text():
     load_jobs()
     sep = "=" * 80
-    lines = [("class:header", f"{sep}\nAIOS - Running Tasks\n{sep}\n"), ("class:label", "\nJobs:"), ("class:help", " (Press # to watch job live)\n"), ("class:separator", "-" * 80 + "\n")]
+    lines = [("class:header", f"{sep}\nAIOS - Running Tasks\n{sep}\n")]
+    # Performance monitor (compact, single line)
+    with last_timed_lock:
+        if last_timed_op["name"]:
+            name, elapsed, threshold = last_timed_op["name"], last_timed_op["elapsed"], last_timed_op["threshold"]
+            pct = (elapsed / threshold * 100) if threshold > 0 else 0
+            style = "class:error" if elapsed > threshold else "class:running" if pct > 80 else "class:success"
+            lines.extend([("class:dim", "Perf: "), (style, f"{name} {elapsed*1000:.2f}ms"), ("class:dim", f"/{threshold*1000:.2f}ms ({pct:.0f}%)\n")])
+    lines.extend([("class:label", "\nJobs:"), ("class:help", " (Press # to watch job live)\n"), ("class:separator", "-" * 80 + "\n")])
     with jobs_lock:
         if jobs:
             for i, (jn, info) in enumerate(sorted(jobs.items()), 1):
@@ -576,6 +592,7 @@ def get_status_text():
     lines.extend([("class:separator", f"\n{sep}\n"), ("class:help", "# "), ("class:help", "(watch)  "), ("class:command", "m"), ("class:help", " (menu)  "), ("class:command", "o #"), ("class:help", " (editor)  "), ("class:command", "a #"), ("class:help", " (browser)  "), ("class:command", "r <job>"), ("class:help", " (run)  "), ("class:command", "c <job>"), ("class:help", " (clear)  "), ("class:command", "q"), ("class:help", " (quit)"), ("class:separator", f"\n{sep}\n\n")])
     return FormattedText(lines)
 
+@timed
 def get_job_by_number(num):
     with jobs_lock:
         job_names = sorted(jobs.keys())
