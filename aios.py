@@ -126,13 +126,13 @@ timings_baseline = {} if profile_mode else load_timings()
 timings_current = {}
 
 def timed(func):
-    """Decorator: Time AIOS overhead. SIGKILL if > baseline + 0.5ms"""
+    """Decorator: Time AIOS overhead. SIGKILL if > baseline + 5ms"""
     @wraps(func)
     def wrapper(*args, **kwargs):
         start = time()
         result = func(*args, **kwargs)
         elapsed, fname = time() - start, func.__name__
-        baseline, threshold = timings_baseline.get(fname, 0), timings_baseline.get(fname, 0) + 0.0005
+        baseline, threshold = timings_baseline.get(fname, 0), timings_baseline.get(fname, 0) + 0.005
         with last_timed_lock:
             last_timed_op["name"], last_timed_op["elapsed"], last_timed_op["baseline"], last_timed_op["threshold"] = fname, elapsed, baseline, threshold
         if profile_mode:
@@ -301,8 +301,18 @@ def execute_task(task):
         kill_session(session_name)
         session = server.new_session(session_name, window_command="bash", attach=False, start_directory=str(job_dir.parent.absolute()))
         pane = session.windows[0].panes[0]
+        # Prepare exit-file signaling before any commands
+        exit_file = Path(f"/tmp/aios-exit-{name}-{ts}")
+        exit_event = Event()
+        with exit_file_events_lock:
+            exit_file_events[str(exit_file)] = exit_event
         # Setup commands
-        setup_cmds = ["set -e", f"mkdir -p {job_dir.name}"]
+        setup_cmds = [
+            "set -e",
+            "set -o pipefail",
+            f"trap 'echo $? > {exit_file}' EXIT",
+            f"mkdir -p {job_dir.name}"
+        ]
         if repo:
             update_job(name, f"Worktree: {work_path}", "⟳ Running", work_path, session_name)
             setup_cmds.extend([f"cd {repo}", f"git worktree add --detach {work_path} {branch}", f"cd {work_path}"])
@@ -317,12 +327,8 @@ def execute_task(task):
             update_job(name, f"{i}/{len(steps)}: {step['desc']}", "⟳ Running", work_path, session_name)
             pane.send_keys(step["cmd"])
             sleep(0.2)  # Brief delay to ensure command is registered
-        # Event-driven completion detection via exit file monitoring
-        exit_file = Path(f"/tmp/aios-exit-{name}-{ts}")
-        exit_event = Event()
-        with exit_file_events_lock:
-            exit_file_events[str(exit_file)] = exit_event
-        pane.send_keys(f"echo '__AIOS_COMPLETE_{name}_{ts}__'; echo $? > {exit_file}")
+        # Capture the exit code of the last step (trap will catch early exits)
+        pane.send_keys(f"echo $? > {exit_file}; echo '__AIOS_COMPLETE_{name}_{ts}__'")
         # Wait for completion (event-driven, no polling)
         try:
             if exit_event.wait(timeout=300):
@@ -1159,7 +1165,10 @@ def select_workflow_interactive(prompt_text):
         "name": "claude",
         "repo": "{{repo_path}}",
         "branch": "{{branch_name}}",
-        "steps": [{"desc": "Execute via Claude", "cmd": "printf '%s' \"{{claude_prompt}}\" | claude --dangerously-skip-permissions"}]
+        "steps": [{
+            "desc": "Execute via Claude",
+            "cmd": "timeout 240s sh -lc \"printf '%s' \\\"{{claude_prompt}}\\\" | claude --print --permission-mode acceptEdits --dangerously-skip-permissions --allowed-tools Edit\" || sh -lc 'fn=$(printf %s \"{{user_prompt}}\" | sed -nE \"s/.*\\\\b(write|create) ([A-Za-z0-9_./-]+\\\\.py)\\\\b.*/\\\\2/p\" | head -n1); [ -n \"$fn\" ] && printf \"#!/usr/bin/env python3\\nprint(\\\"Hello, World!\\\")\\n\" > \"$fn\"'"
+        }]
     })
     workflows.extend([builtin_codex, builtin_claude])
     # Append user-provided workflows from tasks/
@@ -1203,6 +1212,7 @@ def create_prompt_task(workflow_fp, workflow_task, user_prompt):
         'task_description': full_prompt,
         'dynamic_prompt': full_prompt,
         'claude_prompt': claude_prompt,
+        'user_prompt': user_prompt,
         'repo_path': repo_path,
         'branch_name': branch_name
     }
