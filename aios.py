@@ -95,6 +95,30 @@ If rewriting existing sections of code with no features added, each change must 
 Specific practices:
 No polling whatsoever, only event based."""
 
+# Built-in Claude system prompt for immediate workflow Option 2
+CLAUDE_PROMPT_TEMPLATE = """Step 1: Read project and relevant files. Then ultrathink how to best solve this.
+The specific inspirations for any technical decision that is complex and interface is what 
+git, top, claude code, gnome terminal, codex, and similar projects
+do. As well as what exactly does the most popular app or program in the world that is similar to this one does. 99 percent of the time the best way to solve the problem already exists and your task is just to figure out how to find that and use it. 
+
+For any problem that might come up, first ask, how did they solve it? Research implementation if appropriate. 
+
+Step 2: Write the changes or new code with the following:
+
+Write in the style I would call “library glue”, where you only use library functions, no or almost no business logic, and fully rely on the library to do everything for 99 percent of code lines or more. Library usage should be so complete the only expected bugs are integration bugs. Consider each line of custom code far more likely to have logic error and library calls internal error free and minimize total error by never using custom logic unless there is no other way.
+
+Make line count as minimal as possible while doing exactly the same things, use direct library calls as often as possible, keep it readable and follow all program readability conventions,, and manually run debug and inspect output and fix issues for each function or change section one by one then together before finishing. 
+
+If rewriting existing sections of code with no features added, each change must be readable and follow all program readability conventions, run as fast or faster than previous code, lower in line count or equal to original, use the same or greater number of direct library calls, reduce the number of states the program could be in or keep it equal, make it simpler or the same complexity than before.
+Specific practices:
+No polling whatsoever, only event based. 
+No sleep, use events based methods only.
+ultrathink
+
+Step 3:
+After you make edits, run manually as though the user, and check the output manually, if applicable inspect screenshots, debug it. Set an aggressive timeout on any terminal command. Don’t add any features just make sure everything works and fix any issues.
+Do not test with test scripts, test by running the code as a user would and inspecting the output manually only."""
+
 # Performance enforcement
 load_timings = lambda: json.loads(TIMINGS_FILE.read_text()) if TIMINGS_FILE.exists() else {}
 save_timings = lambda t: TIMINGS_FILE.write_text(json.dumps(t, indent=2))
@@ -319,6 +343,7 @@ def execute_task(task):
 
 def show_task_menu():
     tasks_dir = Path("tasks")
+    tasks_dir.mkdir(exist_ok=True)
     if not tasks_dir.exists() or not (task_files := sorted(tasks_dir.glob("*.json"))): return []
     sep = "="*80
     print(f"\n{sep}\nWORKFLOWS\n{sep}")
@@ -763,7 +788,7 @@ def run_tui_mode(selected_tasks):
     [Thread(target=worker, daemon=True).start() for _ in range(4)]
     Thread(target=watch_folder, daemon=True).start()
     Thread(target=notification_worker, daemon=True).start()
-    show_menu_flag, attach_tmux_info = False, None
+    show_menu_flag, attach_tmux_info = (not selected_tasks), None
     while running:
         status_control = FormattedTextControl(text=get_status_text, focusable=False)
         status_window = Window(content=status_control, dont_extend_height=True)
@@ -1121,20 +1146,38 @@ def list_workflows():
     return workflows
 
 def select_workflow_interactive(prompt_text):
-    """Interactive workflow selector with codex as default"""
-    workflows = list_workflows()
+    """Interactive workflow selector with built-in options (1=codex, 2=claude)"""
+    workflows = []
+    # Built-in defaults
+    builtin_codex = (Path("codex"), {
+        "name": "codex",
+        "repo": "{{repo_path}}",
+        "branch": "{{branch_name}}",
+        "steps": [{"desc": "Execute via codex", "cmd": "codex exec --sandbox workspace-write -- '{{task_description}}'"}]
+    })
+    builtin_claude = (Path("claude"), {
+        "name": "claude",
+        "repo": "{{repo_path}}",
+        "branch": "{{branch_name}}",
+        "steps": [{"desc": "Execute via Claude", "cmd": "printf '%s' \"{{claude_prompt}}\" | claude --dangerously-skip-permissions"}]
+    })
+    workflows.extend([builtin_codex, builtin_claude])
+    # Append user-provided workflows from tasks/
+    wf_files = list_workflows()
+    # Deduplicate by workflow name, preserving first occurrence
+    seen = set([builtin_codex[1]["name"], builtin_claude[1]["name"]])
+    for fp, task in wf_files:
+        name = task.get("name", fp.stem)
+        if name in seen:
+            continue
+        workflows.append((fp, task))
+        seen.add(name)
     if not workflows:
-        return (Path("default"), {"name": "codex", "repo": "{{repo_path}}", "branch": "{{branch_name}}", "steps": [{"desc": "Execute via codex", "cmd": "codex exec --sandbox workspace-write -- '{{task_description}}'"}]})
+        return builtin_codex
     sep = "="*80
     print(f"\n{sep}\nSELECT WORKFLOW\n{sep}")
-    # Prefer workflows with variables (dynamic prompts), then 'codex' in name, then first
-    default_idx = None
-    for i, (fp, task) in enumerate(workflows, 1):
-        if extract_variables(task) and default_idx is None:
-            default_idx = i
-    if default_idx is None:
-        for i, (fp, task) in enumerate(workflows, 1):
-            if 'codex' in fp.stem.lower() and default_idx is None: default_idx = i
+    # Default to option 1 (codex)
+    default_idx = 1
     for i, (fp, task) in enumerate(workflows, 1):
         marker = ' [DEFAULT]' if i == default_idx else ''
         wt, var = '✓' if task.get('repo') else ' ', '⚙' if extract_variables(task) else ' '
@@ -1155,9 +1198,11 @@ def create_prompt_task(workflow_fp, workflow_task, user_prompt):
     """Create task from workflow with auto-filled variables"""
     repo_path, branch_name = get_git_info()
     full_prompt = f"{user_prompt}\n\n{CODING_STANDARDS}"
+    claude_prompt = f"{CLAUDE_PROMPT_TEMPLATE}\n\n{user_prompt}"
     auto_vars = {
         'task_description': full_prompt,
         'dynamic_prompt': full_prompt,
+        'claude_prompt': claude_prompt,
         'repo_path': repo_path,
         'branch_name': branch_name
     }
@@ -1221,16 +1266,20 @@ def get_immediate_prompt():
     return sys.stdin.read().strip()
 
 def run_immediate_prompt_mode():
-    """New mode: immediate prompt entry with workflow selection"""
-    prompt_text = get_immediate_prompt()
-    if not prompt_text:
-        print("✗ No prompt provided")
-        return []
-    workflow = select_workflow_interactive(prompt_text)
+    """Interactive workflow selection shown first; prompt collected if needed"""
+    workflow = select_workflow_interactive("")
     if not workflow:
         print("✗ No workflow selected")
         return []
     workflow_fp, workflow_task = workflow
+    # Prompt required if workflow uses any prompt variables
+    vars_needed = extract_variables(workflow_task)
+    prompt_text = ""
+    if {'task_description', 'dynamic_prompt', 'claude_prompt'} & vars_needed:
+        prompt_text = get_immediate_prompt()
+        if not prompt_text:
+            print("✗ No prompt provided")
+            return []
     if task := create_prompt_task(workflow_fp, workflow_task, prompt_text):
         return [task]
     return []
@@ -1352,8 +1401,11 @@ def main():
                     print(f"✓ Loaded: {task['name']}")
             except Exception as e:
                 print(f"✗ Error loading {fp}: {e}")
+    elif args:
+        # Immediate prompt mode (when user passes a prompt)
+        selected_tasks = run_immediate_prompt_mode()
     else:
-        # Immediate prompt mode (default)
+        # No args: immediate prompt + workflow selection (shows menu by default)
         selected_tasks = run_immediate_prompt_mode()
 
     if simple_mode:

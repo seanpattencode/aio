@@ -1,5 +1,6 @@
 {
   "auto_update": true,
-  "last_update_check": 1760392669,
-  "check_interval": 604800
+  "last_update_check": 1761266412,
+  "check_interval": 604800,
+  "editor_command": "code ."
 }
