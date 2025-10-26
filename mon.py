@@ -394,7 +394,42 @@ elif arg == 'p':
         exists = "✓" if os.path.exists(proj) else "✗"
         print(f"  {i}. {exists} {proj}")
 elif arg == 'ls':
-    sp.run(['tmux', 'ls'])
+    # List sessions with their directories
+    result = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
+                    capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print("No tmux sessions found")
+        sys.exit(0)
+
+    sessions_list = result.stdout.strip().split('\n')
+    if not sessions_list or sessions_list == ['']:
+        print("No tmux sessions found")
+        sys.exit(0)
+
+    print("Tmux Sessions:\n")
+    for session in sessions_list:
+        # Get session info (windows, attached, created time)
+        info_result = sp.run(['tmux', 'list-sessions', '-F',
+                             '#{session_name}:#{session_windows} windows#{?session_attached, (attached),}'],
+                            capture_output=True, text=True)
+
+        # Get current path of the session
+        path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
+                             '#{pane_current_path}'],
+                            capture_output=True, text=True)
+
+        # Extract info for this specific session
+        session_info = [line for line in info_result.stdout.strip().split('\n')
+                       if line.startswith(session + ':')]
+
+        if session_info and path_result.returncode == 0:
+            info = session_info[0].split(':', 1)[1] if ':' in session_info[0] else ''
+            path = path_result.stdout.strip()
+            print(f"  {session}: {info}")
+            print(f"    └─ {path}")
+        else:
+            print(f"  {session}")
 elif arg == 'x':
     sp.run(['tmux', 'kill-server'])
     print("✓ All sessions killed")
