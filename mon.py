@@ -3,6 +3,47 @@ import os, sys, subprocess as sp
 import sqlite3
 from datetime import datetime
 
+# Auto-update: Pull latest version from git repo
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def auto_update():
+    """Auto-update script from git repository if available."""
+    # Check if we're in a git repo
+    result = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', '--git-dir'],
+                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+
+    if result.returncode != 0:
+        return  # Not in a git repo, skip update
+
+    # Get current commit hash
+    before = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', 'HEAD'],
+                    capture_output=True, text=True)
+
+    if before.returncode != 0:
+        return
+
+    before_hash = before.stdout.strip()
+
+    # Pull latest changes (fast-forward only, silent)
+    sp.run(['git', '-C', SCRIPT_DIR, 'pull', '--ff-only'],
+           stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+
+    # Get new commit hash
+    after = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', 'HEAD'],
+                   capture_output=True, text=True)
+
+    if after.returncode != 0:
+        return
+
+    after_hash = after.stdout.strip()
+
+    # If updated, re-exec with same arguments
+    if before_hash != after_hash:
+        os.execv(sys.executable, [sys.executable, __file__] + sys.argv[1:])
+
+# Run auto-update before anything else
+auto_update()
+
 # Database setup
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
 DB_PATH = os.path.join(DATA_DIR, "mon.db")
@@ -587,6 +628,7 @@ Usage:
   ./mon.py ls              List all sessions
   ./mon.py jobs            List all jobs (directories with sessions + worktrees)
   ./mon.py x               Kill all sessions
+  ./mon.py install         Install as 'mon' command (callable from anywhere)
 
 Worktrees:
   ./mon.py w               List all worktrees
@@ -616,6 +658,7 @@ Saved Projects (stored in database: {DB_PATH}):""")
         print(f"  {i}. {exists} {proj}")
     print(f"""
 Examples:
+  ./mon.py install         Install globally (then use 'mon' instead of './mon.py')
   ./mon.py c 0             Launch codex in project 0
   ./mon.py c 0 -w          Launch codex in NEW window
   ./mon.py -w 0            Open terminal in project 0
@@ -632,8 +675,44 @@ Examples:
 
 Worktrees Location: {WORKTREES_DIR}
 
-Note: The 'push' command works in ANY git repository, not just worktrees.
-      Run from any directory to quickly commit and push your changes.""")
+Notes:
+  • Run './mon.py install' to use 'mon' globally from any directory
+  • Auto-updates from git on each run (always latest version)
+  • The 'push' command works in ANY git repository, not just worktrees""")
+elif arg == 'install':
+    # Install mon as a global command
+    bin_dir = os.path.expanduser("~/.local/bin")
+    mon_link = os.path.join(bin_dir, "mon")
+    script_path = os.path.abspath(__file__)
+
+    # Create bin directory if needed
+    os.makedirs(bin_dir, exist_ok=True)
+
+    # Remove existing symlink if present
+    if os.path.exists(mon_link):
+        if os.path.islink(mon_link):
+            os.remove(mon_link)
+            print(f"✓ Removed existing symlink: {mon_link}")
+        else:
+            print(f"✗ {mon_link} exists but is not a symlink. Please remove it manually.")
+            sys.exit(1)
+
+    # Create symlink
+    os.symlink(script_path, mon_link)
+    print(f"✓ Created symlink: {mon_link} -> {script_path}")
+
+    # Check if ~/.local/bin is in PATH
+    user_path = os.environ.get('PATH', '')
+    if bin_dir not in user_path:
+        print(f"\n⚠ Warning: {bin_dir} is not in your PATH")
+        print(f"Add this line to your ~/.bashrc or ~/.zshrc:")
+        print(f'  export PATH="$HOME/.local/bin:$PATH"')
+        print(f"\nThen run: source ~/.bashrc (or restart your terminal)")
+    else:
+        print(f"\n✓ {bin_dir} is in your PATH")
+        print(f"✓ You can now run 'mon' from anywhere!")
+
+    print(f"\nThe script will auto-update from git on each run.")
 elif arg == 'jobs':
     list_jobs()
 elif arg == 'p':
