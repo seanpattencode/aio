@@ -201,25 +201,31 @@ def launch_terminal_in_dir(directory, terminal=None):
         print(f"✗ Failed to launch terminal: {e}")
         return False
 
-def is_pane_receiving_output(session_name, interval=0.3):
-    """Check if a tmux pane is actively receiving output."""
+def is_pane_receiving_output(session_name, threshold=10):
+    """Check if a tmux pane had activity recently (tmux-style timestamp check).
+
+    Uses tmux's built-in activity tracking - same method tmux uses internally.
+    Returns True if activity occurred within threshold seconds.
+    """
     import time
 
-    # Capture pane content twice with a small interval
-    result1 = sp.run(['tmux', 'capture-pane', '-t', f'{session_name}', '-p'],
-                     capture_output=True, text=True)
-    if result1.returncode != 0:
+    # Get last activity timestamp from tmux
+    result = sp.run(['tmux', 'display-message', '-p', '-t', session_name,
+                     '#{window_activity}'],
+                    capture_output=True, text=True)
+
+    if result.returncode != 0:
         return False
 
-    time.sleep(interval)
+    try:
+        last_activity = int(result.stdout.strip())
+        current_time = int(time.time())
+        time_since_activity = current_time - last_activity
 
-    result2 = sp.run(['tmux', 'capture-pane', '-t', f'{session_name}', '-p'],
-                     capture_output=True, text=True)
-    if result2.returncode != 0:
+        # Active if had activity within threshold seconds
+        return time_since_activity < threshold
+    except (ValueError, AttributeError):
         return False
-
-    # If content changed, output is happening
-    return result1.stdout != result2.stdout
 
 def get_session_for_worktree(worktree_path):
     """Find tmux session attached to a worktree path."""
