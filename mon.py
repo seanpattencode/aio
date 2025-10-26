@@ -58,6 +58,36 @@ def launch_in_new_window(session_name, terminal=None):
         print(f"✗ Failed to launch terminal: {e}")
         return False
 
+def launch_terminal_in_dir(directory, terminal=None):
+    """Launch new terminal window in specific directory"""
+    if not terminal:
+        terminal = detect_terminal()
+
+    if not terminal:
+        print("✗ No supported terminal found (gnome-terminal, alacritty)")
+        return False
+
+    # Expand and resolve path
+    directory = os.path.expanduser(directory)
+    directory = os.path.abspath(directory)
+
+    if not os.path.exists(directory):
+        print(f"✗ Directory does not exist: {directory}")
+        return False
+
+    if terminal == 'gnome-terminal':
+        cmd = ['gnome-terminal', f'--working-directory={directory}']
+    elif terminal == 'alacritty':
+        cmd = ['alacritty', '--working-directory', directory]
+
+    try:
+        sp.Popen(cmd)
+        print(f"✓ Launched {terminal} in: {directory}")
+        return True
+    except Exception as e:
+        print(f"✗ Failed to launch terminal: {e}")
+        return False
+
 # Parse args
 arg = sys.argv[1] if len(sys.argv) > 1 else None
 work_dir_arg = sys.argv[2] if len(sys.argv) > 2 else None
@@ -68,6 +98,14 @@ if new_window:
     sys.argv = [a for a in sys.argv if a not in ['--new-window', '-w']]
     arg = sys.argv[1] if len(sys.argv) > 1 else None
     work_dir_arg = sys.argv[2] if len(sys.argv) > 2 else None
+
+# Check if arg is actually a directory/number (not a session key)
+is_directory_only = new_window and arg and not arg.startswith('+') and arg not in sessions
+
+# If directory-only mode, treat arg as work_dir_arg
+if is_directory_only:
+    work_dir_arg = arg
+    arg = None
 
 # Resolve work_dir: digit -> PROJECTS[n], path -> path, None -> WORK_DIR
 if work_dir_arg and work_dir_arg.isdigit():
@@ -96,6 +134,11 @@ def create_worktree(project_path, session_name):
         print(f"✗ Failed to create worktree: {result.stderr.strip()}")
         return None
 
+# Handle launching terminal in directory without session
+if new_window and not arg:
+    launch_terminal_in_dir(work_dir)
+    sys.exit(0)
+
 if not arg:
     print(f"""mon.py - tmux session manager
 
@@ -109,6 +152,7 @@ Usage:
   ./mon.py ++<key>         Create NEW instance with git worktree
   ./mon.py <key> <dir>     Start session in custom directory
   ./mon.py <key> <#>       Start session in saved project (#=0-{len(PROJECTS)-1})
+  ./mon.py -w [dir/#]      Open NEW terminal in directory (no session)
   ./mon.py p               List saved projects
   ./mon.py ls              List all sessions
   ./mon.py x               Kill all sessions
@@ -131,6 +175,8 @@ Saved Projects (edit at line 11):""")
 Examples:
   ./mon.py c 0             Launch codex in project 0
   ./mon.py c 0 -w          Launch codex in NEW window
+  ./mon.py -w 0            Open terminal in project 0 (no session)
+  ./mon.py -w /tmp         Open terminal in /tmp
   ./mon.py +c 0            New codex instance in project 0
   ./mon.py ++c 0           New codex with worktree
   ./mon.py l 2 -w          Launch claude in new window
