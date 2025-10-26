@@ -288,8 +288,8 @@ def remove_worktree(worktree_path, push=False, commit_msg=None):
 
     print(f"\nRemoving worktree: {worktree_name}")
 
-    # Git worktree remove
-    result = sp.run(['git', '-C', project_path, 'worktree', 'remove', worktree_path],
+    # Git worktree remove (with --force to handle modified/untracked files)
+    result = sp.run(['git', '-C', project_path, 'worktree', 'remove', '--force', worktree_path],
                     capture_output=True, text=True)
 
     if result.returncode != 0:
