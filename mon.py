@@ -1,30 +1,144 @@
 #!/usr/bin/env python3
 import os, sys, subprocess as sp
+import sqlite3
 from datetime import datetime
 
-CLAUDE_PROMPT = "tell me a joke"
-CODEX_PROMPT = "tell me a joke"
-GEMINI_PROMPT = "tell me a joke"
+# Database setup
+DATA_DIR = os.path.expanduser("~/.local/share/aios")
+DB_PATH = os.path.join(DATA_DIR, "mon.db")
+
+class WALManager:
+    """Context manager for SQLite database with WAL mode enabled."""
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self.conn = None
+
+    def __enter__(self):
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.execute("PRAGMA journal_mode=WAL;")
+        return self.conn
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            self.conn.close()
+        return False
+
+def init_database():
+    """Initialize database with schema and default values."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    with WALManager(DB_PATH) as conn:
+        with conn:
+            # Create tables
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL,
+                    display_order INTEGER NOT NULL UNIQUE
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    key TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    command_template TEXT NOT NULL
+                )
+            """)
+
+            # Check if config exists
+            cursor = conn.execute("SELECT COUNT(*) FROM config")
+            if cursor.fetchone()[0] == 0:
+                # Insert default config
+                conn.execute("INSERT INTO config VALUES ('claude_prompt', 'tell me a joke')")
+                conn.execute("INSERT INTO config VALUES ('codex_prompt', 'tell me a joke')")
+                conn.execute("INSERT INTO config VALUES ('gemini_prompt', 'tell me a joke')")
+                conn.execute("INSERT INTO config VALUES ('worktrees_dir', ?)",
+                           (os.path.expanduser("~/projects/aiosWorktrees"),))
+
+            # Check if projects exist
+            cursor = conn.execute("SELECT COUNT(*) FROM projects")
+            if cursor.fetchone()[0] == 0:
+                # Insert default projects
+                default_projects = [
+                    os.path.expanduser("~/projects/aios"),
+                    os.path.expanduser("~/projects/waylandauto"),
+                    os.path.expanduser("~/AndroidStudioProjects/Workcycle"),
+                    os.path.expanduser("~/projects/testRepoPrivate")
+                ]
+                for i, path in enumerate(default_projects):
+                    conn.execute("INSERT INTO projects (path, display_order) VALUES (?, ?)",
+                               (path, i))
+
+            # Check if sessions exist
+            cursor = conn.execute("SELECT COUNT(*) FROM sessions")
+            if cursor.fetchone()[0] == 0:
+                # Insert default sessions
+                default_sessions = [
+                    ('h', 'htop', 'htop'),
+                    ('t', 'top', 'top'),
+                    ('g', 'gemini', 'gemini --yolo'),
+                    ('gp', 'gemini-p', 'gemini --yolo "{GEMINI_PROMPT}"'),
+                    ('c', 'codex', 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox'),
+                    ('cp', 'codex-p', 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox "{CODEX_PROMPT}"'),
+                    ('l', 'claude', 'claude --dangerously-skip-permissions'),
+                    ('lp', 'claude-p', 'claude --dangerously-skip-permissions "{CLAUDE_PROMPT}"')
+                ]
+                for key, name, cmd in default_sessions:
+                    conn.execute("INSERT INTO sessions VALUES (?, ?, ?)", (key, name, cmd))
+
+def load_config():
+    """Load configuration from database."""
+    with WALManager(DB_PATH) as conn:
+        cursor = conn.execute("SELECT key, value FROM config")
+        config = dict(cursor.fetchall())
+    return config
+
+def load_projects():
+    """Load projects from database."""
+    with WALManager(DB_PATH) as conn:
+        cursor = conn.execute("SELECT path FROM projects ORDER BY display_order")
+        projects = [row[0] for row in cursor.fetchall()]
+    return projects
+
+def load_sessions(config):
+    """Load sessions from database and substitute prompt values."""
+    with WALManager(DB_PATH) as conn:
+        cursor = conn.execute("SELECT key, name, command_template FROM sessions")
+        sessions_data = cursor.fetchall()
+
+    sessions = {}
+    for key, name, cmd_template in sessions_data:
+        # Substitute prompt placeholders
+        cmd = cmd_template.format(
+            CLAUDE_PROMPT=config.get('claude_prompt', 'tell me a joke'),
+            CODEX_PROMPT=config.get('codex_prompt', 'tell me a joke'),
+            GEMINI_PROMPT=config.get('gemini_prompt', 'tell me a joke')
+        )
+        sessions[key] = (name, cmd)
+
+    return sessions
+
+# Initialize database on first run
+init_database()
+
+# Load configuration from database
+config = load_config()
+CLAUDE_PROMPT = config.get('claude_prompt', 'tell me a joke')
+CODEX_PROMPT = config.get('codex_prompt', 'tell me a joke')
+GEMINI_PROMPT = config.get('gemini_prompt', 'tell me a joke')
 WORK_DIR = os.getcwd()
-WORKTREES_DIR = os.path.expanduser("~/projects/aiosWorktrees")
+WORKTREES_DIR = config.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
 
-PROJECTS = [
-    os.path.expanduser("~/projects/aios"),
-    os.path.expanduser("~/projects/waylandauto"),
-    os.path.expanduser("~/AndroidStudioProjects/Workcycle"),
-    os.path.expanduser("~/projects/testRepoPrivate")
-]
-
-sessions = {
-    'h': ('htop', 'htop'),
-    't': ('top', 'top'),
-    'g': ('gemini', 'gemini --yolo'),
-    'gp': ('gemini-p', f'gemini --yolo "{GEMINI_PROMPT}"'),
-    'c': ('codex', 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox'),
-    'cp': ('codex-p', f'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox "{CODEX_PROMPT}"'),
-    'l': ('claude', 'claude --dangerously-skip-permissions'),
-    'lp': ('claude-p', f'claude --dangerously-skip-permissions "{CLAUDE_PROMPT}"')
-}
+PROJECTS = load_projects()
+sessions = load_sessions(config)
 
 def detect_terminal():
     """Detect available terminal emulator"""
@@ -365,7 +479,7 @@ Terminals:
 Working Directory:
   Default: {WORK_DIR}
 
-Saved Projects (edit at line 11):""")
+Saved Projects (stored in database: {DB_PATH}):""")
     for i, proj in enumerate(PROJECTS):
         exists = "✓" if os.path.exists(proj) else "✗"
         print(f"  {i}. {exists} {proj}")
