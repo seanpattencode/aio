@@ -201,6 +201,93 @@ def launch_terminal_in_dir(directory, terminal=None):
         print(f"✗ Failed to launch terminal: {e}")
         return False
 
+def is_pane_receiving_output(session_name, interval=0.3):
+    """Check if a tmux pane is actively receiving output."""
+    import time
+
+    # Capture pane content twice with a small interval
+    result1 = sp.run(['tmux', 'capture-pane', '-t', f'{session_name}', '-p'],
+                     capture_output=True, text=True)
+    if result1.returncode != 0:
+        return False
+
+    time.sleep(interval)
+
+    result2 = sp.run(['tmux', 'capture-pane', '-t', f'{session_name}', '-p'],
+                     capture_output=True, text=True)
+    if result2.returncode != 0:
+        return False
+
+    # If content changed, output is happening
+    return result1.stdout != result2.stdout
+
+def get_session_for_worktree(worktree_path):
+    """Find tmux session attached to a worktree path."""
+    # Get all sessions
+    result = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
+                    capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+
+    sessions = result.stdout.strip().split('\n')
+
+    # Check each session's current path
+    for session in sessions:
+        if not session:
+            continue
+        path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
+                             '#{pane_current_path}'],
+                            capture_output=True, text=True)
+        if path_result.returncode == 0:
+            session_path = path_result.stdout.strip()
+            # Check if session is in this worktree
+            if session_path == worktree_path or session_path.startswith(worktree_path + '/'):
+                return session
+
+    return None
+
+def list_jobs():
+    """List all jobs (worktrees) with their status."""
+    if not os.path.exists(WORKTREES_DIR):
+        print(f"No jobs found (no worktrees in {WORKTREES_DIR})")
+        return
+
+    items = sorted(os.listdir(WORKTREES_DIR))
+    if not items:
+        print("No jobs found")
+        return
+
+    print("Jobs (Worktrees):\n")
+
+    for item in items:
+        worktree_path = os.path.join(WORKTREES_DIR, item)
+        if not os.path.isdir(worktree_path):
+            continue
+
+        # Find session for this worktree
+        session = get_session_for_worktree(worktree_path)
+
+        if not session:
+            # No session attached
+            status = "review"
+            status_display = "📋 REVIEW"
+            session_info = "(no session)"
+        else:
+            # Session attached - check if actively outputting
+            is_active = is_pane_receiving_output(session)
+            if is_active:
+                status = "running"
+                status_display = "🏃 RUNNING"
+            else:
+                status = "review"
+                status_display = "📋 REVIEW"
+            session_info = f"(session: {session})"
+
+        print(f"  {status_display}  {item}")
+        print(f"           {session_info}")
+        print(f"           {worktree_path}")
+        print()
+
 def list_worktrees():
     """List all worktrees in central directory"""
     if not os.path.exists(WORKTREES_DIR):
@@ -458,6 +545,7 @@ Usage:
   ./mon.py -w [dir/#]      Open NEW terminal in directory (no session)
   ./mon.py p               List saved projects
   ./mon.py ls              List all sessions
+  ./mon.py jobs            List all jobs (worktrees) with status
   ./mon.py x               Kill all sessions
 
 Worktrees:
@@ -492,6 +580,7 @@ Examples:
   ./mon.py c 0 -w          Launch codex in NEW window
   ./mon.py -w 0            Open terminal in project 0
   ./mon.py ++c 0           New codex with worktree
+  ./mon.py jobs            Show status of all jobs (worktrees)
   ./mon.py w               List all worktrees
   ./mon.py w0              Open worktree #0
   ./mon.py w0 -w           Open worktree #0 in new window
@@ -505,6 +594,8 @@ Worktrees Location: {WORKTREES_DIR}
 
 Note: The 'push' command works in ANY git repository, not just worktrees.
       Run from any directory to quickly commit and push your changes.""")
+elif arg == 'jobs':
+    list_jobs()
 elif arg == 'p':
     print("Saved Projects:")
     for i, proj in enumerate(PROJECTS):
