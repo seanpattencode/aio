@@ -35,6 +35,27 @@ if work_dir_arg and work_dir_arg.isdigit():
 else:
     work_dir = work_dir_arg if work_dir_arg else WORK_DIR
 
+def create_worktree(project_path, session_name):
+    """Create git worktree in project/aiosWorktrees/session_name"""
+    worktrees_dir = os.path.join(project_path, "aiosWorktrees")
+    os.makedirs(worktrees_dir, exist_ok=True)
+    worktree_path = os.path.join(worktrees_dir, session_name)
+
+    # Get current branch
+    result = sp.run(['git', '-C', project_path, 'branch', '--show-current'],
+                    capture_output=True, text=True)
+    branch = result.stdout.strip() or 'main'
+
+    # Create worktree with new branch (detached from current branch)
+    result = sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f"wt-{session_name}", worktree_path, branch],
+                    capture_output=True, text=True)
+
+    if result.returncode == 0:
+        return worktree_path
+    else:
+        print(f"✗ Failed to create worktree: {result.stderr.strip()}")
+        return None
+
 if not arg:
     print(f"""mon.py - tmux session manager
 
@@ -44,6 +65,7 @@ Prompts:   gp=gemini+prompt  cp=codex+prompt  lp=claude+prompt
 Usage:
   ./mon.py <key>           Attach to session (create if needed)
   ./mon.py +<key>          Create NEW instance with timestamp
+  ./mon.py ++<key>         Create NEW instance with git worktree
   ./mon.py <key> <dir>     Start session in custom directory
   ./mon.py <key> <#>       Start session in saved project (#=0-{len(PROJECTS)-1})
   ./mon.py p               List saved projects
@@ -60,9 +82,15 @@ Saved Projects (edit at line 10):""")
     print(f"""
 Examples:
   ./mon.py c 0             Launch codex in project 0 (aios)
+  ./mon.py +c 0            New codex instance in project 0
+  ./mon.py ++c 0           New codex with worktree in project 0
   ./mon.py l 2             Launch claude in project 2 (Workcycle)
-  ./mon.py +c 1            New codex instance in project 1 (waylandauto)
-  ./mon.py c /tmp          Launch codex in /tmp""")
+  ./mon.py c /tmp          Launch codex in /tmp
+
+Git Worktrees:
+  ++ prefix creates worktree in <project>/aiosWorktrees/<session>/
+  Creates new branch: wt-<session>
+  Example: ~/projects/aios/aiosWorktrees/codex-223045/""")
 elif arg == 'p':
     print("Saved Projects:")
     for i, proj in enumerate(PROJECTS):
@@ -73,6 +101,26 @@ elif arg == 'ls':
 elif arg == 'x':
     sp.run(['tmux', 'kill-server'])
     print("✓ All sessions killed")
+elif arg.startswith('++'):
+    # Create with worktree
+    key = arg[2:]
+    if key in sessions and work_dir_arg and work_dir_arg.isdigit():
+        idx = int(work_dir_arg)
+        if 0 <= idx < len(PROJECTS):
+            project_path = PROJECTS[idx]
+            base_name, cmd = sessions[key]
+            ts = datetime.now().strftime('%H%M%S')
+            name = f"{base_name}-{ts}"
+
+            # Create worktree
+            if worktree_path := create_worktree(project_path, name):
+                print(f"✓ Created worktree: {worktree_path}")
+                sp.run(['tmux', 'new', '-d', '-s', name, '-c', worktree_path, cmd])
+                os.execvp('tmux', ['tmux', 'switch-client' if "TMUX" in os.environ else 'attach', '-t', name])
+        else:
+            print(f"✗ Invalid project index: {work_dir_arg}")
+    else:
+        print("✗ Usage: ./mon.py ++<key> <project#>")
 elif arg.startswith('+'):
     key = arg[1:]
     if key in sessions:
