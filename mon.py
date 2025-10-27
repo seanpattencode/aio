@@ -1041,6 +1041,7 @@ Examples:
   ./mon.py jobs            Show all jobs with status
   ./mon.py w               List all worktrees
   ./mon.py w0              Open worktree #0
+  ./mon.py w- 0            Remove worktree #0 (no push)
   ./mon.py w-- 0 --yes     Remove worktree #0 and push to main
   ./mon.py push "message"  Commit and push in current directory
 
