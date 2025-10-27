@@ -182,6 +182,35 @@ WORKTREES_DIR = config.get('worktrees_dir', os.path.expanduser("~/projects/aiosW
 PROJECTS = load_projects()
 sessions = load_sessions(config)
 
+def ensure_tmux_mouse_mode():
+    """Ensure tmux mouse mode is enabled for better scrolling."""
+    # Check if tmux server is running
+    result = sp.run(['tmux', 'info'],
+                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    if result.returncode != 0:
+        # Tmux server not running yet, will be configured when it starts
+        return
+
+    # Check current mouse mode setting
+    result = sp.run(['tmux', 'show-options', '-g', 'mouse'],
+                    capture_output=True, text=True)
+
+    if result.returncode == 0:
+        output = result.stdout.strip()
+        # Output format: "mouse on" or "mouse off"
+        if 'on' in output:
+            return  # Already enabled
+
+    # Enable mouse mode
+    result = sp.run(['tmux', 'set-option', '-g', 'mouse', 'on'],
+                    capture_output=True)
+
+    if result.returncode == 0:
+        print("✓ Enabled tmux mouse mode for scrolling")
+
+# Ensure tmux mouse mode is enabled
+ensure_tmux_mouse_mode()
+
 def detect_terminal():
     """Detect available terminal emulator"""
     for term in ['gnome-terminal', 'alacritty']:
@@ -1052,6 +1081,8 @@ Common Commands:
   p                        List saved projects
   push                     Quick commit and push
 
+Tip: Hold Shift while selecting text with mouse to copy (mouse mode enabled)
+
 For full documentation, run: ./mon.py help""")
 elif arg == 'help' or arg == '--help' or arg == '-h':
     print(f"""mon.py - tmux session manager (FULL DOCUMENTATION)
@@ -1154,7 +1185,8 @@ Notes:
   • Use -y/--yes flags to skip interactive confirmations
   • Use 'watch' to auto-respond to prompts in running sessions (expect-based)
   • Use 'send' or pass prompts directly to automate AI agent tasks
-  • Prompts are sent via tmux send-keys to running sessions""")
+  • Prompts are sent via tmux send-keys to running sessions
+  • Mouse mode enabled: Hold Shift while selecting text to copy to clipboard""")
 elif arg == 'install':
     # Install mon as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
