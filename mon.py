@@ -1475,9 +1475,17 @@ elif arg == 'push':
     if result.returncode == 0:
         print(f"✓ Committed: {commit_msg}")
     elif 'nothing to commit' in result.stdout:
-        print("ℹ Nothing to commit")
+        print("ℹ Nothing to commit, working tree clean")
+        sys.exit(0)
+    elif 'no changes added to commit' in result.stdout:
+        print("✗ No changes staged for commit")
+        print("  Run 'git status' to see unstaged changes")
+        print("  Tip: Some files may be ignored or in submodules")
+        sys.exit(1)
     else:
-        print(f"✗ Commit failed: {result.stderr.strip()}")
+        # Show both stdout and stderr for better error messages
+        error_msg = result.stderr.strip() or result.stdout.strip()
+        print(f"✗ Commit failed: {error_msg}")
         sys.exit(1)
 
     # Push
@@ -1485,7 +1493,8 @@ elif arg == 'push':
     if result.returncode == 0:
         print("✓ Pushed to remote")
     else:
-        print(f"✗ Push failed: {result.stderr.strip()}")
+        error_msg = result.stderr.strip() or result.stdout.strip()
+        print(f"✗ Push failed: {error_msg}")
         sys.exit(1)
 elif arg.startswith('++'):
     key = arg[2:]
