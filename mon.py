@@ -795,7 +795,7 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
     print(f"Path: {worktree_path}")
     print(f"Project: {project_path}")
     if push:
-        print(f"Action: Remove worktree, delete branch, AND PUSH to remote")
+        print(f"Action: Remove worktree, delete branch, switch to main, AND PUSH to main branch")
         if commit_msg:
             print(f"Commit message: {commit_msg}")
     else:
@@ -843,6 +843,29 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
         if not commit_msg:
             commit_msg = f"Remove worktree {worktree_name}"
 
+        # Detect main branch name (main or master)
+        result = sp.run(['git', '-C', project_path, 'symbolic-ref', 'refs/remotes/origin/HEAD'],
+                        capture_output=True, text=True)
+        if result.returncode == 0:
+            main_branch = result.stdout.strip().replace('refs/remotes/origin/', '')
+        else:
+            # Fallback: try 'main' first, then 'master'
+            result = sp.run(['git', '-C', project_path, 'rev-parse', '--verify', 'main'],
+                           capture_output=True)
+            main_branch = 'main' if result.returncode == 0 else 'master'
+
+        print(f"→ Switching to {main_branch} branch...")
+
+        # Switch to main branch
+        result = sp.run(['git', '-C', project_path, 'checkout', main_branch],
+                        capture_output=True, text=True)
+
+        if result.returncode != 0:
+            print(f"✗ Failed to switch to {main_branch}: {result.stderr.strip()}")
+            return True
+
+        print(f"✓ Switched to {main_branch}")
+
         # Check if there are changes to commit
         result = sp.run(['git', '-C', project_path, 'status', '--porcelain'],
                         capture_output=True, text=True)
@@ -853,12 +876,12 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
             sp.run(['git', '-C', project_path, 'commit', '-m', commit_msg])
             print(f"✓ Committed changes: {commit_msg}")
 
-        # Push
-        result = sp.run(['git', '-C', project_path, 'push'],
+        # Push to main
+        result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
                         capture_output=True, text=True)
 
         if result.returncode == 0:
-            print(f"✓ Pushed to remote")
+            print(f"✓ Pushed to {main_branch}")
         else:
             print(f"✗ Push failed: {result.stderr.strip()}")
 
@@ -919,6 +942,19 @@ def create_worktree(project_path, session_name):
     else:
         print(f"✗ Failed to create worktree: {result.stderr.strip()}")
         return None
+
+# Handle project number shortcut: mon 1, mon 2, etc.
+if arg and arg.isdigit() and not work_dir_arg:
+    project_idx = int(arg)
+    if 0 <= project_idx < len(PROJECTS):
+        project_path = PROJECTS[project_idx]
+        print(f"📂 Opening project {project_idx}: {project_path}")
+        os.chdir(project_path)
+        os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
+    else:
+        print(f"✗ Invalid project index: {project_idx}")
+        print(f"   Valid range: 0-{len(PROJECTS)-1}")
+        sys.exit(1)
 
 # Handle worktree commands (but not 'watch')
 if arg and arg.startswith('w') and arg != 'watch':
@@ -996,6 +1032,7 @@ Usage:
   ./mon.py ++<key>         Create NEW instance with git worktree
   ./mon.py <key> <dir>     Start session in custom directory
   ./mon.py <key> <#>       Start session in saved project (#=0-{len(PROJECTS)-1})
+  ./mon.py <#>             Open project in current terminal (no session)
   ./mon.py -w [dir/#]      Open NEW terminal in directory (no session)
   ./mon.py p               List saved projects
   ./mon.py ls              List all sessions
@@ -1011,8 +1048,8 @@ Worktrees:
   ./mon.py w<#/name> -w    Open worktree in NEW window
   ./mon.py w- <#/name>     Remove worktree (git + delete)
   ./mon.py w- <#/name> -y  Remove worktree without confirmation
-  ./mon.py w-- <#/name>    Remove worktree, commit, and push (default msg)
-  ./mon.py w-- <#/name> --yes  Remove and push without confirmation
+  ./mon.py w-- <#/name>    Remove worktree, switch to main, commit, and push to main
+  ./mon.py w-- <#/name> --yes  Remove and push to main without confirmation
   ./mon.py w-- <#/name> "Custom message"  Same but with custom commit message
 
 Git Operations (works in ANY directory):
@@ -1024,6 +1061,14 @@ Automation (sending prompts to AI sessions):
   ./mon.py send <session> <prompt> --wait Send prompt and wait for completion
   ./mon.py <key> <prompt>                 Create/attach session and send prompt
   ./mon.py <key> <dir> <prompt>           Create/attach in dir and send prompt
+
+Multi-Agent Parallel Execution:
+  ./mon.py multi <project#> c:3 g:1 <prompt>  Run 3 codex + 1 gemini in parallel
+  ./mon.py multi <project#> c:2 l:1 <prompt>  Run 2 codex + 1 claude in parallel
+  ./mon.py multi 3 c:4 "create tests"         Run 4 codex instances with same prompt
+
+  Agent specs: c:N (codex), l:N (claude), g:N (gemini)
+  Creates worktrees and sends prompts to all instances automatically
 
 Flags:
   -w, --new-window         Launch in new terminal window
@@ -1043,9 +1088,10 @@ Saved Projects (stored in database: {DB_PATH}):""")
     print(f"""
 Examples:
   ./mon.py install         Install globally (then use 'mon' instead of './mon.py')
+  ./mon.py 1               Open project 1 in current terminal
   ./mon.py c 0             Launch codex in project 0
   ./mon.py c 0 -w          Launch codex in NEW window
-  ./mon.py -w 0            Open terminal in project 0
+  ./mon.py -w 0            Open terminal in project 0 (new window)
   ./mon.py ++c 0           New codex with worktree
   ./mon.py jobs            Show all active work (sessions + worktrees) with status
   ./mon.py w               List all worktrees
@@ -1053,14 +1099,15 @@ Examples:
   ./mon.py w0 -w           Open worktree #0 in new window
   ./mon.py w- codex-123    Remove worktree matching 'codex-123'
   ./mon.py w- 0 -y         Remove worktree #0 without confirmation
-  ./mon.py w-- 0           Remove worktree #0 and push (default message)
-  ./mon.py w-- 0 --yes     Remove worktree #0 and push (skip confirmation)
-  ./mon.py w-- 0 "Cleanup experimental feature"  Remove and push with custom message
+  ./mon.py w-- 0           Remove worktree #0, switch to main, and push to main
+  ./mon.py w-- 0 --yes     Remove and push to main (skip confirmation)
+  ./mon.py w-- 0 "Cleanup experimental feature"  Remove and push to main with custom message
   ./mon.py watch codex     Watch codex session and auto-respond to confirmations
   ./mon.py send codex "create a test file"  Send prompt to codex session
   ./mon.py send codex "list all files" --wait  Send and wait for completion
   ./mon.py c "create README.md"  Start codex and send prompt
   ./mon.py c 3 "fix the bug"  Start codex in project 3 and send prompt
+  ./mon.py multi 3 c:3 g:1 "create a login feature"  Run 3 codex + 1 gemini in parallel
   ./mon.py push            Quick commit+push in current directory
   ./mon.py push "Fix bug in authentication"  Commit+push with custom message
 
@@ -1183,6 +1230,116 @@ elif arg == 'send':
     result = send_prompt_to_session(session_name, prompt, wait_for_completion=wait, timeout=60)
     if not result:
         sys.exit(1)
+elif arg == 'multi':
+    # Run multiple agent instances in parallel worktrees
+    # Usage: mon multi <project#> c:3 g:1 "prompt text"
+    if not work_dir_arg or not work_dir_arg.isdigit():
+        print("✗ Usage: mon multi <project#> <agent_specs>... <prompt>")
+        print("\nExamples:")
+        print("  mon multi 3 c:3 g:1 'create a test file'")
+        print("  mon multi 0 c:2 l:1 'fix the bug'")
+        print("\nAgent specs:")
+        print("  c:N  - N codex instances")
+        print("  l:N  - N claude instances")
+        print("  g:N  - N gemini instances")
+        sys.exit(1)
+
+    project_idx = int(work_dir_arg)
+    if not (0 <= project_idx < len(PROJECTS)):
+        print(f"✗ Invalid project index: {project_idx}")
+        sys.exit(1)
+
+    project_path = PROJECTS[project_idx]
+
+    # Parse agent specifications and prompt
+    agent_specs = []
+    prompt_parts = []
+    parsing_agents = True
+
+    for i in range(3, len(sys.argv)):
+        arg_part = sys.argv[i]
+
+        # Check if this looks like an agent spec (e.g., "c:3")
+        if parsing_agents and ':' in arg_part and len(arg_part) <= 4:
+            parts = arg_part.split(':')
+            if len(parts) == 2 and parts[0] in ['c', 'l', 'g'] and parts[1].isdigit():
+                agent_key = parts[0]
+                count = int(parts[1])
+                agent_specs.append((agent_key, count))
+                continue
+
+        # Everything else is part of the prompt
+        parsing_agents = False
+        prompt_parts.append(arg_part)
+
+    if not agent_specs:
+        print("✗ No agent specifications provided")
+        sys.exit(1)
+
+    if not prompt_parts:
+        print("✗ No prompt provided")
+        sys.exit(1)
+
+    prompt = ' '.join(prompt_parts)
+
+    # Calculate total instances
+    total_instances = sum(count for _, count in agent_specs)
+
+    print(f"🚀 Starting {total_instances} agent instances in parallel worktrees...")
+    print(f"   Project: {project_path}")
+    print(f"   Agents: {', '.join(f'{key}×{count}' for key, count in agent_specs)}")
+    print(f"   Prompt: {prompt}")
+    print()
+
+    # Create worktrees and launch sessions
+    launched_sessions = []
+
+    for agent_key, count in agent_specs:
+        base_name, cmd = sessions.get(agent_key, (None, None))
+
+        if not base_name:
+            print(f"✗ Unknown agent key: {agent_key}")
+            continue
+
+        for instance_num in range(count):
+            # Create unique worktree name
+            ts = datetime.now().strftime('%H%M%S')
+            import time
+            time.sleep(0.01)  # Ensure unique timestamps
+            worktree_name = f"{base_name}-{ts}-{instance_num}"
+
+            # Create worktree
+            worktree_path = create_worktree(project_path, worktree_name)
+
+            if not worktree_path:
+                print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
+                continue
+
+            # Create tmux session in worktree
+            session_name = worktree_name
+            sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, cmd],
+                  capture_output=True)
+
+            launched_sessions.append((session_name, base_name, instance_num+1))
+            print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
+
+    if not launched_sessions:
+        print("✗ No sessions were created")
+        sys.exit(1)
+
+    print(f"\n📤 Sending prompt to all {len(launched_sessions)} sessions...")
+
+    # Send prompts to all sessions
+    for session_name, agent_name, instance_num in launched_sessions:
+        print(f"   → {agent_name} instance {instance_num}...", end=' ', flush=True)
+        result = send_prompt_to_session(session_name, prompt, wait_for_ready=True, wait_for_completion=False)
+        if result:
+            print("✓")
+        else:
+            print("✗")
+
+    print(f"\n✓ All sessions launched! Use 'mon jobs' to see status")
+    print(f"   Session names: {', '.join(s[0] for s in launched_sessions)}")
 elif arg == 'jobs':
     list_jobs()
 elif arg == 'p':
