@@ -1458,43 +1458,132 @@ elif arg == 'push':
     cwd = os.getcwd()
 
     # Check if git repo
-    result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True)
+    result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True, text=True)
     if result.returncode != 0:
         print("✗ Not a git repository")
         sys.exit(1)
 
+    # Check if we're in a worktree
+    git_dir = result.stdout.strip()
+    is_worktree = '.git/worktrees/' in git_dir or cwd.startswith(WORKTREES_DIR)
+
     # Get commit message
     commit_msg = work_dir_arg if work_dir_arg else f"Update {os.path.basename(cwd)}"
 
-    # Add all changes
-    sp.run(['git', '-C', cwd, 'add', '-A'])
+    if is_worktree:
+        # We're in a worktree - need to find the main project and push to main
+        worktree_name = os.path.basename(cwd)
+        project_path = get_project_for_worktree(cwd)
 
-    # Commit
-    result = sp.run(['git', '-C', cwd, 'commit', '-m', commit_msg],
-                    capture_output=True, text=True)
-    if result.returncode == 0:
-        print(f"✓ Committed: {commit_msg}")
-    elif 'nothing to commit' in result.stdout:
-        print("ℹ No changes to send")
-        sys.exit(0)
-    elif 'no changes added to commit' in result.stdout:
-        print("ℹ No changes to send")
-        print("  (Some files may be ignored or in submodules)")
-        sys.exit(0)
-    else:
-        # Show both stdout and stderr for better error messages
-        error_msg = result.stderr.strip() or result.stdout.strip()
-        print(f"✗ Commit failed: {error_msg}")
-        sys.exit(1)
+        if not project_path:
+            print(f"✗ Could not determine main project for worktree: {worktree_name}")
+            print(f"  Worktree: {cwd}")
+            sys.exit(1)
 
-    # Push
-    result = sp.run(['git', '-C', cwd, 'push'], capture_output=True, text=True)
-    if result.returncode == 0:
-        print("✓ Pushed to remote")
+        # Show confirmation dialogue
+        print(f"\n📍 You are in a worktree: {worktree_name}")
+        print(f"   Main project: {project_path}")
+        print(f"\nThis will:")
+        print(f"  1. Commit your changes in the worktree")
+        print(f"  2. Switch the main project to the main branch")
+        print(f"  3. Push to the main branch on remote")
+        print(f"\nCommit message: {commit_msg}")
+
+        skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
+        if not skip_confirm:
+            response = input("\nContinue? (y/n): ").strip().lower()
+            if response not in ['y', 'yes']:
+                print("✗ Cancelled")
+                sys.exit(0)
+
+        # Add and commit changes in worktree
+        sp.run(['git', '-C', cwd, 'add', '-A'])
+        result = sp.run(['git', '-C', cwd, 'commit', '-m', commit_msg],
+                        capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"✓ Committed in worktree: {commit_msg}")
+        elif 'nothing to commit' in result.stdout or 'no changes added to commit' in result.stdout:
+            print("ℹ No changes to commit in worktree")
+        else:
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Commit failed: {error_msg}")
+            sys.exit(1)
+
+        # Detect main branch name
+        result = sp.run(['git', '-C', project_path, 'symbolic-ref', 'refs/remotes/origin/HEAD'],
+                        capture_output=True, text=True)
+        if result.returncode == 0:
+            main_branch = result.stdout.strip().replace('refs/remotes/origin/', '')
+        else:
+            result = sp.run(['git', '-C', project_path, 'rev-parse', '--verify', 'main'],
+                           capture_output=True)
+            main_branch = 'main' if result.returncode == 0 else 'master'
+
+        print(f"→ Switching main project to {main_branch}...")
+
+        # Switch to main branch
+        result = sp.run(['git', '-C', project_path, 'checkout', main_branch],
+                        capture_output=True, text=True)
+
+        if result.returncode != 0:
+            print(f"✗ Failed to switch to {main_branch}: {result.stderr.strip()}")
+            sys.exit(1)
+
+        print(f"✓ Switched to {main_branch}")
+
+        # Check if there are changes to commit in main project
+        result = sp.run(['git', '-C', project_path, 'status', '--porcelain'],
+                        capture_output=True, text=True)
+
+        if result.stdout.strip():
+            # Commit changes in main project
+            sp.run(['git', '-C', project_path, 'add', '-A'])
+            sp.run(['git', '-C', project_path, 'commit', '-m', commit_msg])
+            print(f"✓ Committed in main project: {commit_msg}")
+
+        # Push to main
+        result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
+                        capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"✓ Pushed to {main_branch}")
+        else:
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Push failed: {error_msg}")
+            sys.exit(1)
+
     else:
-        error_msg = result.stderr.strip() or result.stdout.strip()
-        print(f"✗ Push failed: {error_msg}")
-        sys.exit(1)
+        # Normal repo - regular push behavior
+        # Add all changes
+        sp.run(['git', '-C', cwd, 'add', '-A'])
+
+        # Commit
+        result = sp.run(['git', '-C', cwd, 'commit', '-m', commit_msg],
+                        capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"✓ Committed: {commit_msg}")
+        elif 'nothing to commit' in result.stdout:
+            print("ℹ No changes to send")
+            sys.exit(0)
+        elif 'no changes added to commit' in result.stdout:
+            print("ℹ No changes to send")
+            print("  (Some files may be ignored or in submodules)")
+            sys.exit(0)
+        else:
+            # Show both stdout and stderr for better error messages
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Commit failed: {error_msg}")
+            sys.exit(1)
+
+        # Push
+        result = sp.run(['git', '-C', cwd, 'push'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("✓ Pushed to remote")
+        else:
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Push failed: {error_msg}")
+            sys.exit(1)
 elif arg.startswith('++'):
     key = arg[2:]
     if key in sessions and work_dir_arg and work_dir_arg.isdigit():
