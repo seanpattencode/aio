@@ -47,7 +47,7 @@ auto_update()
 
 # Database setup
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
-DB_PATH = os.path.join(DATA_DIR, "mon.db")
+DB_PATH = os.path.join(DATA_DIR, "aio.db")
 
 class WALManager:
     """Context manager for SQLite database with WAL mode enabled."""
@@ -733,11 +733,11 @@ def list_jobs():
                                     if os.path.isdir(os.path.join(WORKTREES_DIR, d))])
             if job_name in worktrees_list:
                 worktree_index = worktrees_list.index(job_name)
-                print(f"           Open dir:  mon w{worktree_index} -w")
+                print(f"           Open dir:  aio w{worktree_index} -w")
             else:
-                print(f"           Open dir:  mon -w {job_path}")
+                print(f"           Open dir:  aio -w {job_path}")
         else:
-            print(f"           Open dir:  mon -w {job_path}")
+            print(f"           Open dir:  aio -w {job_path}")
 
         # Command to attach to session(s)
         if sessions_in_job:
@@ -972,7 +972,7 @@ def create_worktree(project_path, session_name):
         print(f"✗ Failed to create worktree: {result.stderr.strip()}")
         return None
 
-# Handle project number shortcut: mon 1, mon 2, etc.
+# Handle project number shortcut: aio 1, aio 2, etc.
 if arg and arg.isdigit() and not work_dir_arg:
     project_idx = int(arg)
     if 0 <= project_idx < len(PROJECTS):
@@ -1004,7 +1004,7 @@ if arg and arg.startswith('w') and arg != 'watch':
                 break
 
         if not pattern:
-            print("✗ Usage: ./mon.py w-- <worktree#/name> [commit message] [--yes/-y]")
+            print("✗ Usage: ./aio.py w-- <worktree#/name> [commit message] [--yes/-y]")
             sys.exit(1)
 
         worktree_path = find_worktree(pattern)
@@ -1019,7 +1019,7 @@ if arg and arg.startswith('w') and arg != 'watch':
         skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
 
         if not pattern:
-            print("✗ Usage: ./mon.py w- <worktree#/name> [--yes/-y]")
+            print("✗ Usage: ./aio.py w- <worktree#/name> [--yes/-y]")
             sys.exit(1)
 
         worktree_path = find_worktree(pattern)
@@ -1049,7 +1049,7 @@ if new_window and not arg:
     sys.exit(0)
 
 if not arg:
-    print(f"""mon.py - tmux session manager
+    print(f"""aio.py - tmux session manager
 
 Sessions:  h=htop  t=top  g=gemini  c=codex  l=claude
 Prompts:   gp=gemini+prompt  cp=codex+prompt  lp=claude+prompt
@@ -1062,17 +1062,17 @@ Saved Projects:""")
         print(f"  {i}. {exists} {proj}")
     print(f"""
 Examples:
-  ./mon.py install         Install globally (use 'mon' instead of './mon.py')
-  ./mon.py 1               Open project 1 in current terminal
-  ./mon.py c 0             Launch codex in project 0
-  ./mon.py c 0 -w          Launch codex in NEW window
-  ./mon.py ++c 0           New codex with worktree
-  ./mon.py jobs            Show all jobs with status
-  ./mon.py w               List all worktrees
-  ./mon.py w0              Open worktree #0
-  ./mon.py w- 0            Remove worktree #0 (no push)
-  ./mon.py w-- 0 --yes     Remove worktree #0 and push to main
-  ./mon.py push "message"  Commit and push in current directory
+  ./aio.py install         Install globally (use 'aio' instead of './aio.py')
+  ./aio.py 1               Open project 1 in current terminal
+  ./aio.py c 0             Launch codex in project 0
+  ./aio.py c 0 -w          Launch codex in NEW window
+  ./aio.py ++c 0           New codex with worktree
+  ./aio.py jobs            Show all jobs with status
+  ./aio.py w               List all worktrees
+  ./aio.py w0              Open worktree #0
+  ./aio.py w- 0            Remove worktree #0 (no push)
+  ./aio.py w-- 0 --yes     Remove worktree #0 and push to main
+  ./aio.py push "message"  Commit and push in current directory
 
 Common Commands:
   jobs                     List all active work
@@ -1083,54 +1083,54 @@ Common Commands:
 
 Tip: Hold Shift while selecting text with mouse to copy (mouse mode enabled)
 
-For full documentation, run: ./mon.py help""")
+For full documentation, run: ./aio.py help""")
 elif arg == 'help' or arg == '--help' or arg == '-h':
-    print(f"""mon.py - tmux session manager (FULL DOCUMENTATION)
+    print(f"""aio.py - tmux session manager (FULL DOCUMENTATION)
 
 Sessions:  h=htop  t=top  g=gemini  c=codex  l=claude
 Prompts:   gp=gemini+prompt  cp=codex+prompt  lp=claude+prompt
 
 Usage:
-  ./mon.py <key>           Attach to session (create if needed)
-  ./mon.py <key> -w        Attach in NEW terminal window
-  ./mon.py +<key>          Create NEW instance with timestamp
-  ./mon.py ++<key>         Create NEW instance with git worktree
-  ./mon.py <key> <dir>     Start session in custom directory
-  ./mon.py <key> <#>       Start session in saved project (#=0-{len(PROJECTS)-1})
-  ./mon.py <#>             Open project in current terminal (no session)
-  ./mon.py -w [dir/#]      Open NEW terminal in directory (no session)
-  ./mon.py p               List saved projects
-  ./mon.py ls              List all sessions
-  ./mon.py jobs            List all jobs (directories with sessions + worktrees)
-  ./mon.py watch <session> Watch session and auto-respond to prompts
-  ./mon.py watch <session> 60  Watch for 60 seconds
-  ./mon.py x               Kill all sessions
-  ./mon.py install         Install as 'mon' command (callable from anywhere)
+  ./aio.py <key>           Attach to session (create if needed)
+  ./aio.py <key> -w        Attach in NEW terminal window
+  ./aio.py +<key>          Create NEW instance with timestamp
+  ./aio.py ++<key>         Create NEW instance with git worktree
+  ./aio.py <key> <dir>     Start session in custom directory
+  ./aio.py <key> <#>       Start session in saved project (#=0-{len(PROJECTS)-1})
+  ./aio.py <#>             Open project in current terminal (no session)
+  ./aio.py -w [dir/#]      Open NEW terminal in directory (no session)
+  ./aio.py p               List saved projects
+  ./aio.py ls              List all sessions
+  ./aio.py jobs            List all jobs (directories with sessions + worktrees)
+  ./aio.py watch <session> Watch session and auto-respond to prompts
+  ./aio.py watch <session> 60  Watch for 60 seconds
+  ./aio.py x               Kill all sessions
+  ./aio.py install         Install as 'aio' command (callable from anywhere)
 
 Worktrees:
-  ./mon.py w               List all worktrees
-  ./mon.py w<#/name>       Open worktree in current terminal
-  ./mon.py w<#/name> -w    Open worktree in NEW window
-  ./mon.py w- <#/name>     Remove worktree (git + delete)
-  ./mon.py w- <#/name> -y  Remove worktree without confirmation
-  ./mon.py w-- <#/name>    Remove worktree, switch to main, commit, and push to main
-  ./mon.py w-- <#/name> --yes  Remove and push to main without confirmation
-  ./mon.py w-- <#/name> "Custom message"  Same but with custom commit message
+  ./aio.py w               List all worktrees
+  ./aio.py w<#/name>       Open worktree in current terminal
+  ./aio.py w<#/name> -w    Open worktree in NEW window
+  ./aio.py w- <#/name>     Remove worktree (git + delete)
+  ./aio.py w- <#/name> -y  Remove worktree without confirmation
+  ./aio.py w-- <#/name>    Remove worktree, switch to main, commit, and push to main
+  ./aio.py w-- <#/name> --yes  Remove and push to main without confirmation
+  ./aio.py w-- <#/name> "Custom message"  Same but with custom commit message
 
 Git Operations (works in ANY directory):
-  ./mon.py push            Commit all changes and push (default message)
-  ./mon.py push "msg"      Commit all changes and push with custom message
+  ./aio.py push            Commit all changes and push (default message)
+  ./aio.py push "msg"      Commit all changes and push with custom message
 
 Automation (sending prompts to AI sessions):
-  ./mon.py send <session> <prompt>        Send prompt to existing session
-  ./mon.py send <session> <prompt> --wait Send prompt and wait for completion
-  ./mon.py <key> <prompt>                 Create/attach session and send prompt
-  ./mon.py <key> <dir> <prompt>           Create/attach in dir and send prompt
+  ./aio.py send <session> <prompt>        Send prompt to existing session
+  ./aio.py send <session> <prompt> --wait Send prompt and wait for completion
+  ./aio.py <key> <prompt>                 Create/attach session and send prompt
+  ./aio.py <key> <dir> <prompt>           Create/attach in dir and send prompt
 
 Multi-Agent Parallel Execution:
-  ./mon.py multi <project#> c:3 g:1 <prompt>  Run 3 codex + 1 gemini in parallel
-  ./mon.py multi <project#> c:2 l:1 <prompt>  Run 2 codex + 1 claude in parallel
-  ./mon.py multi 3 c:4 "create tests"         Run 4 codex instances with same prompt
+  ./aio.py multi <project#> c:3 g:1 <prompt>  Run 3 codex + 1 gemini in parallel
+  ./aio.py multi <project#> c:2 l:1 <prompt>  Run 2 codex + 1 claude in parallel
+  ./aio.py multi 3 c:4 "create tests"         Run 4 codex instances with same prompt
 
   Agent specs: c:N (codex), l:N (claude), g:N (gemini)
   Creates worktrees and sends prompts to all instances automatically
@@ -1152,34 +1152,34 @@ Saved Projects (stored in database: {DB_PATH}):""")
         print(f"  {i}. {exists} {proj}")
     print(f"""
 Examples:
-  ./mon.py install         Install globally (then use 'mon' instead of './mon.py')
-  ./mon.py 1               Open project 1 in current terminal
-  ./mon.py c 0             Launch codex in project 0
-  ./mon.py c 0 -w          Launch codex in NEW window
-  ./mon.py -w 0            Open terminal in project 0 (new window)
-  ./mon.py ++c 0           New codex with worktree
-  ./mon.py jobs            Show all active work (sessions + worktrees) with status
-  ./mon.py w               List all worktrees
-  ./mon.py w0              Open worktree #0
-  ./mon.py w0 -w           Open worktree #0 in new window
-  ./mon.py w- codex-123    Remove worktree matching 'codex-123'
-  ./mon.py w- 0 -y         Remove worktree #0 without confirmation
-  ./mon.py w-- 0           Remove worktree #0, switch to main, and push to main
-  ./mon.py w-- 0 --yes     Remove and push to main (skip confirmation)
-  ./mon.py w-- 0 "Cleanup experimental feature"  Remove and push to main with custom message
-  ./mon.py watch codex     Watch codex session and auto-respond to confirmations
-  ./mon.py send codex "create a test file"  Send prompt to codex session
-  ./mon.py send codex "list all files" --wait  Send and wait for completion
-  ./mon.py c "create README.md"  Start codex and send prompt
-  ./mon.py c 3 "fix the bug"  Start codex in project 3 and send prompt
-  ./mon.py multi 3 c:3 g:1 "create a login feature"  Run 3 codex + 1 gemini in parallel
-  ./mon.py push            Quick commit+push in current directory
-  ./mon.py push "Fix bug in authentication"  Commit+push with custom message
+  ./aio.py install         Install globally (then use 'aio' instead of './aio.py')
+  ./aio.py 1               Open project 1 in current terminal
+  ./aio.py c 0             Launch codex in project 0
+  ./aio.py c 0 -w          Launch codex in NEW window
+  ./aio.py -w 0            Open terminal in project 0 (new window)
+  ./aio.py ++c 0           New codex with worktree
+  ./aio.py jobs            Show all active work (sessions + worktrees) with status
+  ./aio.py w               List all worktrees
+  ./aio.py w0              Open worktree #0
+  ./aio.py w0 -w           Open worktree #0 in new window
+  ./aio.py w- codex-123    Remove worktree matching 'codex-123'
+  ./aio.py w- 0 -y         Remove worktree #0 without confirmation
+  ./aio.py w-- 0           Remove worktree #0, switch to main, and push to main
+  ./aio.py w-- 0 --yes     Remove and push to main (skip confirmation)
+  ./aio.py w-- 0 "Cleanup experimental feature"  Remove and push to main with custom message
+  ./aio.py watch codex     Watch codex session and auto-respond to confirmations
+  ./aio.py send codex "create a test file"  Send prompt to codex session
+  ./aio.py send codex "list all files" --wait  Send and wait for completion
+  ./aio.py c "create README.md"  Start codex and send prompt
+  ./aio.py c 3 "fix the bug"  Start codex in project 3 and send prompt
+  ./aio.py multi 3 c:3 g:1 "create a login feature"  Run 3 codex + 1 gemini in parallel
+  ./aio.py push            Quick commit+push in current directory
+  ./aio.py push "Fix bug in authentication"  Commit+push with custom message
 
 Worktrees Location: {WORKTREES_DIR}
 
 Notes:
-  • Run './mon.py install' to use 'mon' globally from any directory
+  • Run './aio.py install' to use 'aio' globally from any directory
   • Auto-updates from git on each run (always latest version)
   • The 'push' command works in ANY git repository, not just worktrees
   • Use -y/--yes flags to skip interactive confirmations
@@ -1188,26 +1188,26 @@ Notes:
   • Prompts are sent via tmux send-keys to running sessions
   • Mouse mode enabled: Hold Shift while selecting text to copy to clipboard""")
 elif arg == 'install':
-    # Install mon as a global command
+    # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
-    mon_link = os.path.join(bin_dir, "mon")
+    aio_link = os.path.join(bin_dir, "aio")
     script_path = os.path.abspath(__file__)
 
     # Create bin directory if needed
     os.makedirs(bin_dir, exist_ok=True)
 
     # Remove existing symlink if present
-    if os.path.exists(mon_link):
-        if os.path.islink(mon_link):
-            os.remove(mon_link)
-            print(f"✓ Removed existing symlink: {mon_link}")
+    if os.path.exists(aio_link):
+        if os.path.islink(aio_link):
+            os.remove(aio_link)
+            print(f"✓ Removed existing symlink: {aio_link}")
         else:
-            print(f"✗ {mon_link} exists but is not a symlink. Please remove it manually.")
+            print(f"✗ {aio_link} exists but is not a symlink. Please remove it manually.")
             sys.exit(1)
 
     # Create symlink
-    os.symlink(script_path, mon_link)
-    print(f"✓ Created symlink: {mon_link} -> {script_path}")
+    os.symlink(script_path, aio_link)
+    print(f"✓ Created symlink: {aio_link} -> {script_path}")
 
     # Check if ~/.local/bin is in PATH
     user_path = os.environ.get('PATH', '')
@@ -1218,16 +1218,16 @@ elif arg == 'install':
         print(f"\nThen run: source ~/.bashrc (or restart your terminal)")
     else:
         print(f"\n✓ {bin_dir} is in your PATH")
-        print(f"✓ You can now run 'mon' from anywhere!")
+        print(f"✓ You can now run 'aio' from anywhere!")
 
     print(f"\nThe script will auto-update from git on each run.")
 elif arg == 'watch':
     # Watch a tmux session and auto-respond to patterns
     if not work_dir_arg:
-        print("✗ Usage: mon watch <session_name> [duration_seconds]")
+        print("✗ Usage: aio watch <session_name> [duration_seconds]")
         print("\nExamples:")
-        print("  mon watch codex          # Watch codex session, respond once and exit")
-        print("  mon watch codex 60       # Watch codex session for 60 seconds")
+        print("  aio watch codex          # Watch codex session, respond once and exit")
+        print("  aio watch codex 60       # Watch codex session for 60 seconds")
         print("\nDefault patterns:")
         print("  'Are you sure?' -> 'y'")
         print("  'Continue?' -> 'yes'")
@@ -1268,10 +1268,10 @@ elif arg == 'watch':
 elif arg == 'send':
     # Send a prompt to an existing session
     if not work_dir_arg:
-        print("✗ Usage: mon send <session_name> <prompt>")
+        print("✗ Usage: aio send <session_name> <prompt>")
         print("\nExamples:")
-        print("  mon send codex 'create a test file'")
-        print("  mon send claude-aios 'explain this code'")
+        print("  aio send codex 'create a test file'")
+        print("  aio send claude-aios 'explain this code'")
         print("\nFlags:")
         print("  --wait    Wait for completion before returning")
         sys.exit(1)
@@ -1298,12 +1298,12 @@ elif arg == 'send':
         sys.exit(1)
 elif arg == 'multi':
     # Run multiple agent instances in parallel worktrees
-    # Usage: mon multi <project#> c:3 g:1 "prompt text"
+    # Usage: aio multi <project#> c:3 g:1 "prompt text"
     if not work_dir_arg or not work_dir_arg.isdigit():
-        print("✗ Usage: mon multi <project#> <agent_specs>... <prompt>")
+        print("✗ Usage: aio multi <project#> <agent_specs>... <prompt>")
         print("\nExamples:")
-        print("  mon multi 3 c:3 g:1 'create a test file'")
-        print("  mon multi 0 c:2 l:1 'fix the bug'")
+        print("  aio multi 3 c:3 g:1 'create a test file'")
+        print("  aio multi 0 c:2 l:1 'fix the bug'")
         print("\nAgent specs:")
         print("  c:N  - N codex instances")
         print("  l:N  - N claude instances")
@@ -1404,7 +1404,7 @@ elif arg == 'multi':
         else:
             print("✗")
 
-    print(f"\n✓ All sessions launched! Use 'mon jobs' to see status")
+    print(f"\n✓ All sessions launched! Use 'aio jobs' to see status")
     print(f"   Session names: {', '.join(s[0] for s in launched_sessions)}")
 elif arg == 'jobs':
     list_jobs()
@@ -1605,7 +1605,7 @@ elif arg.startswith('++'):
         else:
             print(f"✗ Invalid project index: {work_dir_arg}")
     else:
-        print("✗ Usage: ./mon.py ++<key> <project#>")
+        print("✗ Usage: ./aio.py ++<key> <project#>")
 elif arg.startswith('+'):
     key = arg[1:]
     if key in sessions:
