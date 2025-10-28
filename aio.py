@@ -1021,17 +1021,31 @@ def create_worktree(project_path, session_name):
     worktree_name = f"{project_name}-{session_name}"
     worktree_path = os.path.join(WORKTREES_DIR, worktree_name)
 
+    # Get current branch
     result = sp.run(['git', '-C', project_path, 'branch', '--show-current'],
                     capture_output=True, text=True)
     branch = result.stdout.strip() or 'main'
 
-    result = sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f"wt-{worktree_name}", worktree_path, branch],
+    # Fetch from GitHub to get latest server version
+    print(f"⬇️  Fetching latest from GitHub...", end='', flush=True)
+    result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
+                    capture_output=True, text=True)
+    if result.returncode == 0:
+        print(" ✓")
+    else:
+        print(f"\n⚠️  Fetch warning: {result.stderr.strip()}")
+        # Continue anyway with local version
+
+    # Create worktree from server version
+    print(f"🌱 Creating worktree from origin/{branch}...", end='', flush=True)
+    result = sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f"wt-{worktree_name}", worktree_path, f"origin/{branch}"],
                     capture_output=True, text=True)
 
     if result.returncode == 0:
+        print(" ✓")
         return worktree_path
     else:
-        print(f"✗ Failed to create worktree: {result.stderr.strip()}")
+        print(f"\n✗ Failed to create worktree: {result.stderr.strip()}")
         return None
 
 # Handle project number shortcut: aio 1, aio 2, etc.
