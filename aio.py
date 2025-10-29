@@ -1622,6 +1622,11 @@ elif arg == 'push':
                 print("✗ Cancelled")
                 sys.exit(0)
 
+        # Get the current branch name in worktree (needed for merging later)
+        result = sp.run(['git', '-C', cwd, 'branch', '--show-current'],
+                        capture_output=True, text=True)
+        worktree_branch = result.stdout.strip()
+
         # Add and commit changes in worktree
         sp.run(['git', '-C', cwd, 'add', '-A'])
         result = sp.run(['git', '-C', cwd, 'commit', '-m', commit_msg],
@@ -1658,15 +1663,17 @@ elif arg == 'push':
 
         print(f"✓ Switched to {main_branch}")
 
-        # Check if there are changes to commit in main project
-        result = sp.run(['git', '-C', project_path, 'status', '--porcelain'],
+        # Merge worktree branch into main
+        print(f"→ Merging {worktree_branch} into {main_branch}...")
+        result = sp.run(['git', '-C', project_path, 'merge', worktree_branch, '--no-edit'],
                         capture_output=True, text=True)
 
-        if result.stdout.strip():
-            # Commit changes in main project
-            sp.run(['git', '-C', project_path, 'add', '-A'])
-            sp.run(['git', '-C', project_path, 'commit', '-m', commit_msg])
-            print(f"✓ Committed in main project: {commit_msg}")
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Merge failed: {error_msg}")
+            sys.exit(1)
+
+        print(f"✓ Merged {worktree_branch} into {main_branch}")
 
         # Push to main
         result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
