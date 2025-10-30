@@ -888,6 +888,7 @@ def list_worktrees():
         full_path = os.path.join(WORKTREES_DIR, item)
         if os.path.isdir(full_path):
             print(f"  {i}. {item}")
+    print(f"\nTo open: aio w<#>  (e.g., aio w0)")
     return items
 
 def find_worktree(pattern):
