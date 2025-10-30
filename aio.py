@@ -1194,24 +1194,20 @@ if new_window and not arg:
 
 if not arg:
     print(f"""aio - AI agent session manager
-
 QUICK START:
   aio c               Start codex in current directory
   aio cp              Start codex with prompt (can edit before running)
   aio cpp             Start codex with prompt (auto-execute)
   aio c--             Start codex in new worktree (current dir)
   aio c-- 0           Start codex in new worktree (project 0)
-
 SESSIONS: c=codex  l=claude  g=gemini  h=htop  t=top
   aio <key>           Attach to session (or create if needed)
   aio <key> <#>       Start in saved project # (0-{len(PROJECTS)-1})
   aio <key> -w        Launch in new window
   aio <key> -t        Launch session + separate terminal
-
 PROMPTS:
   aio cp/lp/gp        Insert prompt (ready to edit before running)
   aio cpp/lpp/gpp     Auto-run prompt immediately
-
 WORKTREES:
   aio <key>--         New worktree in current dir
   aio <key>-- <#>     New worktree in project #
@@ -1219,36 +1215,28 @@ WORKTREES:
   aio w<#>            Open worktree #
   aio w- <#>          Remove worktree (no push)
   aio w-- <#>         Remove worktree and push to main
-
 MANAGEMENT:
   aio jobs            Show all active work with status
   aio ls              List all tmux sessions
   aio p               Show saved projects
   aio push ["msg"]    Quick commit and push
-
 SETUP:
   aio install         Install as global 'aio' command
   aio add [path]      Add project to saved list
   aio remove <#>      Remove project from list
-
 Working directory: {WORK_DIR}
 Run 'aio help' for detailed documentation""")
     if PROJECTS:
-        print(f"\nSaved projects:")
-        for i, proj in enumerate(PROJECTS[:3]):  # Show first 3
+        print(f"Saved projects:")
+        for i, proj in enumerate(PROJECTS):
             exists = "✓" if os.path.exists(proj) else "✗"
             print(f"  {i}. {exists} {proj}")
-        if len(PROJECTS) > 3:
-            print(f"  ... and {len(PROJECTS)-3} more (run 'aio p' to see all)")
 elif arg == 'help' or arg == '--help' or arg == '-h':
     print(f"""aio - AI agent session manager (DETAILED HELP)
-
 ═══════════════════════════════════════════════════════════════════════════════
 SESSION MANAGEMENT
 ═══════════════════════════════════════════════════════════════════════════════
-
 Sessions: c=codex  l=claude  g=gemini  h=htop  t=top
-
 BASIC:
   aio <key>              Attach to session (create if needed)
   aio <key> <#>          Start in saved project # (0-{len(PROJECTS)-1})
@@ -1256,21 +1244,17 @@ BASIC:
   aio +<key>             Create NEW timestamped instance
   aio <key> -w           Launch in new window
   aio <key> -t           Launch session + separate terminal
-
 PROMPTS (insert vs auto-run):
   aio cp/lp/gp           Insert default prompt (can edit before running)
   aio cpp/lpp/gpp        Auto-execute default prompt immediately
   aio <key> "custom"     Start and send custom prompt
-
 WORKTREES (isolated git branches):
   aio <key>--            New worktree in current directory
   aio <key>-- <#>        New worktree in saved project #
   aio <key>-- -t         New worktree + terminal window
-
 ═══════════════════════════════════════════════════════════════════════════════
 WORKTREE MANAGEMENT
 ═══════════════════════════════════════════════════════════════════════════════
-
   aio w                  List all worktrees
   aio w<#/name>          Open worktree by index or name
   aio w<#> -w            Open worktree in new window
@@ -1279,100 +1263,79 @@ WORKTREE MANAGEMENT
   aio w-- <#/name>       Remove, merge to main, and push
   aio w-- <#> --yes      Remove and push (skip confirmation)
   aio w-- <#> "message"  Remove and push with custom commit message
-
 ═══════════════════════════════════════════════════════════════════════════════
 PROJECT MANAGEMENT
 ═══════════════════════════════════════════════════════════════════════════════
-
   aio p                  List all saved projects
   aio <#>                Open project # in current terminal (no session)
   aio -w <#>             Open project # in new window
   aio add [path]         Add project (defaults to current dir)
   aio remove <#>         Remove project from saved list
-
 ═══════════════════════════════════════════════════════════════════════════════
 MONITORING & AUTOMATION
 ═══════════════════════════════════════════════════════════════════════════════
-
   aio jobs               Show all active work with status
   aio ls                 List all tmux sessions
   aio watch <session>    Auto-respond to prompts (watch once)
   aio watch <session> 60 Auto-respond for 60 seconds
   aio send <sess> "text" Send prompt to existing session
   aio send <sess> "text" --wait  Send and wait for completion
-
 MULTI-AGENT PARALLEL:
   aio multi <#> c:3 g:1 "prompt"  Run 3 codex + 1 gemini in parallel
   aio multi <#> c:2 l:1 "prompt"  Run 2 codex + 1 claude in parallel
-
 ═══════════════════════════════════════════════════════════════════════════════
 GIT OPERATIONS
 ═══════════════════════════════════════════════════════════════════════════════
-
   aio push               Quick commit and push (default message)
   aio push "message"     Commit and push with custom message
   aio push -y            Push without confirmation (in worktrees)
-
 Note: Works in any git directory, not just worktrees
-
 ═══════════════════════════════════════════════════════════════════════════════
 SETUP & CONFIGURATION
 ═══════════════════════════════════════════════════════════════════════════════
-
   aio install            Install as global 'aio' command
   aio x                  Kill all tmux sessions
-
 FLAGS:
   -w, --new-window       Launch in new terminal window
   -t, --with-terminal    Launch session + separate terminal
   -y, --yes              Skip confirmation prompts
-
 TERMINALS: Auto-detects ptyxis, gnome-terminal, alacritty
 DATABASE: ~/.local/share/aios/aio.db
 WORKTREES: {WORKTREES_DIR}
-
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════════════════════════════════
-
 Getting Started:
   aio install              Make 'aio' globally available
   aio c                    Start codex in current directory
   aio cp                   Start codex with editable prompt
   aio cpp                  Start codex with auto-run prompt
-
 Sessions:
   aio c 0                  Start codex in project 0
   aio l -w                 Start claude in new window
   aio g 2 -t               Start gemini in project 2 + terminal
-
 Worktrees:
   aio c--                  Codex in new worktree (current dir)
   aio c-- 0 -t             Codex in new worktree (project 0) + terminal
   aio l-- -w               Claude in new worktree in new window
-
 Management:
   aio jobs                 View all active work
   aio w                    List worktrees
   aio w0 -w                Open worktree 0 in new window
   aio w-- 0 "Done"         Remove worktree 0 and push to main
-
 Automation:
   aio send codex "fix bug" Send prompt to running session
   aio multi 0 c:3 "task"   Run 3 codex in parallel on task
   aio push "Fix login"     Quick commit and push
-
 ═══════════════════════════════════════════════════════════════════════════════
-
 NOTES:
 • Auto-updates from git on each run (always latest version)
 • Works in any git directory for push/worktree commands
 • Mouse mode enabled: Hold Shift to select and copy text
 • Database stores: projects, sessions, prompts, configuration
-
 Working directory: {WORK_DIR}""")
     if PROJECTS:
-        print(f"\nSaved projects:")
+        print(f"Saved projects:")
         for i, proj in enumerate(PROJECTS):
             exists = "✓" if os.path.exists(proj) else "✗"
             print(f"  {i}. {exists} {proj}")
