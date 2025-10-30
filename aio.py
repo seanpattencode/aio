@@ -1219,7 +1219,11 @@ MANAGEMENT:
   aio jobs            Show all active work with status
   aio ls              List all tmux sessions
   aio p               Show saved projects
+GIT:
+  aio setup <url>     Initialize git repo with remote
   aio push ["msg"]    Quick commit and push
+  aio pull            Replace local with server (destructive)
+  aio revert [N]      Undo last N commits (default: 1)
 SETUP:
   aio install         Install as global 'aio' command
   aio add [path]      Add project to saved list
@@ -1286,9 +1290,14 @@ MULTI-AGENT PARALLEL:
 ═══════════════════════════════════════════════════════════════════════════════
 GIT OPERATIONS
 ═══════════════════════════════════════════════════════════════════════════════
+  aio setup <url>        Initialize repo and add remote
   aio push               Quick commit and push (default message)
   aio push "message"     Commit and push with custom message
   aio push -y            Push without confirmation (in worktrees)
+  aio pull               Replace local with server (destructive, needs confirmation)
+  aio pull -y            Pull without confirmation
+  aio revert             Undo last commit
+  aio revert 3           Undo last 3 commits
 Note: Works in any git directory, not just worktrees
 ═══════════════════════════════════════════════════════════════════════════════
 SETUP & CONFIGURATION
@@ -1785,6 +1794,97 @@ elif arg == 'push':
             error_msg = result.stderr.strip() or result.stdout.strip()
             print(f"✗ Push failed: {error_msg}")
             sys.exit(1)
+elif arg == 'pull':
+    # Replace local with server version (destructive)
+    cwd = os.getcwd()
+    result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True)
+    if result.returncode != 0:
+        print("✗ Not a git repository")
+        sys.exit(1)
+
+    print("⚠ WARNING: This will DELETE all local changes and replace with server version!")
+    skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
+    if not skip_confirm:
+        response = input("Are you sure? (y/n): ").strip().lower()
+        if response not in ['y', 'yes']:
+            print("✗ Cancelled")
+            sys.exit(0)
+
+    sp.run(['git', '-C', cwd, 'fetch', 'origin'], capture_output=True)
+    result = sp.run(['git', '-C', cwd, 'reset', '--hard', 'origin/main'], capture_output=True, text=True)
+    if result.returncode != 0:
+        result = sp.run(['git', '-C', cwd, 'reset', '--hard', 'origin/master'], capture_output=True, text=True)
+    sp.run(['git', '-C', cwd, 'clean', '-f', '-d'], capture_output=True)
+    print("✓ Local changes removed. Synced with server.")
+elif arg == 'revert':
+    # Undo N commits using git revert
+    cwd = os.getcwd()
+    result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True)
+    if result.returncode != 0:
+        print("✗ Not a git repository")
+        sys.exit(1)
+
+    num = int(work_dir_arg) if work_dir_arg and work_dir_arg.isdigit() else 1
+
+    # Revert last N commits
+    if num == 1:
+        # Revert just HEAD
+        result = sp.run(['git', '-C', cwd, 'revert', 'HEAD', '--no-edit'],
+                       capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"✓ Reverted last commit")
+        else:
+            error = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Revert failed: {error}")
+            sys.exit(1)
+    else:
+        # Revert multiple commits: HEAD~(num-1), HEAD~(num-2), ..., HEAD
+        result = sp.run(['git', '-C', cwd, 'revert', f'HEAD~{num}..HEAD', '--no-edit'],
+                       capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"✓ Reverted last {num} commits")
+        else:
+            error = result.stderr.strip() or result.stdout.strip()
+            print(f"✗ Revert failed: {error}")
+            sys.exit(1)
+elif arg == 'setup':
+    # Initialize git repo with remote
+    cwd = os.getcwd()
+
+    # Check if already a repo
+    result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True)
+    if result.returncode == 0:
+        print("ℹ Already a git repository")
+    else:
+        sp.run(['git', '-C', cwd, 'init'], capture_output=True)
+        print("✓ Initialized git repository")
+
+    # Get remote URL from user if provided as second arg
+    remote_url = work_dir_arg
+    if remote_url:
+        # Check if remote exists
+        result = sp.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True)
+        if result.returncode == 0:
+            sp.run(['git', '-C', cwd, 'remote', 'set-url', 'origin', remote_url], capture_output=True)
+            print(f"✓ Updated remote origin: {remote_url}")
+        else:
+            sp.run(['git', '-C', cwd, 'remote', 'add', 'origin', remote_url], capture_output=True)
+            print(f"✓ Added remote origin: {remote_url}")
+
+        # Create initial commit if needed
+        result = sp.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True)
+        if result.returncode != 0:
+            sp.run(['git', '-C', cwd, 'add', '-A'], capture_output=True)
+            sp.run(['git', '-C', cwd, 'commit', '-m', 'Initial commit'], capture_output=True)
+            print("✓ Created initial commit")
+
+        # Set main as default branch and push
+        sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
+        sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main'], capture_output=True)
+        print("✓ Pushed to remote")
+    else:
+        print("Usage: aio setup <remote-url>")
+        print("Example: aio setup git@github.com:user/repo.git")
 elif arg.endswith('--') and not arg.startswith('w'):
     key = arg[:-2]
     if key in sessions:
