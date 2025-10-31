@@ -1206,6 +1206,10 @@ MULTI-AGENT (run N agents in parallel worktrees):
   aio multi c:2 l:1 "task"      Launch 2 codex + 1 claude (parallel)
   aio multi c:3 --seq "task"    Launch 3 codex one by one (safe!)
   aio multi 0 c:2 "task"        Or use project #: launch in project 0
+PORTFOLIO (run agents across ALL saved projects):
+  aio all c:2 "task"            Launch 2 codex per project (overnight!)
+  aio all c:1 l:1 "task"        Mixed agents across all projects
+  aio all c:2 --seq "task"      Process projects one by one (safe!)
 SESSIONS: c=codex  l=claude  g=gemini  h=htop  t=top
   aio <key>           Attach to session (or create if needed)
   aio <key> <#>       Start in saved project # (0-{len(PROJECTS)-1})
@@ -1588,6 +1592,169 @@ elif arg == 'multi':
     print(f"\n🔗 Attach to specific agent:")
     for session_name, agent_name, instance_num in launched_sessions:
         print(f"   tmux attach -t {session_name}  # {agent_name} #{instance_num}")
+elif arg == 'all':
+    # Run agents across ALL saved projects (portfolio-level operation)
+    # Usage: aio all c:2 "prompt" (parallel) OR aio all c:2 --seq "prompt" (sequential)
+
+    # Check for sequential flag
+    sequential = '--seq' in sys.argv or '--sequential' in sys.argv
+
+    # Parse agent specifications and prompt
+    agent_specs = []
+    prompt_parts = []
+    parsing_agents = True
+
+    for i in range(2, len(sys.argv)):
+        arg_part = sys.argv[i]
+
+        # Skip flags
+        if arg_part in ['--seq', '--sequential']:
+            continue
+
+        # Check if this looks like an agent spec (e.g., "c:3")
+        if parsing_agents and ':' in arg_part and len(arg_part) <= 4:
+            parts = arg_part.split(':')
+            if len(parts) == 2 and parts[0] in ['c', 'l', 'g'] and parts[1].isdigit():
+                agent_key = parts[0]
+                count = int(parts[1])
+                agent_specs.append((agent_key, count))
+                continue
+
+        # Everything else is part of the prompt
+        parsing_agents = False
+        prompt_parts.append(arg_part)
+
+    if not agent_specs:
+        print("✗ No agent specifications provided")
+        print("\nUsage: aio all <agent_specs>... <prompt>")
+        print("\nExamples:")
+        print("  aio all c:2 'find all bugs'           # 2 codex per project (parallel)")
+        print("  aio all c:1 l:1 'optimize'            # Mixed agents per project")
+        print("  aio all c:2 --seq 'run tests'         # Sequential (one project at a time)")
+        print("\nAgent specs:")
+        print("  c:N  - N codex instances per project")
+        print("  l:N  - N claude instances per project")
+        print("  g:N  - N gemini instances per project")
+        sys.exit(1)
+
+    if not prompt_parts:
+        print("✗ No prompt provided")
+        sys.exit(1)
+
+    prompt = ' '.join(prompt_parts)
+
+    # Calculate total instances across all projects
+    agents_per_project = sum(count for _, count in agent_specs)
+    total_projects = len(PROJECTS)
+    total_agents = agents_per_project * total_projects
+
+    mode = "sequentially (one project at a time)" if sequential else "in parallel (all at once)"
+    print(f"🌍 Portfolio Operation: {total_agents} agents across {total_projects} projects {mode}")
+    print(f"   Agents per project: {', '.join(f'{key}×{count}' for key, count in agent_specs)}")
+    print(f"   Prompt: {prompt}")
+    if sequential:
+        print(f"   Mode: Sequential - complete each project before starting next")
+    print()
+
+    # Track all launched sessions across all projects
+    all_launched_sessions = []
+    project_results = []
+
+    for project_idx, project_path in enumerate(PROJECTS):
+        project_name = os.path.basename(project_path)
+        print(f"\n{'='*80}")
+        print(f"📁 Project {project_idx}: {project_name}")
+        print(f"   Path: {project_path}")
+        print(f"{'='*80}")
+
+        # Check if project exists
+        if not os.path.exists(project_path):
+            print(f"⚠️  Project does not exist, skipping...")
+            project_results.append((project_idx, project_name, "SKIPPED", []))
+            continue
+
+        # Create worktrees and launch sessions for this project
+        project_sessions = []
+
+        for agent_key, count in agent_specs:
+            base_name, cmd = sessions.get(agent_key, (None, None))
+
+            if not base_name:
+                print(f"✗ Unknown agent key: {agent_key}")
+                continue
+
+            for instance_num in range(count):
+                # Create unique worktree name
+                ts = datetime.now().strftime('%H%M%S')
+                import time
+                time.sleep(0.01)  # Ensure unique timestamps
+                worktree_name = f"{base_name}-{ts}-{instance_num}"
+
+                # Create worktree
+                worktree_path = create_worktree(project_path, worktree_name)
+
+                if not worktree_path:
+                    print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
+                    continue
+
+                # Create tmux session in worktree
+                session_name = worktree_name
+                sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, cmd],
+                      capture_output=True)
+
+                project_sessions.append((session_name, base_name, instance_num+1, project_name))
+                print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
+
+        if not project_sessions:
+            print(f"✗ No sessions created for this project")
+            project_results.append((project_idx, project_name, "FAILED", []))
+            continue
+
+        # Send prompts to this project's agents
+        print(f"\n📤 Sending prompt to {len(project_sessions)} agents in {project_name}...")
+
+        for session_name, agent_name, instance_num, _ in project_sessions:
+            print(f"   → {agent_name} instance {instance_num}...", end=' ', flush=True)
+            # If sequential across projects, wait for each agent; if parallel, don't wait
+            result = send_prompt_to_session(session_name, prompt, wait_for_ready=True, wait_for_completion=sequential)
+            if result:
+                print("✓")
+            else:
+                print("✗")
+
+        all_launched_sessions.extend(project_sessions)
+        project_results.append((project_idx, project_name, "LAUNCHED", project_sessions))
+
+        if sequential:
+            print(f"\n✓ Completed project {project_idx}: {project_name}")
+        else:
+            print(f"\n✓ Launched agents for project {project_idx}: {project_name}")
+
+    # Summary
+    print(f"\n{'='*80}")
+    print(f"🎯 PORTFOLIO OPERATION SUMMARY")
+    print(f"{'='*80}")
+    print(f"Total agents launched: {len(all_launched_sessions)}")
+    print(f"Projects processed: {len([r for r in project_results if r[2] == 'LAUNCHED'])}/{total_projects}")
+
+    print(f"\n📊 Monitor all agents:")
+    print(f"   aio jobs")
+
+    print(f"\n📁 Projects and their agents:")
+    for proj_idx, proj_name, status, sessions in project_results:
+        if status == "LAUNCHED":
+            print(f"\n   Project {proj_idx}: {proj_name} ({len(sessions)} agents)")
+            for session_name, agent_name, instance_num, _ in sessions:
+                print(f"      tmux attach -t {session_name}  # {agent_name} #{instance_num}")
+        elif status == "SKIPPED":
+            print(f"\n   Project {proj_idx}: {proj_name} (SKIPPED - does not exist)")
+        elif status == "FAILED":
+            print(f"\n   Project {proj_idx}: {proj_name} (FAILED - no agents created)")
+
+    mode_msg = "sequentially" if sequential else "in parallel"
+    print(f"\n✓ Portfolio operation complete! All agents launched {mode_msg}.")
+    if not sequential:
+        print(f"💤 Good time to sleep/step away! Agents working overnight.")
 elif arg == 'jobs':
     list_jobs()
 elif arg == 'p':
