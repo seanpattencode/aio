@@ -807,6 +807,15 @@ def list_jobs():
 
     # Sort by path
     for job_path in sorted(jobs_by_path.keys()):
+        # Skip deleted directories
+        if not os.path.exists(job_path):
+            # Kill orphaned tmux sessions for deleted directories
+            sessions_in_job = jobs_by_path[job_path]
+            for session in sessions_in_job:
+                sp.run(['tmux', 'kill-session', '-t', session],
+                      capture_output=True)
+            continue
+
         sessions_in_job = jobs_by_path[job_path]
 
         # Determine if this is a worktree
@@ -1229,6 +1238,8 @@ WORKTREES:
   aio w-- <#>         Remove worktree and push to main
 MANAGEMENT:
   aio jobs            Show all active work with status
+  aio cleanup         Delete all worktrees (with confirmation)
+  aio cleanup --yes   Delete all worktrees (skip confirmation)
   aio ls              List all tmux sessions
   aio p               Show saved projects
 GIT:
@@ -1291,6 +1302,8 @@ PROJECT MANAGEMENT
 MONITORING & AUTOMATION
 ═══════════════════════════════════════════════════════════════════════════════
   aio jobs               Show all active work with status
+  aio cleanup            Delete all worktrees (with confirmation)
+  aio cleanup --yes      Delete all worktrees (skip confirmation)
   aio ls                 List all tmux sessions
   aio watch <session>    Auto-respond to prompts (watch once)
   aio watch <session> 60 Auto-respond for 60 seconds
@@ -1578,7 +1591,7 @@ elif arg == 'multi':
             sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
                   capture_output=True)
 
-            launched_sessions.append((session_name, base_name, instance_num+1))
+            launched_sessions.append((session_name, base_name, instance_num+1, worktree_path))
             print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
 
     if not launched_sessions:
@@ -1592,8 +1605,11 @@ elif arg == 'multi':
     print(f"\n✓ All {len(launched_sessions)} agents launched {mode_msg}!")
     print(f"\n📊 Monitor all agents:")
     print(f"   aio jobs")
+    print(f"\n📂 Open worktree directory:")
+    for session_name, agent_name, instance_num, worktree_path in launched_sessions:
+        print(f"   aio -w {worktree_path}  # {agent_name} #{instance_num}")
     print(f"\n🔗 Attach to specific agent:")
-    for session_name, agent_name, instance_num in launched_sessions:
+    for session_name, agent_name, instance_num, worktree_path in launched_sessions:
         print(f"   tmux attach -t {session_name}  # {agent_name} #{instance_num}")
 elif arg == 'all':
     # Run agents across ALL saved projects (portfolio-level operation)
@@ -1717,7 +1733,7 @@ elif arg == 'all':
                 sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
                       capture_output=True)
 
-                project_sessions.append((session_name, base_name, instance_num+1, project_name))
+                project_sessions.append((session_name, base_name, instance_num+1, project_name, worktree_path))
                 print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
 
         if not project_sessions:
@@ -1750,7 +1766,11 @@ elif arg == 'all':
     for proj_idx, proj_name, status, sessions in project_results:
         if status == "LAUNCHED":
             print(f"\n   Project {proj_idx}: {proj_name} ({len(sessions)} agents)")
-            for session_name, agent_name, instance_num, _ in sessions:
+            print(f"   📂 Open directories:")
+            for session_name, agent_name, instance_num, _, worktree_path in sessions:
+                print(f"      aio -w {worktree_path}  # {agent_name} #{instance_num}")
+            print(f"   🔗 Attach to agents:")
+            for session_name, agent_name, instance_num, _, worktree_path in sessions:
                 print(f"      tmux attach -t {session_name}  # {agent_name} #{instance_num}")
         elif status == "SKIPPED":
             print(f"\n   Project {proj_idx}: {proj_name} (SKIPPED - does not exist)")
@@ -1763,6 +1783,57 @@ elif arg == 'all':
         print(f"💤 Good time to sleep/step away! Agents working overnight.")
 elif arg == 'jobs':
     list_jobs()
+elif arg == 'cleanup':
+    # Delete all worktrees without pushing
+    if not os.path.exists(WORKTREES_DIR):
+        print("No worktrees directory found")
+        sys.exit(0)
+
+    worktrees = [d for d in os.listdir(WORKTREES_DIR)
+                 if os.path.isdir(os.path.join(WORKTREES_DIR, d))]
+
+    if not worktrees:
+        print("No worktrees found")
+        sys.exit(0)
+
+    # Show what will be deleted
+    print(f"Found {len(worktrees)} worktrees to delete:\n")
+    for wt in worktrees:
+        print(f"  • {wt}")
+
+    print(f"\n⚠️  This will DELETE all {len(worktrees)} worktrees (no push to git)")
+
+    # Check for --yes flag
+    skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
+
+    if not skip_confirm:
+        response = input("\nAre you sure? (y/n): ").strip().lower()
+        if response not in ['y', 'yes']:
+            print("✗ Cancelled")
+            sys.exit(0)
+    else:
+        print("\n⚠️  Confirmation skipped (--yes flag)")
+
+    print("\n🗑️  Deleting worktrees...\n")
+
+    success_count = 0
+    failed_count = 0
+
+    for wt in worktrees:
+        worktree_path = os.path.join(WORKTREES_DIR, wt)
+        print(f"Deleting: {wt}...")
+        if remove_worktree(worktree_path, push=False, skip_confirm=True):
+            success_count += 1
+            print(f"✓ Deleted {wt}\n")
+        else:
+            failed_count += 1
+            print(f"✗ Failed to delete {wt}\n")
+
+    print(f"\n{'='*60}")
+    print(f"✓ Deleted: {success_count}")
+    if failed_count > 0:
+        print(f"✗ Failed: {failed_count}")
+    print(f"{'='*60}")
 elif arg == 'p':
     print("Saved Projects:")
     for i, proj in enumerate(PROJECTS):
