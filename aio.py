@@ -1546,8 +1546,11 @@ elif arg == 'multi':
     # Create worktrees and launch sessions
     launched_sessions = []
 
+    # Escape prompt for shell usage (like lpp/gpp/cpp do)
+    escaped_prompt = prompt.replace('\n', '\\n').replace('"', '\\"')
+
     for agent_key, count in agent_specs:
-        base_name, cmd = sessions.get(agent_key, (None, None))
+        base_name, base_cmd = sessions.get(agent_key, (None, None))
 
         if not base_name:
             print(f"✗ Unknown agent key: {agent_key}")
@@ -1567,9 +1570,12 @@ elif arg == 'multi':
                 print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
                 continue
 
-            # Create tmux session in worktree
+            # Construct full command with prompt baked in (like lpp/gpp/cpp)
+            full_cmd = f'{base_cmd} "{escaped_prompt}"'
+
+            # Create tmux session in worktree with prompt already included
             session_name = worktree_name
-            sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, cmd],
+            sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
                   capture_output=True)
 
             launched_sessions.append((session_name, base_name, instance_num+1))
@@ -1579,19 +1585,8 @@ elif arg == 'multi':
         print("✗ No sessions were created")
         sys.exit(1)
 
-    if sequential:
-        print(f"\n📤 Running agents sequentially (waiting for each to complete)...")
-    else:
-        print(f"\n📤 Sending prompt to all {len(launched_sessions)} sessions...")
-
-    # Send prompts to all sessions
-    for session_name, agent_name, instance_num in launched_sessions:
-        print(f"   → {agent_name} instance {instance_num}...", end=' ', flush=True)
-        result = send_prompt_to_session(session_name, prompt, wait_for_ready=True, wait_for_completion=sequential)
-        if result:
-            print("✓")
-        else:
-            print("✗")
+    # No need to send prompts separately - they're already baked into the commands
+    print(f"\n✓ All {len(launched_sessions)} agents launched with prompts!")
 
     mode_msg = "one by one" if sequential else "in parallel"
     print(f"\n✓ All {len(launched_sessions)} agents launched {mode_msg}!")
@@ -1674,6 +1669,9 @@ elif arg == 'all':
     all_launched_sessions = []
     project_results = []
 
+    # Escape prompt for shell usage (like lpp/gpp/cpp do)
+    escaped_prompt = prompt.replace('\n', '\\n').replace('"', '\\"')
+
     for project_idx, project_path in enumerate(PROJECTS):
         project_name = os.path.basename(project_path)
         print(f"\n{'='*80}")
@@ -1691,7 +1689,7 @@ elif arg == 'all':
         project_sessions = []
 
         for agent_key, count in agent_specs:
-            base_name, cmd = sessions.get(agent_key, (None, None))
+            base_name, base_cmd = sessions.get(agent_key, (None, None))
 
             if not base_name:
                 print(f"✗ Unknown agent key: {agent_key}")
@@ -1711,9 +1709,12 @@ elif arg == 'all':
                     print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
                     continue
 
-                # Create tmux session in worktree
+                # Construct full command with prompt baked in (like lpp/gpp/cpp)
+                full_cmd = f'{base_cmd} "{escaped_prompt}"'
+
+                # Create tmux session in worktree with prompt already included
                 session_name = worktree_name
-                sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, cmd],
+                sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
                       capture_output=True)
 
                 project_sessions.append((session_name, base_name, instance_num+1, project_name))
@@ -1724,17 +1725,8 @@ elif arg == 'all':
             project_results.append((project_idx, project_name, "FAILED", []))
             continue
 
-        # Send prompts to this project's agents
-        print(f"\n📤 Sending prompt to {len(project_sessions)} agents in {project_name}...")
-
-        for session_name, agent_name, instance_num, _ in project_sessions:
-            print(f"   → {agent_name} instance {instance_num}...", end=' ', flush=True)
-            # If sequential across projects, wait for each agent; if parallel, don't wait
-            result = send_prompt_to_session(session_name, prompt, wait_for_ready=True, wait_for_completion=sequential)
-            if result:
-                print("✓")
-            else:
-                print("✗")
+        # No need to send prompts separately - they're already baked into the commands
+        print(f"\n✓ Launched {len(project_sessions)} agents for {project_name} with prompts!")
 
         all_launched_sessions.extend(project_sessions)
         project_results.append((project_idx, project_name, "LAUNCHED", project_sessions))
