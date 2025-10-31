@@ -770,8 +770,12 @@ def get_or_create_directory_session(session_key, target_dir):
 
     return final_session_name
 
-def list_jobs():
-    """List all jobs (any directory with a session, plus worktrees) with their status."""
+def list_jobs(running_only=False):
+    """List all jobs (any directory with a session, plus worktrees) with their status.
+
+    Args:
+        running_only: If True, only show jobs that are actively running
+    """
     # Get all tmux sessions and their directories
     result = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
                     capture_output=True, text=True)
@@ -803,10 +807,10 @@ def list_jobs():
         print("No jobs found")
         return
 
-    print("Jobs:\n")
+    # First pass: collect job info with timestamps
+    jobs_with_metadata = []
 
-    # Sort by path
-    for job_path in sorted(jobs_by_path.keys()):
+    for job_path in jobs_by_path.keys():
         # Skip deleted directories
         if not os.path.exists(job_path):
             # Kill orphaned tmux sessions for deleted directories
@@ -830,6 +834,43 @@ def list_jobs():
                     is_active = True
                     break
 
+        # Skip non-running jobs if running_only filter is enabled
+        if running_only and not is_active:
+            continue
+
+        # Extract creation datetime from worktree name for sorting and display
+        creation_datetime = None
+        creation_display = ""
+        if is_worktree:
+            # Parse datetime from name like: aios-codex-20251031-185629-single
+            # Format: YYYYMMDD-HHMMSS
+            import re
+            match = re.search(r'-(\d{8})-(\d{6})-', job_name)
+            if match:
+                date_str = match.group(1)  # YYYYMMDD
+                time_str = match.group(2)  # HHMMSS
+                try:
+                    from datetime import datetime
+                    creation_datetime = datetime.strptime(f"{date_str}{time_str}", "%Y%m%d%H%M%S")
+
+                    # Format display
+                    now = datetime.now()
+                    time_diff = now - creation_datetime
+
+                    if time_diff.total_seconds() < 60:
+                        creation_display = "just now"
+                    elif time_diff.total_seconds() < 3600:
+                        mins = int(time_diff.total_seconds() / 60)
+                        creation_display = f"{mins}m ago"
+                    elif time_diff.total_seconds() < 86400:
+                        hours = int(time_diff.total_seconds() / 3600)
+                        creation_display = f"{hours}h ago"
+                    else:
+                        days = int(time_diff.total_seconds() / 86400)
+                        creation_display = f"{days}d ago"
+                except:
+                    pass
+
         # Determine status display
         if not sessions_in_job:
             status_display = "📋 REVIEW"
@@ -847,10 +888,40 @@ def list_jobs():
             else:
                 session_info = f"({len(sessions_in_job)} sessions: {', '.join(sessions_in_job)})"
 
-        # Add worktree indicator
-        type_indicator = " [worktree]" if is_worktree else ""
+        jobs_with_metadata.append({
+            'path': job_path,
+            'name': job_name,
+            'sessions': sessions_in_job,
+            'is_worktree': is_worktree,
+            'is_active': is_active,
+            'status_display': status_display,
+            'session_info': session_info,
+            'creation_datetime': creation_datetime,
+            'creation_display': creation_display
+        })
 
-        print(f"  {status_display}  {job_name}{type_indicator}")
+    # Sort: by creation datetime (oldest first, newest last)
+    # Jobs without datetime (None) sort to beginning, running jobs to end
+    from datetime import datetime
+    jobs_with_metadata.sort(key=lambda x: x['creation_datetime'] if x['creation_datetime'] else datetime.min)
+
+    print("Jobs:\n")
+
+    # Display jobs in sorted order
+    for job in jobs_with_metadata:
+        job_path = job['path']
+        job_name = job['name']
+        sessions_in_job = job['sessions']
+        is_worktree = job['is_worktree']
+        status_display = job['status_display']
+        session_info = job['session_info']
+        creation_display = job['creation_display']
+
+        # Add worktree indicator and creation time
+        type_indicator = " [worktree]" if is_worktree else ""
+        time_indicator = f" ({creation_display})" if creation_display else ""
+
+        print(f"  {status_display}  {job_name}{type_indicator}{time_indicator}")
         print(f"           {session_info}")
         print(f"           {job_path}")
 
@@ -1238,6 +1309,7 @@ WORKTREES:
   aio w++ <#>         Remove worktree and push to main
 MANAGEMENT:
   aio jobs            Show all active work with status
+  aio jobs --running  Show only running jobs (filter out review)
   aio cleanup         Delete all worktrees (with confirmation)
   aio cleanup --yes   Delete all worktrees (skip confirmation)
   aio ls              List all tmux sessions
@@ -1302,6 +1374,8 @@ PROJECT MANAGEMENT
 MONITORING & AUTOMATION
 ═══════════════════════════════════════════════════════════════════════════════
   aio jobs               Show all active work with status
+  aio jobs --running     Show only running jobs (filter out review)
+  aio jobs -r            Same as --running (short form)
   aio cleanup            Delete all worktrees (with confirmation)
   aio cleanup --yes      Delete all worktrees (skip confirmation)
   aio ls                 List all tmux sessions
@@ -1784,7 +1858,9 @@ elif arg == 'all':
     if not sequential:
         print(f"💤 Good time to sleep/step away! Agents working overnight.")
 elif arg == 'jobs':
-    list_jobs()
+    # Check for --running flag
+    running_only = '--running' in sys.argv or '-r' in sys.argv
+    list_jobs(running_only=running_only)
 elif arg == 'cleanup':
     # Delete all worktrees without pushing
     if not os.path.exists(WORKTREES_DIR):
