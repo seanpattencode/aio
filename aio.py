@@ -1860,8 +1860,62 @@ elif arg == 'setup':
         sp.run(['git', '-C', cwd, 'init'], capture_output=True)
         print("✓ Initialized git repository")
 
+    # Check if remote exists
+    result = sp.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True)
+    has_remote = result.returncode == 0
+
     # Get remote URL from user if provided as second arg
     remote_url = work_dir_arg
+
+    # If no URL provided and no remote exists, try to help
+    if not remote_url and not has_remote:
+        # Try using GitHub CLI to create repo automatically
+        gh_check = sp.run(['which', 'gh'], capture_output=True)
+        if gh_check.returncode == 0:
+            print("🚀 No remote configured. Creating GitHub repository...")
+            repo_name = os.path.basename(cwd)
+            print(f"   Repository name: {repo_name}")
+
+            # Ask for confirmation
+            response = input("\n   Create public GitHub repo? (y/n/private): ").strip().lower()
+            if response in ['y', 'yes', 'private', 'p']:
+                visibility = '--private' if response in ['private', 'p'] else '--public'
+
+                # Create initial commit if needed
+                result = sp.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True)
+                if result.returncode != 0:
+                    sp.run(['git', '-C', cwd, 'add', '-A'], capture_output=True)
+                    sp.run(['git', '-C', cwd, 'commit', '-m', 'Initial commit'], capture_output=True)
+                    print("✓ Created initial commit")
+
+                # Set main as default branch
+                sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
+
+                # Create repo and push
+                result = sp.run(['gh', 'repo', 'create', repo_name, visibility, '--source=.', '--push'],
+                              capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    print("✓ Created GitHub repository")
+                    print("✓ Added remote origin")
+                    print("✓ Pushed to remote")
+                    sys.exit(0)
+                else:
+                    print(f"✗ GitHub repo creation failed: {result.stderr.strip()}")
+                    print("\nFalling back to manual setup...")
+            else:
+                print("✗ Cancelled")
+                sys.exit(0)
+
+        # No gh CLI or user wants manual setup - prompt for URL
+        print("\n💡 To push your code, add a remote repository:")
+        remote_url = input("   Enter remote URL (or press Enter to skip): ").strip()
+        if not remote_url:
+            print("\n📝 You can add a remote later with:")
+            print("   git remote add origin <url>")
+            print("   git push -u origin main")
+            sys.exit(0)
+
     if remote_url:
         # Check if remote exists
         result = sp.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True)
@@ -1881,11 +1935,25 @@ elif arg == 'setup':
 
         # Set main as default branch and push
         sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
-        sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main'], capture_output=True)
-        print("✓ Pushed to remote")
-    else:
-        print("Usage: aio setup <remote-url>")
-        print("Example: aio setup git@github.com:user/repo.git")
+        result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("✓ Pushed to remote")
+        else:
+            print("✗ Push failed - you may need to pull first or check permissions")
+    elif has_remote:
+        # Has remote but no URL provided - just ensure everything is set up
+        print("✓ Remote already configured")
+
+        # Create initial commit if needed
+        result = sp.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True)
+        if result.returncode != 0:
+            sp.run(['git', '-C', cwd, 'add', '-A'], capture_output=True)
+            sp.run(['git', '-C', cwd, 'commit', '-m', 'Initial commit'], capture_output=True)
+            print("✓ Created initial commit")
+
+        # Set main as default branch
+        sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
+        print("✓ Ready to push with: git push -u origin main")
 elif arg.endswith('--') and not arg.startswith('w'):
     key = arg[:-2]
     if key in sessions:

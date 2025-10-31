@@ -1,0 +1,232 @@
+CHANGE REPORT: Universal AI Agent Protocol - Execute Steps
+================================================================
+Date: 2025-10-31
+Project: aios (AI agent session manager)
+Database: ~/.local/share/aios/aio.db
+
+
+USER PROBLEM
+============
+The 11-step optimization framework was only in codex_prompt.
+Claude and Gemini didn't have it, creating inconsistency.
+Also, the prompt didn't have a clear "Execute steps:" header.
+
+User wanted:
+1. "Execute steps:" header (imperative command style)
+2. Same prompt for ALL agents (codex, claude, gemini)
+3. Universal protocol across all AI agents
+
+
+ULTRATHINK - WHY THIS SAVES THE WORLD
+======================================
+
+1. VENDOR INDEPENDENCE
+   - Not locked to OpenAI/Anthropic/Google
+   - If one agent fails, switch instantly
+   - Future-proof against AI market changes
+
+2. DATA-DRIVEN AGENT SELECTION
+   - Run same task on 3 agents in parallel
+   - Compare results objectively
+   - Pick best agent for each type of work
+
+   Example:
+   $ aio cpp 0 "optimize auth"  # Try with Codex
+   $ aio lpp 0 "optimize auth"  # Try with Claude
+   $ aio gpp 0 "optimize auth"  # Try with Gemini
+   # All follow same 11 steps, pick winner
+
+3. INSTITUTIONAL KNOWLEDGE
+   - The 11 steps = YOUR team's methodology
+   - Transcends any specific AI vendor
+   - Portable, shareable, teachable
+   - Creates consistency across organization
+
+4. "EXECUTE STEPS:" AS COMMAND
+   - Military briefing style
+   - Imperative, not descriptive
+   - Zero ambiguity about what to do
+   - Agents receive mission orders
+
+
+IMPLEMENTATION
+==============
+
+Created universal prompt with "Execute steps:" header:
+
+Execute steps:
+1. Ultrathink how the project could possibly save the world and be used daily and why it's the future
+2. Run project exactly as user would
+3. Find what you as user scream hardest to solve
+4. Read how most similar most used apps/programs in the world solve similar problems
+5. Simplify user problem until fix almost trivial
+6. Rewrite, using more or equal direct library calls, fewer or equal lines of custom code, write readable code, code is faster or equal to previous
+7. Run and debug, if failure to solve, simplify the problem even further until solved
+8. Delete any part or process in the made fix you can
+9. Simplify and optimize and integrate parts in the fixed section
+10. Run and debug
+11. Write a change report, including user problem, copied relevant console output, in a .txt file
+
+Applied to: codex_prompt, claude_prompt, gemini_prompt
+
+
+CONSOLE OUTPUT
+==============
+
+$ python3 update_all_prompts.py
+Universal AI Agent Protocol Installed
+============================================================
+✓ Updated codex_prompt
+✓ Updated claude_prompt
+✓ Updated gemini_prompt
+
+============================================================
+Prompt: 807 characters, 144 words
+
+Now ALL agents (codex, claude, gemini) follow the same 11 steps:
+Execute steps:
+1. Ultrathink how the project could possibly save the world and be used daily and why it's the future
+2. Run project exactly as user would
+3. Find what you as user scream hardest to solve
+4. Read how most similar most used apps/programs in the world solve similar problems
+5. Simplify user problem until fix almost trivial
+6. Rewrite, using more or equal direct library calls, fewer or equal lines of custom code, write readable code, code is faster or equal to previous
+7. Run and debug, if failure to solve, simplify the problem even further until solved
+8. Delete any part or process in the made fix you can
+9. Simplify and optimize and integrate parts in the fixed section
+10. Run and debug
+11. Write a change report, including user problem, copied relevant console output, in a .txt file
+============================================================
+
+$ python3 verify_all_prompts.py
+Verifying Universal AI Agent Protocol
+============================================================
+
+✓ codex_prompt
+   Starts with 'Execute steps:': True
+   Contains all 11 steps: True
+   Length: 807 chars, 144 words
+   ✓ Universal protocol active
+
+✓ claude_prompt
+   Starts with 'Execute steps:': True
+   Contains all 11 steps: True
+   Length: 807 chars, 144 words
+   ✓ Universal protocol active
+
+✓ gemini_prompt
+   Starts with 'Execute steps:': True
+   Contains all 11 steps: True
+   Length: 807 chars, 144 words
+   ✓ Universal protocol active
+
+============================================================
+All agents now follow the same methodology!
+
+Available commands:
+  aio cpp  - Codex with universal protocol
+  aio lpp  - Claude with universal protocol
+  aio gpp  - Gemini with universal protocol
+============================================================
+
+
+BEFORE vs AFTER
+===============
+
+BEFORE:
+-------
+- codex_prompt: Had 11 steps (without "Execute steps:" header)
+- claude_prompt: Had old 3-step prompt (Steps 1-3, library glue)
+- gemini_prompt: Had old 3-step prompt (Steps 1-3, library glue)
+- Inconsistent: Each agent followed different methodology
+- No A/B testing possible across agents
+
+AFTER:
+------
+- ALL prompts: "Execute steps:" + 11 numbered steps
+- 807 characters, 144 words
+- Universal protocol across all agents
+- Enable parallel multi-agent experimentation
+- Vendor-independent methodology
+
+
+FILES MODIFIED
+==============
+1. ~/.local/share/aios/aio.db - Updated all 3 prompts
+   - codex_prompt: Updated with "Execute steps:" header
+   - claude_prompt: Replaced with universal protocol
+   - gemini_prompt: Replaced with universal protocol
+
+
+AVAILABLE COMMANDS NOW
+=======================
+
+Single-p (insert prompt, edit before running):
+  $ aio cp   - Codex with universal protocol (edit prompt)
+  $ aio lp   - Claude with universal protocol (edit prompt)
+  $ aio gp   - Gemini with universal protocol (edit prompt)
+
+Double-p (auto-execute):
+  $ aio cpp  - Codex auto-executes universal protocol
+  $ aio lpp  - Claude auto-executes universal protocol
+  $ aio gpp  - Gemini auto-executes universal protocol
+
+Parallel Multi-Agent Work:
+  $ aio cpp 0 "task"  # Codex on project 0
+  $ aio lpp 0 "task"  # Claude on project 0 (same task)
+  $ aio gpp 0 "task"  # Gemini on project 0 (same task)
+  $ aio jobs          # Monitor all 3 in parallel
+
+
+VERIFICATION CHECKLIST
+======================
+✓ "Execute steps:" header added
+✓ codex_prompt updated
+✓ claude_prompt updated
+✓ gemini_prompt updated
+✓ All 3 prompts identical (807 chars, 144 words)
+✓ All agents follow same 11-step methodology
+✓ Universal protocol verified
+✓ Ready for multi-agent parallel work
+✓ Vendor-independent framework
+
+
+USE CASES ENABLED
+=================
+
+1. A/B Testing Agents:
+   Run same task on 3 agents, compare results
+   Data-driven agent selection
+
+2. Parallel Experimentation:
+   3 agents, 3 approaches, same methodology
+   Pick winner, merge to main
+
+3. Redundancy:
+   If OpenAI down → use Claude
+   If Claude slow → use Gemini
+   Same protocol, different provider
+
+4. Institutional Knowledge:
+   Team learns: "We use the 11-step protocol"
+   Not tied to any specific AI vendor
+   Portable across tools and platforms
+
+
+CONCLUSION
+==========
+Successfully installed Universal AI Agent Protocol across all agents.
+
+ALL agents (codex, claude, gemini) now follow the same 11-step
+optimization framework with "Execute steps:" command header.
+
+This creates:
+- Vendor independence (can switch agents)
+- Consistent methodology (same process everywhere)
+- Parallel experimentation (A/B test agents)
+- Institutional knowledge (portable framework)
+
+Ready to use:
+  aio cpp / aio lpp / aio gpp
+
+Universal protocol active.
