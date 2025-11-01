@@ -1149,8 +1149,9 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
             print(f"✓ Committed changes: {commit_msg}")
 
         # Push to main
+        env = get_noninteractive_git_env()
         result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
-                        capture_output=True, text=True)
+                        capture_output=True, text=True, env=env)
 
         if result.returncode == 0:
             print(f"✓ Pushed to {main_branch}")
@@ -1203,6 +1204,24 @@ elif work_dir_arg:
 else:
     work_dir = WORK_DIR
 
+def get_noninteractive_git_env():
+    """Get environment for non-interactive git operations (no GUI dialogs)
+
+    Uses GitHub Actions' approach: clear ALL credential helpers to prevent dialogs
+    """
+    env = os.environ.copy()
+
+    # GitHub's simple solution: clear ALL credential helpers
+    # This prevents ANY dialog from appearing
+    env['GIT_CONFIG_COUNT'] = '1'
+    env['GIT_CONFIG_KEY_0'] = 'credential.helper'
+    env['GIT_CONFIG_VALUE_0'] = ''  # Empty = clear all helpers
+
+    # Also disable terminal prompts as backup
+    env['GIT_TERMINAL_PROMPT'] = '0'
+
+    return env
+
 def create_worktree(project_path, session_name):
     """Create git worktree in central ~/projects/aiosWorktrees/"""
     os.makedirs(WORKTREES_DIR, exist_ok=True)
@@ -1217,11 +1236,8 @@ def create_worktree(project_path, session_name):
 
     # Fetch from GitHub to get latest server version
     print(f"⬇️  Fetching latest from GitHub...", end='', flush=True)
-    # Set environment to prevent GUI authentication dialogs
-    env = os.environ.copy()
-    env['GIT_TERMINAL_PROMPT'] = '0'  # Disable terminal prompts
-    env['GIT_ASKPASS'] = 'echo'       # Fail instead of asking for password
-    env['SSH_ASKPASS'] = 'echo'       # Fail instead of SSH password dialog
+    # Use non-interactive environment to prevent GUI dialogs
+    env = get_noninteractive_git_env()
     result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
                     capture_output=True, text=True, env=env)
     if result.returncode == 0:
@@ -2148,8 +2164,9 @@ elif arg == 'push':
         print(f"✓ Merged {worktree_branch} into {main_branch}")
 
         # Push to main
+        env = get_noninteractive_git_env()
         result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
-                        capture_output=True, text=True)
+                        capture_output=True, text=True, env=env)
 
         if result.returncode == 0:
             print(f"✓ Pushed to {main_branch}")
@@ -2182,11 +2199,8 @@ elif arg == 'push':
             sys.exit(1)
 
         # Push
-        # Set environment to prevent GUI authentication dialogs
-        env = os.environ.copy()
-        env['GIT_TERMINAL_PROMPT'] = '0'  # Disable terminal prompts
-        env['GIT_ASKPASS'] = 'echo'       # Fail instead of asking for password
-        env['SSH_ASKPASS'] = 'echo'       # Fail instead of SSH password dialog
+        # Use non-interactive environment to prevent GUI dialogs
+        env = get_noninteractive_git_env()
         result = sp.run(['git', '-C', cwd, 'push'], capture_output=True, text=True, env=env)
         if result.returncode == 0:
             print("✓ Pushed to remote")
@@ -2216,11 +2230,8 @@ elif arg == 'pull':
             print("✗ Cancelled")
             sys.exit(0)
 
-    # Set environment to prevent GUI authentication dialogs
-    env = os.environ.copy()
-    env['GIT_TERMINAL_PROMPT'] = '0'  # Disable terminal prompts
-    env['GIT_ASKPASS'] = 'echo'       # Fail instead of asking for password
-    env['SSH_ASKPASS'] = 'echo'       # Fail instead of SSH password dialog
+    # Use non-interactive environment to prevent GUI dialogs
+    env = get_noninteractive_git_env()
     fetch_result = sp.run(['git', '-C', cwd, 'fetch', 'origin'], capture_output=True, text=True, env=env)
     if fetch_result.returncode != 0:
         error_msg = fetch_result.stderr.strip()
@@ -2353,7 +2364,8 @@ elif arg == 'setup':
 
         # Set main as default branch and push
         sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
-        result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main'], capture_output=True, text=True)
+        env = get_noninteractive_git_env()
+        result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main'], capture_output=True, text=True, env=env)
         if result.returncode == 0:
             print("✓ Pushed to remote")
         else:
