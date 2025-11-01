@@ -1787,9 +1787,11 @@ elif arg == 'multi':
             full_cmd = f'{base_cmd} "{escaped_prompt}"'
 
             # Create tmux session in worktree with prompt already included
+            # IMPORTANT: Use clean environment to prevent GUI dialogs in the agent session
             session_name = worktree_name
+            env = get_noninteractive_git_env()
             sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
-                  capture_output=True)
+                  capture_output=True, env=env)
 
             launched_sessions.append((session_name, base_name, instance_num+1, worktree_path))
             print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
@@ -2000,9 +2002,11 @@ elif arg == 'all':
                 full_cmd = f'{base_cmd} "{escaped_prompt}"'
 
                 # Create tmux session in worktree with prompt already included
+                # IMPORTANT: Use clean environment to prevent GUI dialogs in the agent session
                 session_name = worktree_name
+                env = get_noninteractive_git_env()
                 sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
-                      capture_output=True)
+                      capture_output=True, env=env)
 
                 project_sessions.append((session_name, base_name, instance_num+1, project_name, worktree_path))
                 print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
@@ -2530,9 +2534,13 @@ elif arg.endswith('++') and not arg.startswith('w'):
         time_str = datetime.now().strftime('%H%M%S')
         name = f"{base_name}-{date_str}-{time_str}-single"
 
-        if worktree_path := create_worktree(project_path, name):
+        worktree_result = create_worktree(project_path, name)
+        if worktree_result and worktree_result[0]:
+            worktree_path = worktree_result[0]
             print(f"✓ Created worktree: {worktree_path}")
-            sp.run(['tmux', 'new', '-d', '-s', name, '-c', worktree_path, cmd])
+            # Use clean environment to prevent GUI dialogs
+            env = get_noninteractive_git_env()
+            sp.run(['tmux', 'new', '-d', '-s', name, '-c', worktree_path, cmd], env=env)
 
             if new_window:
                 launch_in_new_window(name)
@@ -2551,7 +2559,9 @@ else:
     if session_name is None:
         # Not a known session key, use original behavior
         name, cmd = sessions.get(arg, (arg, None))
-        sp.run(['tmux', 'new', '-d', '-s', name, '-c', work_dir, cmd or arg], capture_output=True)
+        # Use clean environment to prevent GUI dialogs
+        env = get_noninteractive_git_env()
+        sp.run(['tmux', 'new', '-d', '-s', name, '-c', work_dir, cmd or arg], capture_output=True, env=env)
         session_name = name
     else:
         # Got a directory-specific session name
@@ -2561,8 +2571,10 @@ else:
         if check_result.returncode != 0:
             # Session doesn't exist, create it
             _, cmd = sessions[arg]
+            # Use clean environment to prevent GUI dialogs
+            env = get_noninteractive_git_env()
             sp.run(['tmux', 'new', '-d', '-s', session_name, '-c', work_dir, cmd],
-                  capture_output=True)
+                  capture_output=True, env=env)
 
     # Check if this is a single-p session (cp, lp, gp but not cpp, lpp, gpp)
     is_single_p_session = arg.endswith('p') and not arg.endswith('pp') and len(arg) == 2 and arg in sessions
