@@ -1205,20 +1205,25 @@ else:
     work_dir = WORK_DIR
 
 def get_noninteractive_git_env():
-    """Get environment for non-interactive git operations (no GUI dialogs)
-
-    Uses GitHub Actions' approach: clear ALL credential helpers to prevent dialogs
-    """
+    """Get environment for non-interactive git operations (no GUI dialogs)"""
     env = os.environ.copy()
 
-    # GitHub's simple solution: clear ALL credential helpers
-    # This prevents ANY dialog from appearing
+    # CRITICAL: Remove variables that enable GUI dialogs
+    env.pop('SSH_AUTH_SOCK', None)  # Remove GNOME Keyring SSH agent (causes GUI!)
+    env.pop('DISPLAY', None)         # Remove X11 display (prevents ANY GUI!)
+    env.pop('GPG_AGENT_INFO', None)  # Remove GPG agent that might prompt
+
+    # Clear ALL credential helpers using Git's config environment variables
     env['GIT_CONFIG_COUNT'] = '1'
     env['GIT_CONFIG_KEY_0'] = 'credential.helper'
     env['GIT_CONFIG_VALUE_0'] = ''  # Empty = clear all helpers
 
-    # Also disable terminal prompts as backup
+    # Disable terminal prompts
     env['GIT_TERMINAL_PROMPT'] = '0'
+
+    # For SSH operations, disable askpass programs
+    env['SSH_ASKPASS'] = ''  # Empty = disable SSH GUI prompts
+    env['GIT_ASKPASS'] = ''  # Empty = disable Git GUI prompts
 
     return env
 
