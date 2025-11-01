@@ -1217,12 +1217,24 @@ def create_worktree(project_path, session_name):
 
     # Fetch from GitHub to get latest server version
     print(f"⬇️  Fetching latest from GitHub...", end='', flush=True)
+    # Set environment to prevent GUI authentication dialogs
+    env = os.environ.copy()
+    env['GIT_TERMINAL_PROMPT'] = '0'  # Disable terminal prompts
+    env['GIT_ASKPASS'] = 'echo'       # Fail instead of asking for password
+    env['SSH_ASKPASS'] = 'echo'       # Fail instead of SSH password dialog
     result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
-                    capture_output=True, text=True)
+                    capture_output=True, text=True, env=env)
     if result.returncode == 0:
         print(" ✓")
     else:
-        print(f"\n⚠️  Fetch warning: {result.stderr.strip()}")
+        error_msg = result.stderr.strip()
+        if 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
+            print(f"\n❌ Authentication failed. Please set up git credentials:")
+            print(f"   • For SSH: Add SSH key to your Git provider")
+            print(f"   • For HTTPS: Run 'git config --global credential.helper cache'")
+            print(f"   • Then manually 'git fetch' once to save credentials")
+        else:
+            print(f"\n⚠️  Fetch warning: {error_msg}")
         # Continue anyway with local version
 
     # Create worktree from server version
@@ -2170,12 +2182,23 @@ elif arg == 'push':
             sys.exit(1)
 
         # Push
-        result = sp.run(['git', '-C', cwd, 'push'], capture_output=True, text=True)
+        # Set environment to prevent GUI authentication dialogs
+        env = os.environ.copy()
+        env['GIT_TERMINAL_PROMPT'] = '0'  # Disable terminal prompts
+        env['GIT_ASKPASS'] = 'echo'       # Fail instead of asking for password
+        env['SSH_ASKPASS'] = 'echo'       # Fail instead of SSH password dialog
+        result = sp.run(['git', '-C', cwd, 'push'], capture_output=True, text=True, env=env)
         if result.returncode == 0:
             print("✓ Pushed to remote")
         else:
             error_msg = result.stderr.strip() or result.stdout.strip()
-            print(f"✗ Push failed: {error_msg}")
+            if 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
+                print(f"❌ Authentication failed. Please set up git credentials:")
+                print(f"   • For SSH: Add SSH key to your Git provider")
+                print(f"   • For HTTPS: Run 'git config --global credential.helper cache'")
+                print(f"   • Then manually 'git push' once to save credentials")
+            else:
+                print(f"✗ Push failed: {error_msg}")
             sys.exit(1)
 elif arg == 'pull':
     # Replace local with server version (destructive)
@@ -2193,7 +2216,20 @@ elif arg == 'pull':
             print("✗ Cancelled")
             sys.exit(0)
 
-    sp.run(['git', '-C', cwd, 'fetch', 'origin'], capture_output=True)
+    # Set environment to prevent GUI authentication dialogs
+    env = os.environ.copy()
+    env['GIT_TERMINAL_PROMPT'] = '0'  # Disable terminal prompts
+    env['GIT_ASKPASS'] = 'echo'       # Fail instead of asking for password
+    env['SSH_ASKPASS'] = 'echo'       # Fail instead of SSH password dialog
+    fetch_result = sp.run(['git', '-C', cwd, 'fetch', 'origin'], capture_output=True, text=True, env=env)
+    if fetch_result.returncode != 0:
+        error_msg = fetch_result.stderr.strip()
+        if 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
+            print(f"❌ Authentication failed. Please set up git credentials:")
+            print(f"   • For SSH: Add SSH key to your Git provider")
+            print(f"   • For HTTPS: Run 'git config --global credential.helper cache'")
+            print(f"   • Then manually 'git fetch' once to save credentials")
+            sys.exit(1)
     result = sp.run(['git', '-C', cwd, 'reset', '--hard', 'origin/main'], capture_output=True, text=True)
     if result.returncode != 0:
         result = sp.run(['git', '-C', cwd, 'reset', '--hard', 'origin/master'], capture_output=True, text=True)
