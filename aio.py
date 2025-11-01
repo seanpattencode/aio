@@ -1222,12 +1222,22 @@ def get_noninteractive_git_env():
 
     return env
 
-def create_worktree(project_path, session_name):
-    """Create git worktree in central ~/projects/aiosWorktrees/"""
-    os.makedirs(WORKTREES_DIR, exist_ok=True)
+def create_worktree(project_path, session_name, check_only=False):
+    """Create git worktree in central ~/projects/aiosWorktrees/
+
+    Args:
+        project_path: Path to the project
+        session_name: Name for the worktree/session
+        check_only: If True, only check authentication, don't create worktree
+
+    Returns:
+        If check_only=True: (auth_succeeded, error_msg)
+        If check_only=False: (worktree_path, used_local_version)
+    """
+    if not check_only:
+        os.makedirs(WORKTREES_DIR, exist_ok=True)
+
     project_name = os.path.basename(project_path)
-    worktree_name = f"{project_name}-{session_name}"
-    worktree_path = os.path.join(WORKTREES_DIR, worktree_name)
 
     # Get current branch
     result = sp.run(['git', '-C', project_path, 'branch', '--show-current'],
@@ -1235,35 +1245,76 @@ def create_worktree(project_path, session_name):
     branch = result.stdout.strip() or 'main'
 
     # Fetch from GitHub to get latest server version
-    print(f"⬇️  Fetching latest from GitHub...", end='', flush=True)
+    if check_only:
+        print(f"   Checking authentication...", end='', flush=True)
+    else:
+        print(f"⬇️  Fetching latest from GitHub...", end='', flush=True)
+
     # Use non-interactive environment to prevent GUI dialogs
     env = get_noninteractive_git_env()
     result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
                     capture_output=True, text=True, env=env)
+
     if result.returncode == 0:
         print(" ✓")
+        if check_only:
+            return (True, None)
+        fetch_succeeded = True
     else:
         error_msg = result.stderr.strip()
         if 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
-            print(f"\n❌ Authentication failed. Please set up git credentials:")
-            print(f"   • For SSH: Add SSH key to your Git provider")
-            print(f"   • For HTTPS: Run 'git config --global credential.helper cache'")
-            print(f"   • Then manually 'git fetch' once to save credentials")
+            print(" ❌ FAILED")
+            # Get current remote URL to provide exact fix command
+            remote_result = sp.run(['git', '-C', project_path, 'remote', 'get-url', 'origin'],
+                                  capture_output=True, text=True)
+            fix_cmd = None
+            if remote_result.returncode == 0 and 'https://github.com/' in remote_result.stdout:
+                # Convert https://github.com/user/repo.git to git@github.com:user/repo.git
+                https_url = remote_result.stdout.strip()
+                ssh_url = https_url.replace('https://github.com/', 'git@github.com:').replace('.git\n', '.git')
+                fix_cmd = f"cd {project_path} && git remote set-url origin {ssh_url}"
+
+            if check_only:
+                return (False, fix_cmd)
+
+            # For normal operation, print error and continue with local
+            print(f"\n⚠️  Authentication failed - will use LOCAL version (may be outdated!)")
+            if fix_cmd:
+                print(f"   Fix: {fix_cmd}")
+            else:
+                print(f"   Fix: Convert to SSH: git remote set-url origin git@github.com:USER/REPO.git")
+            fetch_succeeded = False
         else:
             print(f"\n⚠️  Fetch warning: {error_msg}")
-        # Continue anyway with local version
+            if check_only:
+                return (True, None)  # Non-auth errors are OK
+            fetch_succeeded = True
 
-    # Create worktree from server version
-    print(f"🌱 Creating worktree from origin/{branch}...", end='', flush=True)
-    result = sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f"wt-{worktree_name}", worktree_path, f"origin/{branch}"],
+    # If check_only, we're done
+    if check_only:
+        return (True, None)
+
+    # Create worktree from either server or local version
+    worktree_name = f"{project_name}-{session_name}"
+    worktree_path = os.path.join(WORKTREES_DIR, worktree_name)
+
+    if fetch_succeeded:
+        print(f"🌱 Creating worktree from origin/{branch}...", end='', flush=True)
+        source = f"origin/{branch}"
+    else:
+        print(f"⚠️  Creating worktree from LOCAL {branch} (NOT synced with server!)...", end='', flush=True)
+        source = branch  # Use local branch instead of origin/branch
+
+    result = sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f"wt-{worktree_name}", worktree_path, source],
                     capture_output=True, text=True)
 
     if result.returncode == 0:
         print(" ✓")
-        return worktree_path
+        # Return tuple: (worktree_path, used_local_version)
+        return (worktree_path, not fetch_succeeded)
     else:
         print(f"\n✗ Failed to create worktree: {result.stderr.strip()}")
-        return None
+        return (None, False)
 
 # Handle project number shortcut: aio 1, aio 2, etc.
 if arg and arg.isdigit() and not work_dir_arg:
@@ -1720,7 +1771,8 @@ elif arg == 'multi':
             worktree_name = f"{base_name}-{date_str}-{time_str}-multi-{instance_num}"
 
             # Create worktree
-            worktree_path = create_worktree(project_path, worktree_name)
+            worktree_result = create_worktree(project_path, worktree_name)
+            worktree_path = worktree_result[0] if worktree_result else None
 
             if not worktree_path:
                 print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
@@ -1824,13 +1876,77 @@ elif arg == 'all':
         print(f"   Mode: Sequential - complete each project before starting next")
     print()
 
+    # STEP 1: Check authentication for ALL projects first
+    print("🔐 Checking authentication for all projects...")
+    print("=" * 80)
+
+    auth_failures = []  # List of (project_idx, project_name, project_path, fix_cmd)
+
+    for project_idx, project_path in enumerate(PROJECTS):
+        project_name = os.path.basename(project_path)
+        print(f"Project {project_idx}: {project_name:<30}", end='')
+
+        # Check if project exists
+        if not os.path.exists(project_path):
+            print("⚠️  SKIPPED (does not exist)")
+            continue
+
+        # Check if it's a git repository
+        result = sp.run(['git', '-C', project_path, 'rev-parse', '--git-dir'],
+                       capture_output=True)
+        if result.returncode != 0:
+            print("⚠️  SKIPPED (not a git repository)")
+            continue
+
+        # Check authentication
+        auth_ok, fix_cmd = create_worktree(project_path, "", check_only=True)
+
+        if not auth_ok:
+            auth_failures.append((project_idx, project_name, project_path, fix_cmd))
+
+    # If any authentication failures, stop and show how to fix
+    if auth_failures:
+        print("\n" + "=" * 80)
+        print("❌ AUTHENTICATION FAILED for the following projects:")
+        print("=" * 80)
+
+        for idx, name, path, fix_cmd in auth_failures:
+            print(f"\nProject {idx}: {name}")
+            print(f"Path: {path}")
+            if fix_cmd:
+                print(f"Fix:  {fix_cmd}")
+            else:
+                print(f"Fix:  cd {path} && git remote set-url origin git@github.com:USER/REPO.git")
+
+        print("\n" + "=" * 80)
+        print("🔧 TO FIX ALL AT ONCE, run these commands:")
+        print("-" * 80)
+        for idx, name, path, fix_cmd in auth_failures:
+            if fix_cmd:
+                print(fix_cmd)
+            else:
+                print(f"cd {path} && git remote set-url origin git@github.com:USER/REPO.git")
+
+        print("\n" + "=" * 80)
+        print("ℹ️  WHY SSH IS BETTER:")
+        print("   • No password prompts")
+        print("   • Works with aio's no-dialog approach")
+        print("   • More secure than storing passwords")
+        print("\n✅ After fixing, run 'aio all' again and all projects will work!")
+        sys.exit(1)
+
+    print("\n✅ All projects authenticated successfully!")
+    print()
+
     # Track all launched sessions across all projects
     all_launched_sessions = []
     project_results = []
+    projects_using_local = []  # Track projects that couldn't fetch latest
 
     # Escape prompt for shell usage (like lpp/gpp/cpp do)
     escaped_prompt = prompt.replace('\n', '\\n').replace('"', '\\"')
 
+    # STEP 2: Now create worktrees and launch agents
     for project_idx, project_path in enumerate(PROJECTS):
         project_name = os.path.basename(project_path)
         print(f"\n{'='*80}")
@@ -1863,11 +1979,17 @@ elif arg == 'all':
                 worktree_name = f"{base_name}-{date_str}-{time_str}-all-{instance_num}"
 
                 # Create worktree
-                worktree_path = create_worktree(project_path, worktree_name)
+                worktree_result = create_worktree(project_path, worktree_name)
+                worktree_path = worktree_result[0] if worktree_result else None
+                used_local = worktree_result[1] if worktree_result else False
 
                 if not worktree_path:
                     print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
                     continue
+
+                # Track if this project is using local code
+                if used_local and project_name not in projects_using_local:
+                    projects_using_local.append(project_name)
 
                 # Construct full command with prompt baked in (like lpp/gpp/cpp)
                 full_cmd = f'{base_cmd} "{escaped_prompt}"'
