@@ -930,9 +930,8 @@ def list_jobs(running_only=False):
 
         # Command to open directory in new window
         if is_worktree:
-            # For worktrees, show the 'w' command if possible
-            worktrees_list = sorted([d for d in os.listdir(WORKTREES_DIR)
-                                    if os.path.isdir(os.path.join(WORKTREES_DIR, d))])
+            # For worktrees, show the 'w' command if possible (using datetime sorted order)
+            worktrees_list = get_worktrees_sorted_by_datetime()
             if job_name in worktrees_list:
                 worktree_index = worktrees_list.index(job_name)
                 print(f"           Open dir:  aio w{worktree_index}")
@@ -952,13 +951,54 @@ def list_jobs(running_only=False):
 
         print()
 
+def get_worktrees_sorted_by_datetime():
+    """Get list of worktrees sorted by creation datetime (oldest to newest).
+
+    Returns list of worktree names in datetime order.
+    """
+    if not os.path.exists(WORKTREES_DIR):
+        return []
+
+    items = [d for d in os.listdir(WORKTREES_DIR)
+             if os.path.isdir(os.path.join(WORKTREES_DIR, d))]
+
+    if not items:
+        return []
+
+    # Parse datetime from each worktree name and sort
+    import re
+    from datetime import datetime
+
+    worktrees_with_datetime = []
+    for item in items:
+        # Parse datetime from name like: aios-codex-20251031-185629-single
+        match = re.search(r'-(\d{8})-(\d{6})-', item)
+        if match:
+            date_str = match.group(1)
+            time_str = match.group(2)
+            try:
+                dt = datetime.strptime(f"{date_str}{time_str}", "%Y%m%d%H%M%S")
+                worktrees_with_datetime.append((item, dt))
+            except:
+                # If parsing fails, use min datetime
+                worktrees_with_datetime.append((item, datetime.min))
+        else:
+            # Old format without datetime, sort to beginning
+            worktrees_with_datetime.append((item, datetime.min))
+
+    # Sort by datetime
+    worktrees_with_datetime.sort(key=lambda x: x[1])
+
+    # Return just the names
+    return [name for name, _ in worktrees_with_datetime]
+
 def list_worktrees():
     """List all worktrees in central directory"""
     if not os.path.exists(WORKTREES_DIR):
         print(f"No worktrees found in {WORKTREES_DIR}")
         return []
 
-    items = sorted(os.listdir(WORKTREES_DIR))
+    items = get_worktrees_sorted_by_datetime()
     if not items:
         print("No worktrees found")
         return []
@@ -976,7 +1016,7 @@ def find_worktree(pattern):
     if not os.path.exists(WORKTREES_DIR):
         return None
 
-    items = sorted(os.listdir(WORKTREES_DIR))
+    items = get_worktrees_sorted_by_datetime()
 
     # Check if pattern is a number
     if pattern.isdigit():
