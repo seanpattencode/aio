@@ -2211,6 +2211,8 @@ elif arg == 'push':
         print(f"  1. Commit your changes in the worktree")
         print(f"  2. Switch the main project to the main branch")
         print(f"  3. Push to the main branch on remote")
+        print(f"  4. Auto-pull to sync main project with remote")
+        print(f"  5. Optionally delete the worktree (you'll be asked)")
         print(f"\nCommit message: {commit_msg}")
 
         skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
@@ -2284,6 +2286,44 @@ elif arg == 'push':
             error_msg = result.stderr.strip() or result.stdout.strip()
             print(f"✗ Push failed: {error_msg}")
             sys.exit(1)
+
+        # Auto-pull to sync main project with remote
+        print(f"→ Syncing main project with remote...")
+        env = get_noninteractive_git_env()
+        fetch_result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
+                              capture_output=True, text=True, env=env)
+        if fetch_result.returncode == 0:
+            reset_result = sp.run(['git', '-C', project_path, 'reset', '--hard', f'origin/{main_branch}'],
+                                  capture_output=True, text=True)
+            if reset_result.returncode == 0:
+                print(f"✓ Synced main project with remote")
+            else:
+                print(f"⚠ Sync warning: {reset_result.stderr.strip()}")
+        else:
+            print(f"⚠ Fetch warning: {fetch_result.stderr.strip()}")
+
+        # Ask if user wants to delete the worktree
+        if not skip_confirm:
+            response = input(f"\nDelete worktree '{worktree_name}'? (y/n): ").strip().lower()
+            if response in ['y', 'yes']:
+                # Remove worktree without pushing (we already pushed)
+                result = sp.run(['git', '-C', project_path, 'worktree', 'remove', '--force', cwd],
+                                capture_output=True, text=True)
+                if result.returncode == 0:
+                    print(f"✓ Removed worktree")
+                    # Delete branch
+                    branch_name = f"wt-{worktree_name}"
+                    result = sp.run(['git', '-C', project_path, 'branch', '-D', branch_name],
+                                    capture_output=True, text=True)
+                    if result.returncode == 0:
+                        print(f"✓ Deleted branch: {branch_name}")
+                    # Remove directory if still exists
+                    if os.path.exists(cwd):
+                        import shutil
+                        shutil.rmtree(cwd)
+                        print(f"✓ Deleted directory")
+                else:
+                    print(f"✗ Failed to remove worktree: {result.stderr.strip()}")
 
     else:
         # Normal repo - regular push behavior
@@ -2525,8 +2565,13 @@ elif arg.endswith('++') and not arg.startswith('w'):
                 launch_in_new_window(name)
                 if with_terminal:
                     launch_terminal_in_dir(worktree_path)
+            elif "TMUX" in os.environ:
+                # Already inside tmux - let session run in background
+                print(f"✓ Session running in background: {name}")
+                print(f"   Switch to it: tmux switch-client -t {name}")
             else:
-                os.execvp('tmux', ['tmux', 'switch-client' if "TMUX" in os.environ else 'attach', '-t', name])
+                # Not in tmux - attach normally
+                os.execvp('tmux', ['tmux', 'attach', '-t', name])
     else:
         print(f"✗ Unknown session key: {key}")
 # Removed old '+' feature (timestamped session without worktree)
@@ -2594,5 +2639,10 @@ else:
         # Also launch a regular terminal if requested
         if with_terminal:
             launch_terminal_in_dir(work_dir)
+    elif "TMUX" in os.environ:
+        # Already inside tmux - let session run in background
+        print(f"✓ Session running in background: {session_name}")
+        print(f"   Switch to it: tmux switch-client -t {session_name}")
     else:
-        os.execvp('tmux', ['tmux', 'switch-client' if "TMUX" in os.environ else 'attach', '-t', session_name])
+        # Not in tmux - attach normally
+        os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
