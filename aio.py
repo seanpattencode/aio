@@ -3,6 +3,7 @@ import os, sys, subprocess as sp
 import sqlite3
 from datetime import datetime
 import pexpect
+import shlex
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1338,6 +1339,31 @@ def create_worktree(project_path, session_name, check_only=False):
         print(f"\n✗ Failed to create worktree: {result.stderr.strip()}")
         return (None, False)
 
+def parse_agent_specs_and_prompt(argv, start_idx):
+    """Parse agent specifications and prompt from command line arguments.
+
+    Returns: (agent_specs, prompt, using_default_protocol)
+        agent_specs: list of (agent_key, count) tuples
+        prompt: the final prompt string
+        using_default_protocol: bool indicating if default prompt was used
+    """
+    agent_specs, prompt_parts, parsing_agents = [], [], True
+
+    for arg_part in argv[start_idx:]:
+        if arg_part in ['--seq', '--sequential']:
+            continue
+
+        if parsing_agents and ':' in arg_part and len(arg_part) <= 4:
+            parts = arg_part.split(':')
+            if len(parts) == 2 and parts[0] in ['c', 'l', 'g'] and parts[1].isdigit():
+                agent_specs.append((parts[0], int(parts[1])))
+                continue
+
+        parsing_agents = False
+        prompt_parts.append(arg_part)
+
+    return (agent_specs, CODEX_PROMPT, True) if not prompt_parts else (agent_specs, ' '.join(prompt_parts), False)
+
 # Handle project number shortcut: aio 1, aio 2, etc.
 if arg and arg.isdigit() and not work_dir_arg:
     project_idx = int(arg)
@@ -1714,42 +1740,12 @@ elif arg == 'multi':
     # Check for sequential flag
     sequential = '--seq' in sys.argv or '--sequential' in sys.argv
 
-    # Parse agent specifications and prompt
-    agent_specs = []
-    prompt_parts = []
-    parsing_agents = True
-
-    for i in range(start_parse_at, len(sys.argv)):
-        arg_part = sys.argv[i]
-
-        # Skip flags
-        if arg_part in ['--seq', '--sequential']:
-            continue
-
-        # Check if this looks like an agent spec (e.g., "c:3")
-        if parsing_agents and ':' in arg_part and len(arg_part) <= 4:
-            parts = arg_part.split(':')
-            if len(parts) == 2 and parts[0] in ['c', 'l', 'g'] and parts[1].isdigit():
-                agent_key = parts[0]
-                count = int(parts[1])
-                agent_specs.append((agent_key, count))
-                continue
-
-        # Everything else is part of the prompt
-        parsing_agents = False
-        prompt_parts.append(arg_part)
+    # Parse agent specifications and prompt using helper function
+    agent_specs, prompt, using_default_protocol = parse_agent_specs_and_prompt(sys.argv, start_parse_at)
 
     if not agent_specs:
         print("✗ No agent specifications provided")
         sys.exit(1)
-
-    # If no prompt provided, use 11-step universal protocol as default
-    if not prompt_parts:
-        prompt = CODEX_PROMPT
-        using_default_protocol = True
-    else:
-        prompt = ' '.join(prompt_parts)
-        using_default_protocol = False
 
     # Calculate total instances
     total_instances = sum(count for _, count in agent_specs)
@@ -1770,8 +1766,8 @@ elif arg == 'multi':
     # Create worktrees and launch sessions
     launched_sessions = []
 
-    # Escape prompt for shell usage (like lpp/gpp/cpp do)
-    escaped_prompt = prompt.replace('\n', '\\n').replace('"', '\\"')
+    # Escape prompt for shell usage using stdlib
+    escaped_prompt = shlex.quote(prompt)
 
     for agent_key, count in agent_specs:
         base_name, base_cmd = sessions.get(agent_key, (None, None))
@@ -1833,30 +1829,8 @@ elif arg == 'all':
     # Check for sequential flag
     sequential = '--seq' in sys.argv or '--sequential' in sys.argv
 
-    # Parse agent specifications and prompt
-    agent_specs = []
-    prompt_parts = []
-    parsing_agents = True
-
-    for i in range(2, len(sys.argv)):
-        arg_part = sys.argv[i]
-
-        # Skip flags
-        if arg_part in ['--seq', '--sequential']:
-            continue
-
-        # Check if this looks like an agent spec (e.g., "c:3")
-        if parsing_agents and ':' in arg_part and len(arg_part) <= 4:
-            parts = arg_part.split(':')
-            if len(parts) == 2 and parts[0] in ['c', 'l', 'g'] and parts[1].isdigit():
-                agent_key = parts[0]
-                count = int(parts[1])
-                agent_specs.append((agent_key, count))
-                continue
-
-        # Everything else is part of the prompt
-        parsing_agents = False
-        prompt_parts.append(arg_part)
+    # Parse agent specifications and prompt using helper function
+    agent_specs, prompt, using_default_protocol = parse_agent_specs_and_prompt(sys.argv, 2)
 
     if not agent_specs:
         print("✗ No agent specifications provided")
@@ -1870,14 +1844,6 @@ elif arg == 'all':
         print("  l:N  - N claude instances per project")
         print("  g:N  - N gemini instances per project")
         sys.exit(1)
-
-    # If no prompt provided, use 11-step universal protocol as default
-    if not prompt_parts:
-        prompt = CODEX_PROMPT
-        using_default_protocol = True
-    else:
-        prompt = ' '.join(prompt_parts)
-        using_default_protocol = False
 
     # Calculate total instances across all projects
     agents_per_project = sum(count for _, count in agent_specs)
@@ -1963,8 +1929,8 @@ elif arg == 'all':
     project_results = []
     projects_using_local = []  # Track projects that couldn't fetch latest
 
-    # Escape prompt for shell usage (like lpp/gpp/cpp do)
-    escaped_prompt = prompt.replace('\n', '\\n').replace('"', '\\"')
+    # Escape prompt for shell usage using stdlib
+    escaped_prompt = shlex.quote(prompt)
 
     # STEP 2: Now create worktrees and launch agents
     for project_idx, project_path in enumerate(PROJECTS):
