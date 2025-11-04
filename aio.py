@@ -95,10 +95,17 @@ def init_database():
                 )
             """)
 
-            # Check if config exists
-            cursor = conn.execute("SELECT COUNT(*) FROM config")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS prompts (
+                    name TEXT PRIMARY KEY,
+                    content TEXT NOT NULL
+                )
+            """)
+
+            # Check if prompts exist
+            cursor = conn.execute("SELECT COUNT(*) FROM prompts")
             if cursor.fetchone()[0] == 0:
-                # Insert default config
+                # Insert default prompt once
                 default_prompt = """When given a task follow the 3 steps:
 
 Step 1: Read project and relevant files. Then ultrathink how to best solve this.
@@ -116,6 +123,14 @@ No polling whatsoever, only event based.
 
 Step 3:
 After you make edits, run manually exactly as the user would, and check the output manually, if applicable inspect screenshots. Set an aggressive timeout on any terminal command. Don't add any features just make sure everything works and fix any issues according to library glue principles."""
+                conn.execute("INSERT INTO prompts VALUES ('default', ?)", (default_prompt,))
+
+            # Check if config exists
+            cursor = conn.execute("SELECT COUNT(*) FROM config")
+            if cursor.fetchone()[0] == 0:
+                # Insert default config - reference the default prompt
+                cursor = conn.execute("SELECT content FROM prompts WHERE name = 'default'")
+                default_prompt = cursor.fetchone()[0]
                 conn.execute("INSERT INTO config VALUES ('claude_prompt', ?)", (default_prompt,))
                 conn.execute("INSERT INTO config VALUES ('codex_prompt', ?)", (default_prompt,))
                 conn.execute("INSERT INTO config VALUES ('gemini_prompt', ?)", (default_prompt,))
@@ -159,6 +174,13 @@ def load_config():
         cursor = conn.execute("SELECT key, value FROM config")
         config = dict(cursor.fetchall())
     return config
+
+def get_prompt(name):
+    """Load a prompt from database by name."""
+    with WALManager(DB_PATH) as conn:
+        cursor = conn.execute("SELECT content FROM prompts WHERE name = ?", (name,))
+        row = cursor.fetchone()
+        return row[0] if row else None
 
 def load_projects():
     """Load projects from database."""
@@ -227,23 +249,7 @@ def load_sessions(config):
         cursor = conn.execute("SELECT key, name, command_template FROM sessions")
         sessions_data = cursor.fetchall()
 
-    default_prompt = """When given a task follow the 3 steps:
-
-Step 1: Read project and relevant files. Then ultrathink how to best solve this.
-For any technical decision or problem, first ask what the most popular/deployed apps in the world do most similar to this project. Assume the best way to solve the problem already exists and your task is just to figure out how to find that and use it, not create your own method. Ask how did they solve it and how they implemented the solution? If applicable, look up the most direct source relevant docs.
-
-Step 2: Write the changes with the following:
-
-Write in the style I would call "library glue", where you only use library functions, no or almost no business logic, and fully rely on the library to do everything for all code lines.
-
-Make line count as minimal as possible while doing exactly the same things, use direct library calls as often as possible, keep it readable and follow all program readability conventions, and manually run debug and inspect output and fix issues.
-If rewriting existing sections of code with no features added, each change must be readable and follow all program readability conventions, run as fast or faster than previous code, be lower in line count or equal to original, use the same or greater number of direct library calls, reduce the number of states the program could be in or keep it equal, and make it simpler or keep the same complexity than before.
-Specific practices:
-No polling whatsoever, only event based.
-
-
-Step 3:
-After you make edits, run manually exactly as the user would, and check the output manually, if applicable inspect screenshots. Set an aggressive timeout on any terminal command. Don't add any features just make sure everything works and fix any issues according to library glue principles."""
+    default_prompt = get_prompt('default')
 
     sessions = {}
     for key, name, cmd_template in sessions_data:
@@ -268,23 +274,7 @@ init_database()
 
 # Load configuration from database
 config = load_config()
-DEFAULT_PROMPT = """When given a task follow the 3 steps:
-
-Step 1: Read project and relevant files. Then ultrathink how to best solve this.
-For any technical decision or problem, first ask what the most popular/deployed apps in the world do most similar to this project. Assume the best way to solve the problem already exists and your task is just to figure out how to find that and use it, not create your own method. Ask how did they solve it and how they implemented the solution? If applicable, look up the most direct source relevant docs.
-
-Step 2: Write the changes with the following:
-
-Write in the style I would call "library glue", where you only use library functions, no or almost no business logic, and fully rely on the library to do everything for all code lines.
-
-Make line count as minimal as possible while doing exactly the same things, use direct library calls as often as possible, keep it readable and follow all program readability conventions, and manually run debug and inspect output and fix issues.
-If rewriting existing sections of code with no features added, each change must be readable and follow all program readability conventions, run as fast or faster than previous code, be lower in line count or equal to original, use the same or greater number of direct library calls, reduce the number of states the program could be in or keep it equal, and make it simpler or keep the same complexity than before.
-Specific practices:
-No polling whatsoever, only event based.
-
-
-Step 3:
-After you make edits, run manually exactly as the user would, and check the output manually, if applicable inspect screenshots. Set an aggressive timeout on any terminal command. Don't add any features just make sure everything works and fix any issues according to library glue principles."""
+DEFAULT_PROMPT = get_prompt('default')
 CLAUDE_PROMPT = config.get('claude_prompt', DEFAULT_PROMPT)
 CODEX_PROMPT = config.get('codex_prompt', DEFAULT_PROMPT)
 GEMINI_PROMPT = config.get('gemini_prompt', DEFAULT_PROMPT)
