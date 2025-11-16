@@ -10,8 +10,67 @@ import time
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Auto-update disabled for instant startup
-# To update: git pull in the aios directory
+def manual_update():
+    """Update aio from git repository - explicit user command only."""
+    # Check if we're in a git repo
+    result = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', '--git-dir'],
+                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+
+    if result.returncode != 0:
+        print("✗ Not in a git repository")
+        return False
+
+    print("🔄 Checking for updates...")
+
+    # Get current commit hash
+    before = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', 'HEAD'],
+                    capture_output=True, text=True)
+
+    if before.returncode != 0:
+        print("✗ Failed to get current version")
+        return False
+
+    before_hash = before.stdout.strip()[:8]  # Short hash
+
+    # Fetch to see if there are updates
+    fetch_result = sp.run(['git', '-C', SCRIPT_DIR, 'fetch'],
+                         capture_output=True, text=True)
+
+    if fetch_result.returncode != 0:
+        print(f"✗ Failed to check for updates: {fetch_result.stderr.strip()}")
+        return False
+
+    # Check if we're behind
+    status = sp.run(['git', '-C', SCRIPT_DIR, 'status', '-uno'],
+                    capture_output=True, text=True)
+
+    if 'Your branch is behind' not in status.stdout:
+        print(f"✓ Already up to date (version {before_hash})")
+        return True
+
+    # Pull latest changes
+    print("⬇️  Downloading updates...")
+    pull_result = sp.run(['git', '-C', SCRIPT_DIR, 'pull', '--ff-only'],
+                        capture_output=True, text=True)
+
+    if pull_result.returncode != 0:
+        print(f"✗ Update failed: {pull_result.stderr.strip()}")
+        print("💡 Try: git pull --rebase")
+        return False
+
+    # Get new commit hash
+    after = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', 'HEAD'],
+                   capture_output=True, text=True)
+
+    if after.returncode == 0:
+        after_hash = after.stdout.strip()[:8]
+        print(f"✅ Updated: {before_hash} → {after_hash}")
+        print("🔄 Please run your command again to use the new version")
+        return True
+
+    return True
+
+# No auto-update - Git philosophy: explicit updates only
 
 # Database setup
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
@@ -400,7 +459,22 @@ def ensure_tmux_mouse_mode():
         print("✓ Enabled tmux mouse mode for scrolling")
 
 # Tmux mouse mode check disabled for instant startup
-# ensure_tmux_mouse_mode()
+# Will be called lazily when creating tmux sessions
+
+def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
+    """Create a tmux session with mouse mode enabled."""
+    # Ensure mouse mode is enabled (only checks once per tmux server)
+    ensure_tmux_mouse_mode()
+
+    # Create the session
+    tmux_cmd = ['tmux', 'new-session', '-d', '-s', session_name, '-c', work_dir]
+    if cmd:
+        tmux_cmd.append(cmd)
+
+    if capture_output:
+        return sp.run(tmux_cmd, capture_output=True, text=True, env=env)
+    else:
+        return sp.run(tmux_cmd, env=env)
 
 def detect_terminal():
     """Detect available terminal emulator"""
@@ -1667,6 +1741,7 @@ APP MANAGEMENT:
   aio app rm <#|name>      Remove app
 SETUP:
   aio install         Install as global 'aio' command
+  aio update          Update aio to latest version from git
   aio add [path]      Add project to saved list
   aio remove <#>      Remove project from list
 Working directory: {WORK_DIR}
@@ -1765,6 +1840,7 @@ Note: Works in any git directory, not just worktrees
 SETUP & CONFIGURATION
 ═══════════════════════════════════════════════════════════════════════════════
   aio install            Install as global 'aio' command
+  aio update             Update aio to latest version from git
   aio x                  Kill all tmux sessions
 FLAGS:
   -w, --new-window       Launch in new terminal window
@@ -1815,6 +1891,7 @@ EXAMPLES
 ═══════════════════════════════════════════════════════════════════════════════
 Getting Started:
   aio install              Make 'aio' globally available
+  aio update               Check for and install updates
   aio c                    Start codex in current directory
   aio cp                   Start codex with editable prompt
   aio cpp                  Start codex with auto-run prompt
@@ -1858,6 +1935,9 @@ Working directory: {WORK_DIR}
         for i, (app_name, app_cmd) in enumerate(APPS):
             cmd_display = format_app_command(app_cmd)
             print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
+elif arg == 'update':
+    # Explicitly update aio from git repository
+    manual_update()
 elif arg == 'install':
     # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
@@ -2084,8 +2164,7 @@ elif arg == 'multi':
             # Use the full worktree name (with project prefix) as session name
             session_name = os.path.basename(worktree_path)
             env = get_noninteractive_git_env()
-            sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
-                  capture_output=True, env=env)
+            create_tmux_session(session_name, worktree_path, full_cmd, env=env)
 
             launched_sessions.append((session_name, base_name, instance_num+1, worktree_path))
             print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
@@ -2271,8 +2350,7 @@ elif arg == 'all':
                 # Use the full worktree name (with project prefix) as session name
                 session_name = os.path.basename(worktree_path)
                 env = get_noninteractive_git_env()
-                result = sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-c', worktree_path, full_cmd],
-                      capture_output=True, text=True, env=env)
+                result = create_tmux_session(session_name, worktree_path, full_cmd, env=env)
                 if result.returncode != 0:
                     print(f"✗ Failed to create tmux session: {result.stderr}")
                     print(f"  Command was: tmux new-session -d -s {session_name} -c {worktree_path} {full_cmd[:100]}...")
@@ -2401,8 +2479,7 @@ elif arg == 'review':
                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
             # Create new session in worktree directory
-            if sp.run(['tmux', 'new-session', '-d', '-s', session_to_attach, '-c', wt_path],
-                      capture_output=True).returncode != 0:
+            if create_tmux_session(session_to_attach, wt_path, None).returncode != 0:
                 print(f"✗ Failed to create session")
                 continue
 
@@ -2637,6 +2714,7 @@ elif arg == 'app' or arg == 'apps':
         success, message = add_app(app_name, app_command)
         if success:
             print(f"✓ {message}")
+            auto_backup_check()  # Backup after database modification
             # Show updated list
             APPS_NEW = load_apps()
             for i, (name, cmd) in enumerate(APPS_NEW):
@@ -2734,6 +2812,7 @@ elif arg == 'app' or arg == 'apps':
             success, message = remove_app(app_index)
             if success:
                 print(f"✓ {message}")
+                auto_backup_check()  # Backup after database modification
             else:
                 print(f"✗ {message}")
         else:
@@ -2755,6 +2834,7 @@ elif arg == 'add':
     success, message = add_project(path)
     if success:
         print(f"✓ {message}")
+        auto_backup_check()  # Backup after database modification
         print("\nUpdated project list:")
         # Reload and display projects
         updated_projects = load_projects()
@@ -2778,6 +2858,7 @@ elif arg == 'remove':
     success, message = remove_project(index)
     if success:
         print(f"✓ {message}")
+        auto_backup_check()  # Backup after database modification
         print("\nUpdated project list:")
         # Reload and display projects
         updated_projects = load_projects()
@@ -2809,6 +2890,7 @@ elif arg == 'add-app':
     success, message = add_app(app_name, app_command)
     if success:
         print(f"✓ {message}")
+        auto_backup_check()  # Backup after database modification
         print("\nUpdated app list:")
         # Reload and display apps
         updated_apps = load_apps()
@@ -2830,6 +2912,7 @@ elif arg == 'remove-app':
     success, message = remove_app(index)
     if success:
         print(f"✓ {message}")
+        auto_backup_check()  # Backup after database modification
         print("\nUpdated app list:")
         # Reload and display apps
         updated_apps = load_apps()
@@ -3292,7 +3375,7 @@ elif arg.endswith('++') and not arg.startswith('w'):
             # Use the full worktree name (with project prefix) as session name
             session_name = os.path.basename(worktree_path)
             env = get_noninteractive_git_env()
-            sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-c', worktree_path, cmd], env=env)
+            create_tmux_session(session_name, worktree_path, cmd, env=env, capture_output=False)
 
             if new_window:
                 launch_in_new_window(session_name)
@@ -3318,7 +3401,7 @@ else:
         name, cmd = sessions.get(arg, (arg, None))
         # Use clean environment to prevent GUI dialogs
         env = get_noninteractive_git_env()
-        sp.run(['tmux', 'new-session', '-d', '-s', name, '-c', work_dir, cmd or arg], capture_output=True, env=env)
+        create_tmux_session(name, work_dir, cmd or arg, env=env)
         session_name = name
     else:
         # Got a directory-specific session name
@@ -3330,8 +3413,7 @@ else:
             _, cmd = sessions[arg]
             # Use clean environment to prevent GUI dialogs
             env = get_noninteractive_git_env()
-            sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-c', work_dir, cmd],
-                  capture_output=True, env=env)
+            create_tmux_session(session_name, work_dir, cmd, env=env)
 
     # Check if this is a single-p session (cp, lp, gp but not cpp, lpp, gpp)
     is_single_p_session = arg.endswith('p') and not arg.endswith('pp') and len(arg) == 2 and arg in sessions
