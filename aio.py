@@ -1669,8 +1669,8 @@ GIT:
   aio revert [N]      Undo last N commits (default: 1)
 APP MANAGEMENT:
   aio app                  List all configured apps
-  aio app add <name> [cmd] Add app (interactive if no cmd given)
-  aio app add --here       Auto-include current directory
+  aio app add <name> [cmd] Add app (auto-includes current dir)
+  aio app add --global     Skip directory context
   aio app edit <#|name>    Edit app command
   aio app rm <#|name>      Remove app
 SETUP:
@@ -1801,15 +1801,16 @@ APP MANAGEMENT
 Apps are custom commands you can run quickly with aio:
 • List apps: aio app
 • Add app: aio app add <name> [command]
+  - Automatically includes current directory (if not in home)
   - If no command given, prompts interactively
-  - Automatically detects if you're in a project directory
   - Removes square brackets if accidentally included
+  - Example from ~/projects/myapp: aio app add test 'pytest'
+    Creates: cd ~/projects/myapp && pytest
   - Example: aio app add server 'python -m http.server 8000'
-  - Example: aio app add docker 'docker ps -a'
-• Add with directory: aio app add <name> --here <command>
-  - Automatically includes current directory in command
-  - Example from ~/projects/myapp: aio app add test --here 'pytest'
-  - Creates: cd ~/projects/myapp && pytest
+• Add globally: aio app add <name> --global <command>
+  - Skips directory context, runs from anywhere
+  - Use for commands that should work everywhere
+  - Example: aio app add docker --global 'docker ps -a'
 • Edit app: aio app edit <#|name>
   - Can use app number or name
   - Prompts for new command interactively
@@ -2574,17 +2575,19 @@ elif arg == 'app' or arg == 'apps':
         if not app_name:
             print("✗ Usage: aio app add <name> [command]")
             print("\nExamples:")
-            print("  aio app add server 'python -m http.server 8000'")
-            print("  aio app add docker 'docker ps -a'")
-            print("  aio app add myproject 'cd ~/projects/myproject && code .'")
-            print("\n💡 Tip: Run from project directory to auto-add path")
+            print("  From project dir: aio app add test 'pytest'")
+            print("                   → Creates: cd <current-dir> && pytest")
+            print("  Global command:  aio app add docker --global 'docker ps -a'")
+            print("                   → Runs from anywhere")
+            print("\n💡 Default: Commands include current directory automatically")
+            print("   Use --global to run from anywhere")
             sys.exit(1)
 
-        # Check for --here flag
-        add_here = '--here' in sys.argv or '-h' in sys.argv
-        if add_here:
+        # Check for --no-dir flag (to skip adding directory context)
+        no_dir = '--no-dir' in sys.argv or '--global' in sys.argv
+        if no_dir:
             # Remove the flag from argv for command processing
-            sys.argv = [arg for arg in sys.argv if arg not in ['--here', '-h']]
+            sys.argv = [arg for arg in sys.argv if arg not in ['--no-dir', '--global']]
 
         # Get command (everything after the name)
         if len(sys.argv) > 4:
@@ -2603,14 +2606,12 @@ elif arg == 'app' or arg == 'apps':
             current_dir = os.getcwd()
             home_dir = os.path.expanduser('~')
 
-            if current_dir != home_dir and not add_here:
-                # Suggest including directory
+            if current_dir != home_dir and not no_dir:
+                # Show that we'll add directory context
                 rel_path = current_dir.replace(home_dir, '~') if current_dir.startswith(home_dir) else current_dir
                 print(f"📍 Current directory: {rel_path}")
-                print(f"💡 The command will run from wherever you call it.")
-                print(f"   To always run from this directory, prefix with:")
-                print(f"   cd {rel_path} && <your command>")
-                print(f"   Or use: aio app add {app_name} --here <command>")
+                print(f"💡 App will run from this directory by default")
+                print(f"   To run from anywhere, use: aio app add {app_name} --global")
                 print("")
 
             print("Enter the command to run (or 'cancel' to abort):")
@@ -2630,27 +2631,25 @@ elif arg == 'app' or arg == 'apps':
             app_command = app_command[1:-1]
             print(f"ℹ️ Removed brackets from command: {app_command}")
 
-        # If --here flag, add directory context
+        # Add directory context by default (unless in home, command has cd, or --no-dir flag)
         current_dir = os.getcwd()
         home_dir = os.path.expanduser('~')
 
-        if add_here:
-            # Always add current directory with --here flag
+        should_add_dir = (
+            not no_dir and  # User didn't explicitly skip directory
+            current_dir != home_dir and  # Not in home directory
+            not app_command.startswith('cd ')  # Command doesn't already have cd
+        )
+
+        if should_add_dir:
+            # Add current directory to the command
             rel_path = current_dir.replace(home_dir, '~') if current_dir.startswith(home_dir) else current_dir
             app_command = f"cd {rel_path} && {app_command}"
             print(f"📍 Added directory context: {rel_path}")
-        elif current_dir != home_dir and not app_command.startswith('cd '):
-            # Only prompt interactively if we're in interactive mode (no command on CLI)
-            if len(sys.argv) <= 4:
-                # Interactive mode - ask user if they want to add directory context
-                rel_path = current_dir.replace(home_dir, '~') if current_dir.startswith(home_dir) else current_dir
-                print(f"\n💡 Want to always run from {rel_path}?")
-                print(f"   Add 'cd {rel_path} && ' to your command")
-                print(f"   Or use: aio app add {app_name} --here")
-            else:
-                # Command provided on CLI - just show a tip
-                rel_path = current_dir.replace(home_dir, '~') if current_dir.startswith(home_dir) else current_dir
-                print(f"💡 Tip: Use --here flag to auto-add current directory ({rel_path})")
+            print(f"   (Use --global to skip directory context)")
+        elif current_dir != home_dir and no_dir:
+            # User explicitly skipped directory context
+            print(f"💡 App will run from any directory (--global flag used)")
 
         # Add the app
         success, message = add_app(app_name, app_command)
