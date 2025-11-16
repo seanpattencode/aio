@@ -1371,20 +1371,18 @@ def get_noninteractive_git_env():
     """Get environment for non-interactive git operations (no GUI dialogs)"""
     env = os.environ.copy()
 
-    # CRITICAL: Remove variables that enable GUI dialogs
-    env.pop('SSH_AUTH_SOCK', None)  # Remove GNOME Keyring SSH agent (causes GUI!)
-    env.pop('DISPLAY', None)         # Remove X11 display (prevents ANY GUI!)
+    # Keep SSH_AUTH_SOCK for SSH key authentication
+    # Only remove DISPLAY to prevent GUI dialogs
+    env.pop('DISPLAY', None)         # Remove X11 display (prevents GUI dialogs)
     env.pop('GPG_AGENT_INFO', None)  # Remove GPG agent that might prompt
 
-    # Clear ALL credential helpers using Git's config environment variables
-    env['GIT_CONFIG_COUNT'] = '1'
-    env['GIT_CONFIG_KEY_0'] = 'credential.helper'
-    env['GIT_CONFIG_VALUE_0'] = ''  # Empty = clear all helpers
+    # Don't clear credential helpers - let them work if configured
+    # This allows HTTPS credentials to work if already cached
 
-    # Disable terminal prompts
+    # Still disable terminal prompts to prevent hanging
     env['GIT_TERMINAL_PROMPT'] = '0'
 
-    # For SSH operations, disable askpass programs
+    # Disable GUI askpass but allow SSH agent to work
     env['SSH_ASKPASS'] = ''  # Empty = disable SSH GUI prompts
     env['GIT_ASKPASS'] = ''  # Empty = disable Git GUI prompts
 
@@ -2820,9 +2818,15 @@ elif arg == 'push':
             error_msg = result.stderr.strip() or result.stdout.strip()
             if 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
                 print(f"❌ Authentication failed. Please set up git credentials:")
-                print(f"   • For SSH: Add SSH key to your Git provider")
-                print(f"   • For HTTPS: Run 'git config --global credential.helper cache'")
-                print(f"   • Then manually 'git push' once to save credentials")
+                print(f"   • For SSH (recommended):")
+                print(f"     1. Check if you have an SSH key: ls ~/.ssh/id_*.pub")
+                print(f"     2. If not, generate one: ssh-keygen -t ed25519")
+                print(f"     3. Add to GitHub: gh ssh-key add ~/.ssh/id_ed25519.pub")
+                print(f"     4. Test: ssh -T git@github.com")
+                print(f"   • For HTTPS:")
+                print(f"     1. Run: git config --global credential.helper cache")
+                print(f"     2. Then: git push (will prompt for username/token)")
+                print(f"   • Quick fix: Run 'git push' manually once to authenticate")
             else:
                 print(f"✗ Push failed: {error_msg}")
             sys.exit(1)
