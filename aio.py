@@ -1217,18 +1217,28 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
     print(f"Path: {worktree_path}")
     print(f"Project: {project_path}")
     if push:
-        print(f"Action: Remove worktree, delete branch, switch to main, AND PUSH to main branch")
+        print(f"⚠️  WARNING: This will PUSH changes to the main branch!")
+        print(f"Action: Remove worktree, delete branch, AND PUSH to origin/main")
         if commit_msg:
             print(f"Commit message: {commit_msg}")
     else:
-        print(f"Action: Remove worktree and delete branch (no push)")
+        print(f"Action: Remove worktree and delete branch (local only, no push)")
 
-    if not skip_confirm:
+    # Push operations ALWAYS require explicit confirmation for safety
+    if push:
+        # Always require confirmation for push, even with --yes flag
+        response = input("\n⚠️  CONFIRM PUSH TO MAIN? Type 'yes' to continue: ").strip().lower()
+        if response != 'yes':
+            print("✗ Cancelled (must type 'yes' for push operations)")
+            return False
+    elif not skip_confirm:
+        # Non-push operations can be skipped with --yes
         response = input("\nAre you sure? (y/n): ").strip().lower()
         if response not in ['y', 'yes']:
             print("✗ Cancelled")
             return False
     else:
+        # Only for non-push operations with --yes flag
         print("\n⚠ Confirmation skipped (--yes flag)")
 
     print(f"\nRemoving worktree: {worktree_name}")
@@ -2489,7 +2499,8 @@ elif arg == 'review':
             # Action commands
             elif action == '1':
                 msg = input("Commit msg (Enter=default): ").strip() or f"Merge {wt_name}"
-                if remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=True):
+                # Get confirmation for push operation (don't skip_confirm for push)
+                if remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=False):
                     print("✓ Worktree removed and pushed")
                     break
                 else:
