@@ -1667,6 +1667,11 @@ GIT:
   aio push ["msg"]    Quick commit and push
   aio pull            Replace local with server (destructive)
   aio revert [N]      Undo last N commits (default: 1)
+APP MANAGEMENT:
+  aio app             List all configured apps
+  aio app add <name>  Add app (interactive if no command given)
+  aio app edit <#>    Edit app command
+  aio app rm <#>      Remove app
 SETUP:
   aio install         Install as global 'aio' command
   aio add [path]      Add project to saved list
@@ -1789,6 +1794,22 @@ MANUAL BACKUP:
 • Create manual backup: Use backup_database("label") in Python
 • Restore from backup: aio restore <filename>
 • Backups use SQLite's .backup() method (safe, atomic, consistent)
+═══════════════════════════════════════════════════════════════════════════════
+APP MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════
+Apps are custom commands you can run quickly with aio:
+• List apps: aio app
+• Add app: aio app add <name> [command]
+  - If no command given, prompts interactively
+  - Example: aio app add server 'python -m http.server 8000'
+  - Example: aio app add docker 'docker ps -a'
+• Edit app: aio app edit <#|name>
+  - Can use app number or name
+  - Prompts for new command interactively
+• Remove app: aio app rm <#|name>
+  - Removes app with confirmation
+• Run app: aio <#>
+  - Use the app's number from the list
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════════════════════════════════
@@ -2517,6 +2538,174 @@ elif arg == 'p':
         for i, (app_name, app_cmd) in enumerate(APPS):
             cmd_display = format_app_command(app_cmd)
             print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
+elif arg == 'app' or arg == 'apps':
+    # App management commands
+    subcommand = work_dir_arg
+
+    if not subcommand or subcommand == 'list':
+        # List all apps
+        if not APPS:
+            print("No apps configured yet.")
+            print("\n💡 Add your first app:")
+            print("   aio app add myapp 'echo Hello World'")
+        else:
+            print("⚡ CONFIGURED APPS:")
+            for i, (app_name, app_cmd) in enumerate(APPS):
+                cmd_display = format_app_command(app_cmd)
+                app_idx = len(PROJECTS) + i
+                print(f"  [{app_idx}] {app_name} → {cmd_display}")
+            print(f"\n💡 Commands:")
+            print(f"   aio app add <name> [command]  - Add new app")
+            print(f"   aio app edit <#|name>         - Edit app command")
+            print(f"   aio app rm <#|name>           - Remove app")
+            print(f"   aio <#>                       - Run app by number")
+
+    elif subcommand == 'add':
+        # Get app name (third argument)
+        app_name = sys.argv[3] if len(sys.argv) > 3 else None
+
+        if not app_name:
+            print("✗ Usage: aio app add <name> [command]")
+            print("\nExamples:")
+            print("  aio app add server 'python -m http.server 8000'")
+            print("  aio app add docker 'docker ps -a'")
+            print("  aio app add myproject 'cd ~/projects/myproject && code .'")
+            sys.exit(1)
+
+        # Get command (everything after the name)
+        if len(sys.argv) > 4:
+            # Command provided on command line
+            app_command = ' '.join(sys.argv[4:])
+        else:
+            # Interactive prompt for command
+            print(f"Adding app: {app_name}")
+            print("Enter the command to run (or 'cancel' to abort):")
+            app_command = input("> ").strip()
+
+            if app_command.lower() == 'cancel':
+                print("✗ Cancelled")
+                sys.exit(0)
+
+        if not app_command:
+            print("✗ Command cannot be empty")
+            sys.exit(1)
+
+        # Add the app
+        success, message = add_app(app_name, app_command)
+        if success:
+            print(f"✓ {message}")
+
+            # Show the new app list
+            APPS_NEW = load_apps()
+            print(f"\n⚡ APPS:")
+            for i, (name, cmd) in enumerate(APPS_NEW):
+                cmd_display = format_app_command(cmd)
+                app_idx = len(PROJECTS) + i
+                print(f"  [{app_idx}] {name} → {cmd_display}")
+        else:
+            print(f"✗ {message}")
+            sys.exit(1)
+
+    elif subcommand == 'edit':
+        # Get app identifier (number or name)
+        app_id = sys.argv[3] if len(sys.argv) > 3 else None
+
+        if not app_id:
+            print("✗ Usage: aio app edit <#|name>")
+            sys.exit(1)
+
+        # Find the app
+        app_index = None
+        app_name = None
+        app_command = None
+
+        if app_id.isdigit():
+            # User provided global index
+            idx = int(app_id)
+            app_idx = idx - len(PROJECTS)
+            if 0 <= app_idx < len(APPS):
+                app_index = app_idx
+                app_name, app_command = APPS[app_idx]
+        else:
+            # User provided name - search for it
+            for i, (name, cmd) in enumerate(APPS):
+                if name.lower() == app_id.lower():
+                    app_index = i
+                    app_name = name
+                    app_command = cmd
+                    break
+
+        if app_index is None:
+            print(f"✗ App not found: {app_id}")
+            sys.exit(1)
+
+        # Show current command and prompt for new one
+        print(f"Editing app: {app_name}")
+        print(f"Current command: {format_app_command(app_command)}")
+        print("\nEnter new command (or press Enter to keep current):")
+        new_command = input("> ").strip()
+
+        if new_command:
+            # Update the app in database
+            with WALManager(DB_PATH) as conn:
+                with conn:
+                    conn.execute("UPDATE apps SET command = ? WHERE name = ?",
+                               (new_command, app_name))
+            print(f"✓ Updated app: {app_name}")
+            print(f"   New command: {format_app_command(new_command)}")
+        else:
+            print("✗ No changes made")
+
+    elif subcommand == 'rm' or subcommand == 'remove' or subcommand == 'delete':
+        # Get app identifier (number or name)
+        app_id = sys.argv[3] if len(sys.argv) > 3 else None
+
+        if not app_id:
+            print("✗ Usage: aio app rm <#|name>")
+            sys.exit(1)
+
+        # Find the app
+        app_index = None
+        app_name = None
+
+        if app_id.isdigit():
+            # User provided global index
+            idx = int(app_id)
+            app_idx = idx - len(PROJECTS)
+            if 0 <= app_idx < len(APPS):
+                app_index = app_idx
+                app_name = APPS[app_idx][0]
+        else:
+            # User provided name - search for it
+            for i, (name, cmd) in enumerate(APPS):
+                if name.lower() == app_id.lower():
+                    app_index = i
+                    app_name = name
+                    break
+
+        if app_index is None:
+            print(f"✗ App not found: {app_id}")
+            sys.exit(1)
+
+        # Confirm deletion
+        print(f"Delete app '{app_name}'? (y/n):")
+        response = input("> ").strip().lower()
+
+        if response in ['y', 'yes']:
+            success, message = remove_app(app_index)
+            if success:
+                print(f"✓ {message}")
+            else:
+                print(f"✗ {message}")
+        else:
+            print("✗ Cancelled")
+    else:
+        print(f"✗ Unknown app command: {subcommand}")
+        print("\nAvailable commands:")
+        print("  aio app         - List all apps")
+        print("  aio app add     - Add a new app")
+        print("  aio app edit    - Edit an app")
+        print("  aio app rm      - Remove an app")
 elif arg == 'add':
     # Add a project to saved list
     if work_dir_arg:
