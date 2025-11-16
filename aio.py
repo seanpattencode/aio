@@ -1518,8 +1518,18 @@ if arg and arg.isdigit() and not work_dir_arg:
     elif 0 <= idx - len(PROJECTS) < len(APPS):
         # Execute app command
         app_name, app_command = APPS[idx - len(PROJECTS)]
-        print(f"▶️  Running app {idx}: {app_name}")
-        print(f"Command: {app_command}")
+
+        # Extract directory for cleaner display
+        if app_command.startswith('cd ') and ' && ' in app_command:
+            parts = app_command.split(' && ', 1)
+            dir_path = parts[0].replace('cd ', '').strip()
+            # Simplify home directory path
+            if dir_path.startswith(os.path.expanduser('~')):
+                dir_path = dir_path.replace(os.path.expanduser('~'), '~')
+            print(f"▶️  {app_name} → {dir_path}")
+        else:
+            print(f"▶️  {app_name}")
+
         os.system(app_command)
         sys.exit(0)
     else:
@@ -1664,7 +1674,18 @@ Run 'aio help' for detailed documentation""")
             exists = "✓" if os.path.exists(proj) else "✗"
             print(f"  {i}. {exists} {proj}")
         for i, (app_name, app_cmd) in enumerate(APPS):
-            print(f"  {len(PROJECTS) + i}. [APP] {app_name}: {app_cmd}")
+            # Extract directory from cd commands for cleaner display
+            if app_cmd.startswith('cd ') and ' && ' in app_cmd:
+                parts = app_cmd.split(' && ', 1)
+                dir_path = parts[0].replace('cd ', '').strip()
+                # Simplify home directory path
+                if dir_path.startswith(os.path.expanduser('~')):
+                    dir_path = dir_path.replace(os.path.expanduser('~'), '~')
+                print(f"  {len(PROJECTS) + i}. {app_name} → {dir_path}")
+            else:
+                # For non-cd commands, just show the app name and a simplified command
+                cmd_display = app_cmd if len(app_cmd) <= 50 else app_cmd[:47] + "..."
+                print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'help' or arg == '--help' or arg == '-h':
     print(f"""aio - AI agent session manager (DETAILED HELP)
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1806,7 +1827,18 @@ Saved projects & apps (examples: 'aio 0' opens project 0, 'aio 10' runs first ap
         exists = "✓" if os.path.exists(proj) else "✗"
         print(f"  {i}. {exists} {proj}")
     for i, (app_name, app_cmd) in enumerate(APPS):
-        print(f"  {len(PROJECTS) + i}. [APP] {app_name}: {app_cmd}")
+        # Extract directory from cd commands for cleaner display
+        if app_cmd.startswith('cd ') and ' && ' in app_cmd:
+            parts = app_cmd.split(' && ', 1)
+            dir_path = parts[0].replace('cd ', '').strip()
+            # Simplify home directory path
+            if dir_path.startswith(os.path.expanduser('~')):
+                dir_path = dir_path.replace(os.path.expanduser('~'), '~')
+            print(f"  {len(PROJECTS) + i}. {app_name} → {dir_path}")
+        else:
+            # For non-cd commands, just show the app name and a simplified command
+            cmd_display = app_cmd if len(app_cmd) <= 50 else app_cmd[:47] + "..."
+            print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'install':
     # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
@@ -2479,7 +2511,18 @@ elif arg == 'p':
         exists = "✓" if os.path.exists(proj) else "✗"
         print(f"  {i}. {exists} {proj}")
     for i, (app_name, app_cmd) in enumerate(APPS):
-        print(f"  {len(PROJECTS) + i}. [APP] {app_name}: {app_cmd}")
+        # Extract directory from cd commands for cleaner display
+        if app_cmd.startswith('cd ') and ' && ' in app_cmd:
+            parts = app_cmd.split(' && ', 1)
+            dir_path = parts[0].replace('cd ', '').strip()
+            # Simplify home directory path
+            if dir_path.startswith(os.path.expanduser('~')):
+                dir_path = dir_path.replace(os.path.expanduser('~'), '~')
+            print(f"  {len(PROJECTS) + i}. {app_name} → {dir_path}")
+        else:
+            # For non-cd commands, just show the app name and a simplified command
+            cmd_display = app_cmd if len(app_cmd) <= 50 else app_cmd[:47] + "..."
+            print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'add':
     # Add a project to saved list
     if work_dir_arg:
