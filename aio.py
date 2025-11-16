@@ -1367,6 +1367,17 @@ elif work_dir_arg:
 else:
     work_dir = WORK_DIR
 
+def format_app_command(app_cmd, max_length=60):
+    """Format app command for display, truncating if necessary."""
+    # Simplify home directory paths
+    display_cmd = app_cmd.replace(os.path.expanduser('~'), '~')
+
+    # Truncate if too long
+    if len(display_cmd) > max_length:
+        display_cmd = display_cmd[:max_length-3] + "..."
+
+    return display_cmd
+
 def get_noninteractive_git_env():
     """Get environment for non-interactive git operations (no GUI dialogs)"""
     env = os.environ.copy()
@@ -1519,16 +1530,10 @@ if arg and arg.isdigit() and not work_dir_arg:
         # Execute app command
         app_name, app_command = APPS[idx - len(PROJECTS)]
 
-        # Extract directory for cleaner display
-        if app_command.startswith('cd ') and ' && ' in app_command:
-            parts = app_command.split(' && ', 1)
-            dir_path = parts[0].replace('cd ', '').strip()
-            # Simplify home directory path
-            if dir_path.startswith(os.path.expanduser('~')):
-                dir_path = dir_path.replace(os.path.expanduser('~'), '~')
-            print(f"▶️  {app_name} → {dir_path}")
-        else:
-            print(f"▶️  {app_name}")
+        # Display what we're running
+        cmd_display = format_app_command(app_command)
+        print(f"▶️  Running: {app_name}")
+        print(f"   Command: {cmd_display}")
 
         os.system(app_command)
         sys.exit(0)
@@ -1669,22 +1674,18 @@ SETUP:
 Working directory: {WORK_DIR}
 Run 'aio help' for detailed documentation""")
     if PROJECTS or APPS:
-        print(f"Saved projects & apps (use 'aio <#>' or 'aio -w <#>'):")
-        for i, proj in enumerate(PROJECTS):
-            exists = "✓" if os.path.exists(proj) else "✗"
-            print(f"  {i}. {exists} {proj}")
-        for i, (app_name, app_cmd) in enumerate(APPS):
-            # Extract directory from cd commands for cleaner display
-            if app_cmd.startswith('cd ') and ' && ' in app_cmd:
-                parts = app_cmd.split(' && ', 1)
-                dir_path = parts[0].replace('cd ', '').strip()
-                # Simplify home directory path
-                if dir_path.startswith(os.path.expanduser('~')):
-                    dir_path = dir_path.replace(os.path.expanduser('~'), '~')
-                print(f"  {len(PROJECTS) + i}. {app_name} → {dir_path}")
-            else:
-                # For non-cd commands, just show the app name and a simplified command
-                cmd_display = app_cmd if len(app_cmd) <= 50 else app_cmd[:47] + "..."
+        if PROJECTS:
+            print("📁 PROJECTS (use 'aio <#>' to open):")
+            for i, proj in enumerate(PROJECTS):
+                exists = "✓" if os.path.exists(proj) else "✗"
+                print(f"  {i}. {exists} {proj}")
+
+        if APPS:
+            if PROJECTS:
+                print("")  # Add blank line between sections
+            print("⚡ APPS (use 'aio <#>' to run):")
+            for i, (app_name, app_cmd) in enumerate(APPS):
+                cmd_display = format_app_command(app_cmd)
                 print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'help' or arg == '--help' or arg == '-h':
     print(f"""aio - AI agent session manager (DETAILED HELP)
@@ -1822,22 +1823,19 @@ NOTES:
 • Mouse mode enabled: Hold Shift to select and copy text
 • Database stores: projects, sessions, prompts, configuration
 Working directory: {WORK_DIR}
-Saved projects & apps (examples: 'aio 0' opens project 0, 'aio 10' runs first app):""")
-    for i, proj in enumerate(PROJECTS):
-        exists = "✓" if os.path.exists(proj) else "✗"
-        print(f"  {i}. {exists} {proj}")
-    for i, (app_name, app_cmd) in enumerate(APPS):
-        # Extract directory from cd commands for cleaner display
-        if app_cmd.startswith('cd ') and ' && ' in app_cmd:
-            parts = app_cmd.split(' && ', 1)
-            dir_path = parts[0].replace('cd ', '').strip()
-            # Simplify home directory path
-            if dir_path.startswith(os.path.expanduser('~')):
-                dir_path = dir_path.replace(os.path.expanduser('~'), '~')
-            print(f"  {len(PROJECTS) + i}. {app_name} → {dir_path}")
-        else:
-            # For non-cd commands, just show the app name and a simplified command
-            cmd_display = app_cmd if len(app_cmd) <= 50 else app_cmd[:47] + "..."
+""")
+    if PROJECTS:
+        print("📁 PROJECTS (examples: 'aio 0' opens project 0):")
+        for i, proj in enumerate(PROJECTS):
+            exists = "✓" if os.path.exists(proj) else "✗"
+            print(f"  {i}. {exists} {proj}")
+
+    if APPS:
+        if PROJECTS:
+            print("")  # Add blank line between sections
+        print("⚡ APPS (examples: 'aio {0}' runs first app):".format(len(PROJECTS)))
+        for i, (app_name, app_cmd) in enumerate(APPS):
+            cmd_display = format_app_command(app_cmd)
             print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'install':
     # Install aio as a global command
@@ -2506,22 +2504,18 @@ elif arg == 'cleanup':
         print(f"✗ Failed: {failed_count}")
     print(f"{'='*60}")
 elif arg == 'p':
-    print("Saved Projects & Apps:")
-    for i, proj in enumerate(PROJECTS):
-        exists = "✓" if os.path.exists(proj) else "✗"
-        print(f"  {i}. {exists} {proj}")
-    for i, (app_name, app_cmd) in enumerate(APPS):
-        # Extract directory from cd commands for cleaner display
-        if app_cmd.startswith('cd ') and ' && ' in app_cmd:
-            parts = app_cmd.split(' && ', 1)
-            dir_path = parts[0].replace('cd ', '').strip()
-            # Simplify home directory path
-            if dir_path.startswith(os.path.expanduser('~')):
-                dir_path = dir_path.replace(os.path.expanduser('~'), '~')
-            print(f"  {len(PROJECTS) + i}. {app_name} → {dir_path}")
-        else:
-            # For non-cd commands, just show the app name and a simplified command
-            cmd_display = app_cmd if len(app_cmd) <= 50 else app_cmd[:47] + "..."
+    if PROJECTS:
+        print("📁 PROJECTS:")
+        for i, proj in enumerate(PROJECTS):
+            exists = "✓" if os.path.exists(proj) else "✗"
+            print(f"  {i}. {exists} {proj}")
+
+    if APPS:
+        if PROJECTS:
+            print("")  # Add blank line between sections
+        print("⚡ APPS:")
+        for i, (app_name, app_cmd) in enumerate(APPS):
+            cmd_display = format_app_command(app_cmd)
             print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'add':
     # Add a project to saved list
