@@ -10,43 +10,8 @@ import time
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def auto_update():
-    """Auto-update script from git repository if available."""
-    # Check if we're in a git repo
-    result = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', '--git-dir'],
-                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-
-    if result.returncode != 0:
-        return  # Not in a git repo, skip update
-
-    # Get current commit hash
-    before = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', 'HEAD'],
-                    capture_output=True, text=True)
-
-    if before.returncode != 0:
-        return
-
-    before_hash = before.stdout.strip()
-
-    # Pull latest changes (fast-forward only, silent)
-    sp.run(['git', '-C', SCRIPT_DIR, 'pull', '--ff-only'],
-           stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-
-    # Get new commit hash
-    after = sp.run(['git', '-C', SCRIPT_DIR, 'rev-parse', 'HEAD'],
-                   capture_output=True, text=True)
-
-    if after.returncode != 0:
-        return
-
-    after_hash = after.stdout.strip()
-
-    # If updated, re-exec with same arguments
-    if before_hash != after_hash:
-        os.execv(sys.executable, [sys.executable, __file__] + sys.argv[1:])
-
-# Run auto-update before anything else
-auto_update()
+# Auto-update disabled for instant startup
+# To update: git pull in the aios directory
 
 # Database setup
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
@@ -434,8 +399,8 @@ def ensure_tmux_mouse_mode():
     if result.returncode == 0:
         print("✓ Enabled tmux mouse mode for scrolling")
 
-# Ensure tmux mouse mode is enabled
-ensure_tmux_mouse_mode()
+# Tmux mouse mode check disabled for instant startup
+# ensure_tmux_mouse_mode()
 
 def detect_terminal():
     """Detect available terminal emulator"""
@@ -1370,8 +1335,8 @@ if with_terminal:
     # with_terminal implies new_window for the session
     new_window = True
 
-# Auto-backup check (git-style: fork if needed, returns immediately)
-auto_backup_check()
+# Auto-backup check disabled for instant startup
+# auto_backup_check()
 
 # Check if arg is actually a directory/number (not a session key or worktree command)
 is_directory_only = new_window and arg and not arg.startswith('+') and not arg.endswith('--') and not arg.startswith('w') and arg not in sessions
@@ -1645,21 +1610,7 @@ if new_window and not arg:
     sys.exit(0)
 
 if not arg:
-    # Check if there are worktrees needing review
-    review_count = 0
-    if os.path.exists(WORKTREES_DIR):
-        worktrees = get_worktrees_sorted_by_datetime()
-        for wt_name in worktrees:
-            wt_path = os.path.join(WORKTREES_DIR, wt_name)
-            session = get_session_for_worktree(wt_path)
-            if not session or not is_pane_receiving_output(session):
-                review_count += 1
-
-    review_notice = ""
-    if review_count > 0:
-        review_notice = f"\n💡 You have {review_count} worktrees ready for review! Run: aio review\n"
-
-    print(f"""aio - AI agent session manager{review_notice}
+    print(f"""aio - AI agent session manager
 QUICK START:
   aio c               Start codex in current directory
   aio cp              Start codex with prompt (can edit before running)
