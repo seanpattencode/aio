@@ -2855,16 +2855,40 @@ elif arg == 'remove':
         sys.exit(1)
 
     index = int(work_dir_arg)
-    success, message = remove_project(index)
+
+    # Load current projects and apps to determine which to remove
+    current_projects = load_projects()
+    current_apps = load_apps()
+
+    # Check if index is for a project or an app
+    if index < len(current_projects):
+        # Remove project
+        success, message = remove_project(index)
+        item_type = "project"
+    elif index < len(current_projects) + len(current_apps):
+        # Remove app (adjust index)
+        app_index = index - len(current_projects)
+        success, message = remove_app(app_index)
+        item_type = "app"
+    else:
+        print(f"✗ Invalid index: {index}")
+        sys.exit(1)
+
     if success:
         print(f"✓ {message}")
         auto_backup_check()  # Backup after database modification
-        print("\nUpdated project list:")
-        # Reload and display projects
-        updated_projects = load_projects()
-        for i, proj in enumerate(updated_projects):
-            exists = "✓" if os.path.exists(proj) else "✗"
-            print(f"  {i}. {exists} {proj}")
+        print(f"\nUpdated {item_type} list:")
+        # Reload and display projects or apps
+        if item_type == "project":
+            updated_projects = load_projects()
+            for i, proj in enumerate(updated_projects):
+                exists = "✓" if os.path.exists(proj) else "✗"
+                print(f"  {i}. {exists} {proj}")
+        else:
+            updated_apps = load_apps()
+            offset = len(load_projects())
+            for i, (name, cmd) in enumerate(updated_apps):
+                print(f"  {i + offset}. {name}: {cmd}")
     else:
         print(f"✗ {message}")
         sys.exit(1)
