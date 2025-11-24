@@ -3112,8 +3112,18 @@ elif arg == 'push':
             print(f"✓ Pushed to {main_branch}")
         else:
             error_msg = result.stderr.strip() or result.stdout.strip()
-            print(f"✗ Push failed: {error_msg}")
-            sys.exit(1)
+            if 'rejected' in error_msg and 'non-fast-forward' in error_msg:
+                print(f"⚠️  Push rejected - remote has diverged. Force pushing...")
+                result = sp.run(['git', '-C', project_path, 'push', '--force-with-lease', 'origin', main_branch],
+                                capture_output=True, text=True, env=env)
+                if result.returncode == 0:
+                    print(f"✓ Force pushed to {main_branch} (remote was overwritten)")
+                else:
+                    print(f"✗ Force push failed: {result.stderr.strip()}")
+                    sys.exit(1)
+            else:
+                print(f"✗ Push failed: {error_msg}")
+                sys.exit(1)
 
         # Auto-pull to sync main project with remote
         print(f"→ Syncing main project with remote...")
@@ -3208,7 +3218,16 @@ elif arg == 'push':
             print("✓ Pushed to remote")
         else:
             error_msg = result.stderr.strip() or result.stdout.strip()
-            if 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
+            if 'rejected' in error_msg and 'non-fast-forward' in error_msg:
+                print("⚠️  Push rejected - remote has diverged. Force pushing...")
+                result = sp.run(['git', '-C', cwd, 'push', '--force-with-lease'],
+                                capture_output=True, text=True, env=env)
+                if result.returncode == 0:
+                    print("✓ Force pushed to remote (remote was overwritten)")
+                else:
+                    print(f"✗ Force push failed: {result.stderr.strip()}")
+                    sys.exit(1)
+            elif 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
                 print(f"❌ Authentication failed. Please set up git credentials:")
                 print(f"   • For SSH (recommended):")
                 print(f"     1. Check if you have an SSH key: ls ~/.ssh/id_*.pub")
