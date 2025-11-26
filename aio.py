@@ -1137,7 +1137,8 @@ def get_worktrees_sorted_by_datetime():
         return []
 
     items = [d for d in os.listdir(WORKTREES_DIR)
-             if os.path.isdir(os.path.join(WORKTREES_DIR, d))]
+             if os.path.isdir(os.path.join(WORKTREES_DIR, d)) and
+             os.path.exists(os.path.join(WORKTREES_DIR, d, '.git'))]
 
     if not items:
         return []
@@ -2547,32 +2548,14 @@ elif arg == 'review':
                 pass
 
         # Check for agent session first (session name = worktree name)
-        agent_session_exists = sm.has_session(wt_name)
-        session_to_attach = None
-
-        if agent_session_exists:
+        if sm.has_session(wt_name):
             # Agent session exists - attach to see agent's work
             print(f"🤖 Found agent session: {wt_name}")
             print(f"💡 Review agent output, then detach: Ctrl+B D")
-            session_to_attach = wt_name
+            print(f"Opening: {wt_path}\n")
+            sp.run(sm.attach(wt_name))
         else:
-            # No agent session - create review session for browsing
-            print(f"📁 No agent session, creating file browser")
-            print(f"💡 Browse files, then detach: Ctrl+B D")
-            session_to_attach = f"review-{idx}"
-
-            # Kill any old review session
-            sp.run(['tmux', 'kill-session', '-t', session_to_attach],
-                   stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-
-            # Create new session in worktree directory
-            if create_tmux_session(session_to_attach, wt_path, None).returncode != 0:
-                print(f"✗ Failed to create session")
-                continue
-
-        # Attach to session (blocks until detach)
-        print(f"Opening: {wt_path}\n")
-        sp.run(['tmux', 'attach-session', '-t', session_to_attach])
+            print(f"📁 No agent session (use t=terminal to browse)")
 
         # Review options
         print(f"\n📁 Inspect: l=ls  g=git-status  d=diff  h=log  t=terminal  v=vscode")
