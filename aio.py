@@ -9,7 +9,8 @@ import time
 
 # Session Manager abstraction - auto-detect tmux or zellij
 def which(cmd): return sp.run(['which', cmd], capture_output=True).returncode == 0
-def find_zellij(): return '/tmp/zellij/bootstrap/zellij' if os.path.exists('/tmp/zellij/bootstrap/zellij') else 'zellij' if which('zellij') else None
+ZELLIJ_PATH = os.path.expanduser('~/.local/bin/zellij')
+def find_zellij(): return ZELLIJ_PATH if os.path.exists(ZELLIJ_PATH) else '/tmp/zellij/bootstrap/zellij' if os.path.exists('/tmp/zellij/bootstrap/zellij') else 'zellij' if which('zellij') else None
 
 class SessionManager:
     def new_session(self, n, d, c, e=None): return self._new(n, d, c, e)
@@ -38,7 +39,7 @@ class ZellijManager(SessionManager):
 
 z = find_zellij()
 sm = ZellijManager(z) if z else TmuxManager()  # Use zellij if available, otherwise tmux
-if not os.path.exists('/tmp/zellij/bootstrap/zellij'): print("⚠ Zellij not found at /tmp/zellij/bootstrap/zellij - using tmux", file=sys.stderr)
+if not z: print("⚠ Zellij not found - using tmux. Run 'aio deps' to install dependencies.", file=sys.stderr)
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1763,6 +1764,7 @@ APP MANAGEMENT:
   aio app rm <#|name>      Remove app
 SETUP:
   aio install         Install as global 'aio' command
+  aio deps            Install dependencies (zellij, codex)
   aio update          Update aio to latest version from git
   aio add [path]      Add project to saved list
   aio remove <#>      Remove project from list
@@ -1862,6 +1864,7 @@ Note: Works in any git directory, not just worktrees
 SETUP & CONFIGURATION
 ═══════════════════════════════════════════════════════════════════════════════
   aio install            Install as global 'aio' command
+  aio deps               Install dependencies (zellij, codex)
   aio update             Update aio to latest version from git
   aio x                  Kill all tmux sessions
 FLAGS:
@@ -1994,6 +1997,47 @@ elif arg == 'install':
         print(f"✓ You can now run 'aio' from anywhere!")
 
     print(f"\nThe script will auto-update from git on each run.")
+elif arg == 'deps':
+    # Install dependencies (zellij, codex)
+    import platform, urllib.request, tarfile
+    bin_dir = os.path.expanduser('~/.local/bin')
+    os.makedirs(bin_dir, exist_ok=True)
+    deps = [
+        ('zellij', ZELLIJ_PATH, lambda: None),  # placeholder, handled specially below
+        ('codex', None, lambda: sp.run(['npm', 'install', '-g', '@openai/codex'], check=True)),
+    ]
+    print("📦 Installing dependencies...")
+    # Zellij: download from GitHub releases
+    if not os.path.exists(ZELLIJ_PATH):
+        arch = 'x86_64' if platform.machine() in ('x86_64', 'AMD64') else 'aarch64'
+        url = f'https://github.com/zellij-org/zellij/releases/latest/download/zellij-{arch}-unknown-linux-musl.tar.gz'
+        print(f"⬇️  Downloading zellij from {url}...")
+        try:
+            tar_path = '/tmp/zellij.tar.gz'
+            urllib.request.urlretrieve(url, tar_path)
+            with tarfile.open(tar_path, 'r:gz') as tar:
+                tar.extract('zellij', bin_dir, filter='data')
+            os.chmod(ZELLIJ_PATH, 0o755)
+            os.remove(tar_path)
+            print(f"✓ Installed zellij to {ZELLIJ_PATH}")
+        except Exception as e:
+            print(f"✗ Failed to install zellij: {e}")
+    else:
+        print(f"✓ zellij already installed at {ZELLIJ_PATH}")
+    # Codex: install via npm
+    if which('npm'):
+        if not which('codex'):
+            print("⬇️  Installing codex via npm...")
+            try:
+                sp.run(['npm', 'install', '-g', '@openai/codex'], check=True)
+                print("✓ Installed codex")
+            except Exception as e:
+                print(f"✗ Failed to install codex: {e}")
+        else:
+            print("✓ codex already installed")
+    else:
+        print("⚠ npm not found - skipping codex install. Install Node.js first.")
+    print("\n✅ Dependency check complete!")
 elif arg == 'backups' or arg == 'backup':
     backups = list_backups()
     if not backups:
