@@ -2522,39 +2522,12 @@ elif arg == 'review':
         print("✓ No worktrees need review!")
         sys.exit(0)
 
-    # Start screen
-    print(f"\n📋 REVIEW MODE - {len(review_worktrees)} worktrees need review")
-    print("=" * 60)
-    print("\n📖 Instructions:")
-    print("  1. Opens agent session if available (codex/claude/gemini output)")
-    print("  2. Review agent's work, then detach: Ctrl+B then D")
-    print("  3. Inspect files: l=ls g=git d=diff h=log t=terminal v=vscode")
-    print("  4. Take action: 1=push+delete 2=delete 3=keep 4=stop")
-    print("\n💡 TIP: Hold Shift to select text in tmux")
-    print("=" * 60)
+    print(f"\n📋 REVIEW ({len(review_worktrees)})")
 
     for idx, (wt_name, wt_path) in enumerate(review_worktrees):
         print(f"\n[{idx+1}/{len(review_worktrees)}] {wt_name}")
-
-        # Show age if available
-        match = re.search(r'-(\d{8})-(\d{6})-', wt_name)
-        if match:
-            try:
-                created = datetime.strptime(f"{match.group(1)}{match.group(2)}", "%Y%m%d%H%M%S")
-                age = datetime.now() - created
-                print(f"Age: {age.days}d {age.seconds//3600}h")
-            except:
-                pass
-
-        # Check for agent session first (session name = worktree name)
         if sm.has_session(wt_name):
-            # Agent session exists - attach to see agent's work
-            print(f"🤖 Found agent session: {wt_name}")
-            print(f"💡 Review agent output, then detach: Ctrl+B D")
-            print(f"Opening: {wt_path}\n")
             sp.run(sm.attach(wt_name))
-        else:
-            print(f"📁 No agent session (use t=terminal to browse)")
 
         # Show commit message and changed lines only
         msg = sp.run(['git', '-C', wt_path, 'log', '-1', '--format=%s'], capture_output=True, text=True)
@@ -2569,32 +2542,13 @@ elif arg == 'review':
         stat = sp.run(['git', '-C', wt_path, 'diff', '--shortstat', diff_range], capture_output=True, text=True)
         print(stat.stdout.strip())
 
-        # Review options
-        print(f"\n📁 Inspect: l=ls  g=git-status  d=diff  h=log  t=terminal  v=vscode")
-        print(f"🎯 Action: 1=push+del  2=delete  3=keep  4=stop")
+        print(f"\nd=diff t=terminal v=vscode | 1=push 2=del 3=keep 4=stop")
 
         while True:
-            action = input("Choice: ").strip().lower()
-
-            # Inspection commands
-            if action == 'l':
-                result = sp.run(['ls', '-la', wt_path], capture_output=True, text=True)
-                print(result.stdout[:500])  # First 500 chars
-                continue
-            elif action == 'g':
-                result = sp.run(['git', '-C', wt_path, 'status', '--short'],
-                               capture_output=True, text=True)
-                print(result.stdout or "Clean")
-                continue
-            elif action == 'd':
-                result = sp.run(['git', '-C', wt_path, 'diff', 'HEAD~1', '--stat'],
-                               capture_output=True, text=True)
-                print(result.stdout[:500] or "No diff")
-                continue
-            elif action == 'h':
-                result = sp.run(['git', '-C', wt_path, 'log', '--oneline', '-5'],
-                               capture_output=True, text=True)
-                print(result.stdout or "No commits")
+            action = input(": ").strip().lower()
+            if action == 'd':
+                result = sp.run(['git', '-C', wt_path, 'diff', diff_range], capture_output=True, text=True)
+                print(result.stdout or "(no diff)")
                 continue
             elif action == 't':
                 terminal = detect_terminal()
