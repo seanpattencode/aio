@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, subprocess as sp
+import os, sys, subprocess as sp, json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +43,17 @@ if not z: print("⚠ Zellij not found - using tmux. Run 'aio deps' to install de
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROMPTS_FILE = os.path.join(SCRIPT_DIR, 'data', 'prompts.json')
+DEFAULT_PROMPTS = {
+    "fix": "Analyze codebase, find issues, fix them. {task}",
+    "bug": "Fix this bug: {task}",
+    "feat": "Add this feature: {task}"
+}
+
+def load_prompts():
+    try:
+        with open(PROMPTS_FILE) as f: return {**DEFAULT_PROMPTS, **json.load(f)}
+    except: return DEFAULT_PROMPTS
 
 def manual_update():
     """Update aio from git repository - explicit user command only."""
@@ -1711,10 +1722,9 @@ if not arg:
     print(f"""aio - AI agent session manager
 QUICK START:
   aio c               Start codex in current directory
-  aio cp              Start codex with prompt (can edit before running)
-  aio cpp             Start codex with prompt (auto-execute)
-  aio c++             Start codex in new worktree (current dir)
-  aio c++ 0           Start codex in new worktree (project 0)
+  aio fix "task"      AI finds/fixes issues (claude default)
+  aio bug "task"      Fix a bug (c=codex l=claude g=gemini)
+  aio feat "task"     Add feature: aio feat c "dark mode"
 MULTI-AGENT (run N agents in parallel worktrees):
   aio multi c:3                 Launch 3 codex (DEFAULT: 11-step protocol)
   aio multi c:3 "task"          Launch 3 codex with custom task
@@ -1964,6 +1974,20 @@ Working directory: {WORK_DIR}
 elif arg == 'update':
     # Explicitly update aio from git repository
     manual_update()
+elif arg in ('fix', 'bug', 'feat'):
+    # Prompt-based sessions: aio fix "task", aio fix c "task", aio fix l "task"
+    prompts = load_prompts()
+    args = sys.argv[2:]
+    agent = 'l'  # Default to claude
+    if args and args[0] in ('c', 'l', 'g'):
+        agent, args = args[0], args[1:]
+    task = ' '.join(args) if args else input(f"{arg}: ")
+    prompt = prompts[arg].format(task=task)
+    agent_name, cmd = sessions[agent]
+    session_name = f"{arg}-{agent}-{datetime.now().strftime('%H%M%S')}"
+    print(f"📝 {arg.upper()} [{agent_name}]: {task[:50]}{'...' if len(task) > 50 else ''}")
+    create_tmux_session(session_name, os.getcwd(), f"{cmd} {shlex.quote(prompt)}")
+    os.execvp(sm.attach(session_name)[0], sm.attach(session_name))
 elif arg == 'install':
     # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
@@ -2542,7 +2566,7 @@ elif arg == 'review':
         stat = sp.run(['git', '-C', wt_path, 'diff', '--shortstat', diff_range], capture_output=True, text=True)
         print(stat.stdout.strip())
 
-        print(f"\nd=diff t=terminal v=vscode | 1=push 2=del 3=keep 4=stop")
+        print(f"\nd=diff t=term v=code | 1=main 2=branch 3=del 4=keep 5=stop")
 
         while True:
             action = input(": ").strip().lower()
@@ -2551,37 +2575,26 @@ elif arg == 'review':
                 print(result.stdout or "(no diff)")
                 continue
             elif action == 't':
-                terminal = detect_terminal()
-                if terminal:
-                    launch_terminal_in_dir(wt_path, terminal)
-                    print("✓ Opened terminal")
+                launch_terminal_in_dir(wt_path)
                 continue
             elif action == 'v':
-                sp.run(['code', wt_path])
-                print("✓ Opened in VSCode")
+                sp.run(['code', wt_path], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
                 continue
-            # Action commands
             elif action == '1':
-                msg = input("Commit msg (Enter=default): ").strip() or f"Merge {wt_name}"
-                # Get confirmation for push operation (don't skip_confirm for push)
-                if remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=False):
-                    print("✓ Worktree removed and pushed")
-                    break
-                else:
-                    print("✗ Failed to remove worktree - check project association")
-                    continue
-            elif action == '2':
-                if remove_worktree(wt_path, push=False, skip_confirm=True):
-                    print("✓ Worktree removed")
-                    break
-                else:
-                    print("✗ Failed to remove worktree - check project association")
-                    continue
-            elif action in ['3', '']:
-                print("✓ Kept")
+                if input("Push to main? yes/no: ").strip().lower() == 'yes':
+                    msg = input("Commit msg: ").strip() or f"Merge {wt_name}"
+                    remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=True)
                 break
-            elif action == '4':
-                print(f"\n✓ Reviewed {idx+1}/{len(review_worktrees)}")
+            elif action == '2':
+                sp.run(['git', '-C', wt_path, 'push', '-u', 'origin', 'HEAD'], capture_output=True)
+                print("✓ Pushed to branch")
+                continue
+            elif action == '3':
+                remove_worktree(wt_path, push=False, skip_confirm=True)
+                break
+            elif action in ['4', '']:
+                break
+            elif action == '5':
                 sys.exit(0)
 
     print(f"\n✅ Review complete!")

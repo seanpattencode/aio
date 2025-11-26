@@ -1,0 +1,5 @@
+{
+  "fix": "Analyze the codebase. Find problems and inefficiencies. Fix them following best practices. {task}",
+  "bug": "Fix this bug: {task}. Reproduce it first, then fix with minimal changes.",
+  "feat": "Add this feature: {task}. Keep it simple, follow existing patterns."
+}
