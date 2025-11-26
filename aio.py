@@ -2557,6 +2557,12 @@ elif arg == 'review':
         else:
             print(f"📁 No agent session (use t=terminal to browse)")
 
+        # Auto-show diff from base branch
+        diff = sp.run(['git', '-C', wt_path, 'diff', '--color=always', 'origin/main...HEAD'], capture_output=True, text=True)
+        if diff.returncode != 0:  # Fallback if origin/main doesn't exist
+            diff = sp.run(['git', '-C', wt_path, 'diff', '--color=always', 'HEAD~1'], capture_output=True, text=True)
+        print(f"\n{'─'*60}\n{diff.stdout or '(no changes)'}\n{'─'*60}")
+
         # Review options
         print(f"\n📁 Inspect: l=ls  g=git-status  d=diff  h=log  t=terminal  v=vscode")
         print(f"🎯 Action: 1=push+del  2=delete  3=keep  4=stop")
