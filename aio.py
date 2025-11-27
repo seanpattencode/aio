@@ -1,45 +1,62 @@
 #!/usr/bin/env python3
-import os, sys, subprocess as sp, json
-import sqlite3
+import os, sys, subprocess as sp, json, sqlite3, shlex, time, re, socket as S
 from datetime import datetime
 from pathlib import Path
 import pexpect
-import shlex
-import time
 
-# Session Manager abstraction - auto-detect tmux or zellij
-def which(cmd): return sp.run(['which', cmd], capture_output=True).returncode == 0
-ZELLIJ_PATH = os.path.expanduser('~/.local/bin/zellij')
-def find_zellij(): return ZELLIJ_PATH if os.path.exists(ZELLIJ_PATH) else '/tmp/zellij/bootstrap/zellij' if os.path.exists('/tmp/zellij/bootstrap/zellij') else 'zellij' if which('zellij') else None
+# dtach-based session manager with script logging (LLM-friendly)
+SESSIONS_DIR = os.path.expanduser("~/.local/share/aios/sessions")
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+def _sock(n): return f"{SESSIONS_DIR}/{n}.sock"
+def _log(n): return f"{SESSIONS_DIR}/{n}.log"
 
-class SessionManager:
-    def new_session(self, n, d, c, e=None): return self._new(n, d, c, e)
-    def send_keys(self, n, t): return self._keys(n, t)
-    def attach(self, n): return self._att(n)
-    def has_session(self, n): return self._has(n)
-    def list_sessions(self): return self._list()
-    def capture(self, n): return self._cap(n)
+def session_new(name, cwd, cmd, env=None):
+    """Create detached session with output logging via script."""
+    wrapped = f"script -q -f {shlex.quote(_log(name))} -c {shlex.quote(cmd)}"
+    return sp.run(['dtach', '-n', _sock(name), '-Ez', 'bash', '-c', wrapped], cwd=cwd, env=env, capture_output=True)
 
-class TmuxManager(SessionManager):
-    def _new(self, n, d, c, e): return sp.run(['tmux', 'new-session', '-d', '-s', n, '-c', d] + ([c] if c else []), capture_output=True, env=e)
-    def _keys(self, n, t): return sp.run(['tmux', 'send-keys', '-l', '-t', n, t])
-    def _att(self, n): return ['tmux', 'attach', '-t', n]
-    def _has(self, n): return sp.run(['tmux', 'has-session', '-t', n], capture_output=True).returncode == 0
-    def _list(self): return sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
-    def _cap(self, n): return sp.run(['tmux', 'capture-pane', '-p', '-t', n], capture_output=True, text=True)
+def session_send(name, text):
+    """Send text to session via brief attach/detach."""
+    if not os.path.exists(_sock(name)): return False
+    try:
+        child = pexpect.spawn(f'dtach -a {_sock(name)}', timeout=3)
+        child.send(text)
+        time.sleep(0.05)
+        child.sendcontrol('\\')  # Ctrl+\ to detach
+        child.expect(pexpect.EOF, timeout=1)
+        return True
+    except: return False
 
-class ZellijManager(SessionManager):
-    def __init__(self, cmd): self.z = cmd
-    def _new(self, n, d, c, e): r = sp.run([self.z, 'attach', n, '--create-background'], cwd=d, capture_output=True, env=e); sp.run([self.z, '--session', n, 'run', '--'] + shlex.split(c), cwd=d, capture_output=True) if c and r.returncode == 0 else None; return r
-    def _keys(self, n, t): return sp.run([self.z, '--session', n, 'action', 'write-chars', '--', t], capture_output=True)
-    def _att(self, n): return [self.z, 'attach', n, '--create']
-    def _has(self, n): r = sp.run([self.z, 'list-sessions', '--short', '--no-formatting'], capture_output=True, text=True); return r.returncode == 0 and n in r.stdout
-    def _list(self): return sp.run([self.z, 'list-sessions', '--short', '--no-formatting'], capture_output=True, text=True)
-    def _cap(self, n): return sp.run([self.z, '--session', n, 'action', 'dump-screen'], capture_output=True, text=True)
+def session_attach(name): return ['dtach', '-a', _sock(name)]
 
-z = find_zellij()
-sm = ZellijManager(z) if z else TmuxManager()  # Use zellij if available, otherwise tmux
-if not z: print("⚠ Zellij not found - using tmux. Run 'aio deps' to install dependencies.", file=sys.stderr)
+def session_exists(name):
+    """Check if session socket exists and is live."""
+    sock = _sock(name)
+    if not os.path.exists(sock): return False
+    s = S.socket(S.AF_UNIX, S.SOCK_STREAM)
+    try: s.connect(sock); s.close(); return True
+    except:
+        try: os.unlink(sock)  # Clean dead socket
+        except: pass
+        return False
+
+def session_list():
+    """List all active session names."""
+    if not os.path.exists(SESSIONS_DIR): return []
+    return [f[:-5] for f in os.listdir(SESSIONS_DIR) if f.endswith('.sock') and session_exists(f[:-5])]
+
+def session_read(name, lines=100):
+    """Read last N lines from session log, ANSI-cleaned for LLM."""
+    log = _log(name)
+    if not os.path.exists(log): return ''
+    with open(log, 'rb') as f: content = f.read()
+    clean = re.sub(rb'\x1b\[[0-9;]*[a-zA-Z]', b'', content)
+    return '\n'.join(clean.decode('utf-8', errors='replace').split('\n')[-lines:])
+
+def session_active(name, threshold=10):
+    """Check if session had recent activity (log modified within threshold seconds)."""
+    log = _log(name)
+    return os.path.exists(log) and time.time() - os.path.getmtime(log) < threshold
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))  # realpath follows symlinks
@@ -440,7 +457,7 @@ def load_sessions(config):
         codex_prompt = config.get('codex_prompt', default_prompt).replace('\n', '\\n').replace('"', '\\"')
         gemini_prompt = config.get('gemini_prompt', default_prompt).replace('\n', '\\n').replace('"', '\\"')
 
-        # For single-p sessions, remove prompt from command (we'll send it via tmux later)
+        # For single-p sessions, remove prompt from command (we'll send it via send later)
         # For other sessions, substitute prompt placeholders normally
         if is_single_p:
             # Remove the prompt argument entirely
@@ -480,42 +497,6 @@ PROJECTS = load_projects()
 APPS = load_apps()
 sessions = load_sessions(config)
 
-def ensure_tmux_mouse_mode():
-    """Ensure tmux mouse mode is enabled for better scrolling."""
-    # Check if tmux server is running
-    result = sp.run(['tmux', 'info'],
-                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    if result.returncode != 0:
-        # Tmux server not running yet, will be configured when it starts
-        return
-
-    # Check current mouse mode setting
-    result = sp.run(['tmux', 'show-options', '-g', 'mouse'],
-                    capture_output=True, text=True)
-
-    if result.returncode == 0:
-        output = result.stdout.strip()
-        # Output format: "mouse on" or "mouse off"
-        if 'on' in output:
-            return  # Already enabled
-
-    # Enable mouse mode
-    result = sp.run(['tmux', 'set-option', '-g', 'mouse', 'on'],
-                    capture_output=True)
-
-    if result.returncode == 0:
-        print("✓ Enabled tmux mouse mode for scrolling")
-
-# Tmux mouse mode check disabled for instant startup
-# Will be called lazily when creating tmux sessions
-
-def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
-    """Create a tmux session with mouse mode enabled."""
-    # Ensure mouse mode is enabled (only checks once per tmux server)
-    ensure_tmux_mouse_mode()
-
-    # Create the session using session manager
-    return sm.new_session(session_name, work_dir, cmd or '', env)
 
 def detect_terminal():
     """Detect available terminal emulator"""
@@ -528,22 +509,14 @@ def detect_terminal():
     return None
 
 def launch_in_new_window(session_name, terminal=None):
-    """Launch tmux session in new terminal window"""
+    """Launch session in new terminal window"""
     if not terminal:
         terminal = detect_terminal()
-
     if not terminal:
         print("✗ No supported terminal found (ptyxis, gnome-terminal, alacritty)")
         return False
-
-    attach_cmd = sm.attach(session_name)
-    if terminal == 'ptyxis':
-        cmd = ['ptyxis', '--'] + attach_cmd
-    elif terminal == 'gnome-terminal':
-        cmd = ['gnome-terminal', '--'] + attach_cmd
-    elif terminal == 'alacritty':
-        cmd = ['alacritty', '-e'] + attach_cmd
-
+    attach_cmd = session_attach(session_name)
+    cmd = [terminal, '--'] + attach_cmd if terminal in ['ptyxis', 'gnome-terminal'] else [terminal, '-e'] + attach_cmd
     try:
         sp.Popen(cmd)
         print(f"✓ Launched {terminal} for session: {session_name}")
@@ -583,56 +556,12 @@ def launch_terminal_in_dir(directory, terminal=None):
         print(f"✗ Failed to launch terminal: {e}")
         return False
 
-def is_pane_receiving_output(session_name, threshold=10):
-    """Check if a tmux pane had activity recently (tmux-style timestamp check).
-
-    Uses tmux's built-in activity tracking - same method tmux uses internally.
-    Returns True if activity occurred within threshold seconds.
-    """
-    import time
-
-    # Get last activity timestamp from tmux
-    result = sp.run(['tmux', 'display-message', '-p', '-t', session_name,
-                     '#{window_activity}'],
-                    capture_output=True, text=True)
-
-    if result.returncode != 0:
-        return False
-
-    try:
-        last_activity = int(result.stdout.strip())
-        current_time = int(time.time())
-        time_since_activity = current_time - last_activity
-
-        # Active if had activity within threshold seconds
-        return time_since_activity < threshold
-    except (ValueError, AttributeError):
-        return False
 
 def get_session_for_worktree(worktree_path):
-    """Find tmux session attached to a worktree path."""
-    # Get all sessions
-    result = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
-                    capture_output=True, text=True)
-    if result.returncode != 0:
-        return None
-
-    sessions = result.stdout.strip().split('\n')
-
-    # Check each session's current path
-    for session in sessions:
-        if not session:
-            continue
-        path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
-                             '#{pane_current_path}'],
-                            capture_output=True, text=True)
-        if path_result.returncode == 0:
-            session_path = path_result.stdout.strip()
-            # Check if session is in this worktree
-            if session_path == worktree_path or session_path.startswith(worktree_path + '/'):
-                return session
-
-    return None
+    """Find session for a worktree path (by naming convention)."""
+    worktree_name = os.path.basename(worktree_path)
+    # Sessions are named after worktree directories
+    return worktree_name if session_exists(worktree_name) else None
 
 def run_with_expect(command, expectations, timeout=30, cwd=None, echo=True):
     """Run command with expect-style pattern matching and auto-responses.
@@ -723,423 +652,133 @@ def run_with_expect(command, expectations, timeout=30, cwd=None, echo=True):
         print(f"✗ Error running command: {e}")
         return (1, str(e))
 
-def watch_tmux_session(session_name, expectations, duration=None):
-    """Watch a tmux session and auto-respond to patterns.
-
-    Args:
-        session_name: Name of tmux session to watch
-        expectations: Dict of {pattern: response} or list of (pattern, response) tuples
-        duration: How long to watch (None = watch once and exit)
-
-    Example:
-        watch_tmux_session('codex', {
-            'Are you sure?': 'y',
-            'Continue?': 'yes'
-        })
-    """
-    import time
-    import re
-
-    # Convert expectations to dict if needed
+def watch_session(session_name, expectations, duration=None):
+    """Watch session log and auto-respond to patterns."""
     if isinstance(expectations, (list, tuple)):
         expectations = dict(expectations)
-
-    # Compile patterns for efficiency
-    compiled_patterns = {re.compile(pattern): response
-                        for pattern, response in expectations.items()}
-
-    last_content = ""
-    start_time = time.time()
-
-    while True:
-        # Check if duration exceeded
-        if duration and (time.time() - start_time) > duration:
-            break
-
-        # Capture current pane content
-        result = sp.run(['tmux', 'capture-pane', '-t', session_name, '-p'],
-                       capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print(f"✗ Session {session_name} not found")
-            return False
-
-        current_content = result.stdout
-
-        # Check if content changed
-        if current_content != last_content:
-            # Look for patterns in new content
-            for pattern, response in compiled_patterns.items():
-                if pattern.search(current_content):
-                    # Found a pattern, send response
-                    sp.run(['tmux', 'send-keys', '-t', session_name, response, 'Enter'])
-                    print(f"✓ Auto-responded to pattern: {pattern.pattern}")
-
-                    # If no duration specified, exit after first response
-                    if duration is None:
-                        return True
-
-            last_content = current_content
-
-        # Small delay to avoid hammering tmux
+    compiled = {re.compile(p): r for p, r in expectations.items()}
+    last_content, start = "", time.time()
+    while not duration or (time.time() - start) < duration:
+        content = session_read(session_name)
+        if not content:
+            time.sleep(0.1)
+            continue
+        if content != last_content:
+            for pattern, response in compiled.items():
+                if pattern.search(content):
+                    session_send(session_name, response + '\n')
+                    print(f"✓ Auto-responded to: {pattern.pattern}")
+                    if duration is None: return True
+            last_content = content
         time.sleep(0.1)
-
     return True
 
 def wait_for_agent_ready(session_name, timeout=5):
-    """Wait for AI agent to be ready to receive input.
-
-    Uses pattern matching (like pexpect) to detect agent prompt patterns.
-
-    Args:
-        session_name: Name of tmux session
-        timeout: Max seconds to wait
-
-    Returns:
-        True if agent is ready, False if timeout
-    """
-    import time
-    import re
-
-    # Agent-specific ready patterns (regex)
-    # These patterns ensure the agent is fully initialized and waiting for input
-    ready_patterns = [
-        r'›.*\n\n\s+\d+%\s+context left',      # Codex prompt with context indicator
-        r'>\s+Type your message',              # Gemini input prompt
-        r'gemini-2\.5-pro.*\(\d+%\)',          # Gemini status line
-        r'──+\s*\n>\s+\w+',                    # Claude prompt (separator + prompt with text)
-    ]
-
-    compiled_patterns = [re.compile(p, re.MULTILINE) for p in ready_patterns]
-
-    start_time = time.time()
-    last_content = ""
-
-    while (time.time() - start_time) < timeout:
-        # Capture pane content
-        result = sp.run(['tmux', 'capture-pane', '-t', session_name, '-p'],
-                       capture_output=True, text=True)
-
-        if result.returncode != 0:
-            return False
-
-        current_content = result.stdout
-
-        # Check if content changed (agent is loading)
-        if current_content != last_content:
-            # Check for ready patterns
-            for pattern in compiled_patterns:
-                if pattern.search(current_content):
-                    return True
-
-            last_content = current_content
-
+    """Wait for AI agent to be ready (checks log for ready patterns)."""
+    ready_patterns = [r'›.*context left', r'>\s+Type', r'gemini.*\d+%', r'──+.*>']
+    compiled = [re.compile(p, re.MULTILINE) for p in ready_patterns]
+    start = time.time()
+    while (time.time() - start) < timeout:
+        content = session_read(session_name)
+        for pattern in compiled:
+            if pattern.search(content): return True
         time.sleep(0.2)
-
-    # Timeout - try sending anyway
-    return True
+    return True  # Timeout - try anyway
 
 def send_prompt_to_session(session_name, prompt, wait_for_completion=False, timeout=None, wait_for_ready=True, send_enter=True):
-    """Send a prompt to a tmux session.
-
-    Args:
-        session_name: Name of tmux session
-        prompt: Text to send to the session
-        wait_for_completion: If True, wait for activity to stop before returning
-        timeout: Max seconds to wait for completion (only used if wait_for_completion=True)
-        wait_for_ready: If True, wait for agent to be ready before sending
-        send_enter: If True, send Enter key after prompt (default True)
-
-    Returns:
-        True if successful, False otherwise
-
-    Example:
-        send_prompt_to_session('codex', 'create a test.txt file with hello world')
-        send_prompt_to_session('codex', 'list files', send_enter=False)  # Insert without running
-    """
-    import time
-
-    # Check if session exists
-    if not sm.has_session(session_name):
+    """Send a prompt to a session."""
+    if not session_exists(session_name):
         print(f"✗ Session {session_name} not found")
         return False
-
-    # Wait for agent to be ready
     if wait_for_ready:
-        print(f"⏳ Waiting for agent to be ready...", end='', flush=True)
-        if wait_for_agent_ready(session_name):
-            print(" ✓")
-        else:
-            print(" (timeout, sending anyway)")
-
-    # Send the prompt
-    # Use session manager to send keys
-    sm.send_keys(session_name, prompt)
-
-    if send_enter:
-        time.sleep(0.1)  # Brief delay before Enter for terminal processing
-        sm.send_keys(session_name, '\n')
-        print(f"✓ Sent prompt to session '{session_name}'")
+        print(f"⏳ Waiting for agent...", end='', flush=True)
+        print(" ✓" if wait_for_agent_ready(session_name) else " (timeout)")
+    text = prompt + ('\n' if send_enter else '')
+    if session_send(session_name, text):
+        print(f"✓ Sent to '{session_name}'" if send_enter else f"✓ Inserted into '{session_name}'")
     else:
-        print(f"✓ Inserted prompt into session '{session_name}' (ready to edit/run)")
-
+        print(f"✗ Failed to send to '{session_name}'")
+        return False
     if wait_for_completion:
-        print("⏳ Waiting for completion...", end='', flush=True)
-        start_time = time.time()
-        last_active = time.time()
-        idle_threshold = 3  # seconds of inactivity to consider "done"
-
+        print("⏳ Waiting...", end='', flush=True)
+        start, last_active = time.time(), time.time()
         while True:
-            # Check if timeout exceeded
-            if timeout and (time.time() - start_time) > timeout:
-                print(f"\n⚠ Timeout ({timeout}s) reached")
+            if timeout and (time.time() - start) > timeout:
+                print(f"\n⚠ Timeout ({timeout}s)")
                 return True
-
-            # Check if session is active
-            is_active = is_pane_receiving_output(session_name, threshold=2)
-
-            if is_active:
+            if session_active(session_name, threshold=2):
                 last_active = time.time()
                 print(".", end='', flush=True)
-            else:
-                # Check if idle for long enough
-                if (time.time() - last_active) > idle_threshold:
-                    print("\n✓ Completed (activity stopped)")
-                    return True
-
+            elif (time.time() - last_active) > 3:
+                print("\n✓ Completed")
+                return True
             time.sleep(0.5)
-
     return True
 
 def get_or_create_directory_session(session_key, target_dir):
-    """Find existing session for directory or create new one.
-
-    Returns session name to attach to.
-    """
-    if session_key not in sessions:
-        return None
-
-    base_name, cmd_template = sessions[session_key]
-
-    # First, check if there's already a session in this directory
-    result = sm.list_sessions()
-
-    if result.returncode == 0:
-        existing_sessions = [s for s in result.stdout.strip().split('\n') if s]
-
-        # Check each session's current path
-        for session in existing_sessions:
-            # Only check sessions that match our base name pattern
-            if not (session == base_name or session.startswith(base_name + '-')):
-                continue
-
-            path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
-                                 '#{pane_current_path}'],
-                                capture_output=True, text=True)
-            if path_result.returncode == 0:
-                session_path = path_result.stdout.strip()
-                if session_path == target_dir:
-                    # Found existing session in this directory!
-                    return session
-
-    # No existing session in this directory, create new one
-    # Use directory name to make it unique
+    """Find existing session for directory or create new one."""
+    if session_key not in sessions: return None
+    base_name, _ = sessions[session_key]
+    # Check for existing session matching base name pattern
+    for s in session_list():
+        if s == base_name or s.startswith(base_name + '-'):
+            return s  # Found existing session
+    # Create unique session name using directory
     dir_name = os.path.basename(target_dir)
     session_name = f"{base_name}-{dir_name}"
-
-    # If that session name is taken (in a different directory), add a suffix
     attempt = 0
-    final_session_name = session_name
-    while True:
-        if not sm.has_session(final_session_name):
-            # Session doesn't exist, we can use this name
-            break
-
-        # Session exists, try with suffix
+    while session_exists(session_name if attempt == 0 else f"{session_name}-{attempt}"):
         attempt += 1
-        final_session_name = f"{session_name}-{attempt}"
-
-    return final_session_name
+    return session_name if attempt == 0 else f"{session_name}-{attempt}"
 
 def list_jobs(running_only=False):
-    """List all jobs (any directory with a session, plus worktrees) with their status.
-
-    Args:
-        running_only: If True, only show jobs that are actively running
-    """
-    # Get all tmux sessions and their directories
-    result = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
-                    capture_output=True, text=True)
-
-    jobs_by_path = {}  # path -> list of sessions
-
-    if result.returncode == 0:
-        sessions = [s for s in result.stdout.strip().split('\n') if s]
-
-        # Get directory for each session
-        for session in sessions:
-            path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
-                                 '#{pane_current_path}'],
-                                capture_output=True, text=True)
-            if path_result.returncode == 0:
-                session_path = path_result.stdout.strip()
-                if session_path not in jobs_by_path:
-                    jobs_by_path[session_path] = []
-                jobs_by_path[session_path].append(session)
-
+    """List all jobs (sessions and worktrees) with their status."""
+    # Get all sessions
+    active_sessions = session_list()
+    jobs_by_name = {}  # name -> session info
+    for s in active_sessions:
+        jobs_by_name[s] = {'sessions': [s], 'is_worktree': s in os.listdir(WORKTREES_DIR) if os.path.exists(WORKTREES_DIR) else False}
     # Also include worktrees without sessions
     if os.path.exists(WORKTREES_DIR):
         for item in os.listdir(WORKTREES_DIR):
-            worktree_path = os.path.join(WORKTREES_DIR, item)
-            if os.path.isdir(worktree_path) and worktree_path not in jobs_by_path:
-                jobs_by_path[worktree_path] = []
-
-    if not jobs_by_path:
+            if os.path.isdir(os.path.join(WORKTREES_DIR, item)) and item not in jobs_by_name:
+                jobs_by_name[item] = {'sessions': [], 'is_worktree': True}
+    if not jobs_by_name:
         print("No jobs found")
         return
 
-    # First pass: collect job info with timestamps
+    # Collect job info
     jobs_with_metadata = []
-
-    for job_path in jobs_by_path.keys():
-        # Skip deleted directories
-        if not os.path.exists(job_path):
-            # Kill orphaned tmux sessions for deleted directories
-            sessions_in_job = jobs_by_path[job_path]
-            for session in sessions_in_job:
-                sp.run(['tmux', 'kill-session', '-t', session],
-                      capture_output=True)
-            continue
-
-        sessions_in_job = jobs_by_path[job_path]
-
-        # Determine if this is a worktree
-        is_worktree = job_path.startswith(WORKTREES_DIR)
-        job_name = os.path.basename(job_path)
-
-        # Check if any session is actively outputting
-        is_active = False
-        if sessions_in_job:
-            for session in sessions_in_job:
-                if is_pane_receiving_output(session):
-                    is_active = True
-                    break
-
-        # Skip non-running jobs if running_only filter is enabled
-        if running_only and not is_active:
-            continue
-
-        # Extract creation datetime from worktree name for sorting and display
-        creation_datetime = None
-        creation_display = ""
-        if is_worktree:
-            # Parse datetime from name like: aios-codex-20251031-185629-single
-            # Format: YYYYMMDD-HHMMSS
-            import re
-            match = re.search(r'-(\d{8})-(\d{6})-', job_name)
-            if match:
-                date_str = match.group(1)  # YYYYMMDD
-                time_str = match.group(2)  # HHMMSS
-                try:
-                    from datetime import datetime
-                    creation_datetime = datetime.strptime(f"{date_str}{time_str}", "%Y%m%d%H%M%S")
-
-                    # Format display
-                    now = datetime.now()
-                    time_diff = now - creation_datetime
-
-                    if time_diff.total_seconds() < 60:
-                        creation_display = "just now"
-                    elif time_diff.total_seconds() < 3600:
-                        mins = int(time_diff.total_seconds() / 60)
-                        creation_display = f"{mins}m ago"
-                    elif time_diff.total_seconds() < 86400:
-                        hours = int(time_diff.total_seconds() / 3600)
-                        creation_display = f"{hours}h ago"
-                    else:
-                        days = int(time_diff.total_seconds() / 86400)
-                        creation_display = f"{days}d ago"
-                except:
-                    pass
-
-        # Determine status display
-        if not sessions_in_job:
-            status_display = "📋 REVIEW"
-            session_info = "(no session)"
-        elif is_active:
-            status_display = "🏃 RUNNING"
-            if len(sessions_in_job) == 1:
-                session_info = f"(session: {sessions_in_job[0]})"
-            else:
-                session_info = f"({len(sessions_in_job)} sessions: {', '.join(sessions_in_job)})"
-        else:
-            status_display = "📋 REVIEW"
-            if len(sessions_in_job) == 1:
-                session_info = f"(session: {sessions_in_job[0]})"
-            else:
-                session_info = f"({len(sessions_in_job)} sessions: {', '.join(sessions_in_job)})"
-
-        jobs_with_metadata.append({
-            'path': job_path,
-            'name': job_name,
-            'sessions': sessions_in_job,
-            'is_worktree': is_worktree,
-            'is_active': is_active,
-            'status_display': status_display,
-            'session_info': session_info,
-            'creation_datetime': creation_datetime,
-            'creation_display': creation_display
-        })
-
-    # Sort: by creation datetime (oldest first, newest last)
-    # Jobs without datetime (None) sort to beginning, running jobs to end
-    from datetime import datetime
-    jobs_with_metadata.sort(key=lambda x: x['creation_datetime'] if x['creation_datetime'] else datetime.min)
-
+    for job_name, info in jobs_by_name.items():
+        sessions_in_job = info['sessions']
+        is_worktree = info['is_worktree']
+        is_active = any(session_active(s) for s in sessions_in_job)
+        if running_only and not is_active: continue
+        # Parse datetime from worktree name
+        creation_datetime, creation_display = None, ""
+        match = re.search(r'-(\d{8})-(\d{6})-', job_name)
+        if match:
+            try:
+                creation_datetime = datetime.strptime(f"{match.group(1)}{match.group(2)}", "%Y%m%d%H%M%S")
+                diff = (datetime.now() - creation_datetime).total_seconds()
+                creation_display = "just now" if diff < 60 else f"{int(diff/60)}m ago" if diff < 3600 else f"{int(diff/3600)}h ago" if diff < 86400 else f"{int(diff/86400)}d ago"
+            except: pass
+        status = "🏃 RUNNING" if is_active else "📋 REVIEW"
+        session_info = f"(session: {sessions_in_job[0]})" if sessions_in_job else "(no session)"
+        job_path = os.path.join(WORKTREES_DIR, job_name) if is_worktree else SESSIONS_DIR
+        jobs_with_metadata.append({'name': job_name, 'path': job_path, 'sessions': sessions_in_job, 'is_worktree': is_worktree, 'is_active': is_active, 'status': status, 'session_info': session_info, 'creation_datetime': creation_datetime, 'creation_display': creation_display})
+    jobs_with_metadata.sort(key=lambda x: x['creation_datetime'] or datetime.min)
     print("Jobs:\n")
-
-    # Display jobs in sorted order
     for job in jobs_with_metadata:
-        job_path = job['path']
-        job_name = job['name']
-        sessions_in_job = job['sessions']
-        is_worktree = job['is_worktree']
-        status_display = job['status_display']
-        session_info = job['session_info']
-        creation_display = job['creation_display']
-
-        # Add worktree indicator and creation time
-        type_indicator = " [worktree]" if is_worktree else ""
-        time_indicator = f" ({creation_display})" if creation_display else ""
-
-        print(f"  {status_display}  {job_name}{type_indicator}{time_indicator}")
-        print(f"           {session_info}")
-        print(f"           {job_path}")
-
-        # Add copy-pastable commands
-        print()
-
-        # Command to open directory in new window
-        if is_worktree:
-            # For worktrees, show the 'w' command if possible (using datetime sorted order)
-            worktrees_list = get_worktrees_sorted_by_datetime()
-            if job_name in worktrees_list:
-                worktree_index = worktrees_list.index(job_name)
-                print(f"           Open dir:  aio w{worktree_index}")
-            else:
-                print(f"           Open dir:  aio -w {job_path}")
-        else:
-            print(f"           Open dir:  aio -w {job_path}")
-
-        # Command to attach to session(s)
-        if sessions_in_job:
-            if len(sessions_in_job) == 1:
-                print(f"           Attach:    tmux attach -t {sessions_in_job[0]}")
-            else:
-                # Show all sessions
-                for session in sessions_in_job:
-                    print(f"           Attach:    tmux attach -t {session}")
-
+        wt = " [worktree]" if job['is_worktree'] else ""
+        tm = f" ({job['creation_display']})" if job['creation_display'] else ""
+        print(f"  {job['status']}  {job['name']}{wt}{tm}\n           {job['session_info']}\n           {job['path']}\n")
+        if job['is_worktree']:
+            wts = get_worktrees_sorted_by_datetime()
+            idx = wts.index(job['name']) if job['name'] in wts else -1
+            print(f"           Open:   aio w{idx}" if idx >= 0 else f"           Open:   aio -w {job['path']}")
+        if job['sessions']:
+            print(f"           Attach: dtach -a {_sock(job['sessions'][0])}")
         print()
 
 def get_worktrees_sorted_by_datetime():
@@ -1762,7 +1401,8 @@ MANAGEMENT:
   aio review          Review & clean up finished worktrees (NEW!)
   aio cleanup         Delete all worktrees (with confirmation)
   aio cleanup --yes   Delete all worktrees (skip confirmation)
-  aio ls              List all tmux sessions
+  aio ls              List all sessions
+  aio read <session>  Read session output (LLM-friendly)
   aio p               Show saved projects
 DATABASE:
   aio backups         List all database backups
@@ -1780,7 +1420,7 @@ APP MANAGEMENT:
   aio app rm <#|name>      Remove app
 SETUP:
   aio install         Install as global 'aio' command
-  aio deps            Install dependencies (node, zellij, codex, claude, gemini)
+  aio deps            Install dependencies (dtach, node, codex, claude, gemini)
   aio update          Update aio to latest version from git
   aio add [path]      Add project to saved list
   aio remove <#>      Remove project from list
@@ -1862,13 +1502,14 @@ MONITORING & AUTOMATION
   aio jobs --running     Show only running jobs (filter out review)
   aio jobs -r            Same as --running (short form)
   aio review             Review & clean up finished worktrees 🆕
-                        - Opens each worktree in tmux (Ctrl+B D to detach)
+                        - Opens each worktree session (Ctrl+\\ to detach)
                         - Quick inspect: l=ls g=git d=diff h=log
                         - Actions: 1=push+delete 2=delete 3=keep 4=stop
                         - Terminal-first workflow (no GUI needed)
   aio cleanup            Delete all worktrees (with confirmation)
   aio cleanup --yes      Delete all worktrees (skip confirmation)
-  aio ls                 List all tmux sessions
+  aio ls                 List all sessions
+  aio read <session>     Read session output (LLM-friendly)
   aio watch <session>    Auto-respond to prompts (watch once)
   aio watch <session> 60 Auto-respond for 60 seconds
   aio send <sess> "text" Send prompt to existing session
@@ -1892,9 +1533,9 @@ Note: Works in any git directory, not just worktrees
 SETUP & CONFIGURATION
 ═══════════════════════════════════════════════════════════════════════════════
   aio install            Install as global 'aio' command
-  aio deps               Install dependencies (zellij, codex)
+  aio deps               Install dependencies (dtach, codex)
   aio update             Update aio to latest version from git
-  aio x                  Kill all tmux sessions
+  aio x                  Kill all sessions
 FLAGS:
   -w, --new-window       Launch in new terminal window
   -t, --with-terminal    Launch session + separate terminal
@@ -2007,8 +1648,8 @@ elif arg in ('fix', 'bug', 'feat', 'auto', 'del'):
     agent_name, cmd = sessions[agent]
     session_name = f"{arg}-{agent}-{datetime.now().strftime('%H%M%S')}"
     print(f"📝 {arg.upper()} [{agent_name}]: {task[:50]}{'...' if len(task) > 50 else ''}")
-    create_tmux_session(session_name, os.getcwd(), f"{cmd} {shlex.quote(prompt)}")
-    launch_in_new_window(session_name) if 'ZELLIJ' in os.environ or 'TMUX' in os.environ else os.execvp(sm.attach(session_name)[0], sm.attach(session_name))
+    session_new(session_name, os.getcwd(), f"{cmd} {shlex.quote(prompt)}")
+    launch_in_new_window(session_name) if not sys.stdout.isatty() else os.execvp(session_attach(session_name)[0], session_attach(session_name))
 elif arg == 'install':
     # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
@@ -2044,28 +1685,27 @@ elif arg == 'install':
 
     print(f"\nThe script will auto-update from git on each run.")
 elif arg == 'deps':
-    # Install dependencies: zellij, node/npm, codex, claude, gemini
+    # Install dependencies: dtach, node/npm, codex, claude, gemini
     import platform, urllib.request, tarfile, lzma
+    def which(cmd): return sp.run(['which', cmd], capture_output=True).returncode == 0
     bin_dir = os.path.expanduser('~/.local/bin')
     os.makedirs(bin_dir, exist_ok=True)
     print("📦 Installing dependencies...\n")
-    # 1. Zellij (binary)
-    if not os.path.exists(ZELLIJ_PATH):
-        arch = 'x86_64' if platform.machine() in ('x86_64', 'AMD64') else 'aarch64'
-        url = f'https://github.com/zellij-org/zellij/releases/latest/download/zellij-{arch}-unknown-linux-musl.tar.gz'
-        print(f"⬇️  zellij: downloading...")
-        try:
-            tar_path = '/tmp/zellij.tar.gz'
-            urllib.request.urlretrieve(url, tar_path)
-            with tarfile.open(tar_path, 'r:gz') as tar:
-                tar.extract('zellij', bin_dir, filter='data')
-            os.chmod(ZELLIJ_PATH, 0o755)
-            os.remove(tar_path)
-            print(f"✓ zellij installed")
-        except Exception as e:
-            print(f"✗ zellij failed: {e}")
+    # 1. dtach (via package manager)
+    if not which('dtach'):
+        print("⬇️  dtach: installing...")
+        # Try common package managers
+        if sp.run(['which', 'apt'], capture_output=True).returncode == 0:
+            sp.run(['sudo', 'apt', 'install', '-y', 'dtach'], capture_output=True)
+        elif sp.run(['which', 'dnf'], capture_output=True).returncode == 0:
+            sp.run(['sudo', 'dnf', 'install', '-y', 'dtach'], capture_output=True)
+        elif sp.run(['which', 'pacman'], capture_output=True).returncode == 0:
+            sp.run(['sudo', 'pacman', '-S', '--noconfirm', 'dtach'], capture_output=True)
+        elif sp.run(['which', 'brew'], capture_output=True).returncode == 0:
+            sp.run(['brew', 'install', 'dtach'], capture_output=True)
+        print("✓ dtach installed" if which('dtach') else "✗ dtach: please install manually")
     else:
-        print("✓ zellij")
+        print("✓ dtach")
     # 2. Node.js/npm (binary)
     node_dir = os.path.expanduser('~/.local/node')
     node_bin = os.path.join(node_dir, 'bin')
@@ -2142,7 +1782,7 @@ elif arg == 'restore':
     restore_database(backup_path)
     print(f"✅ Database restored successfully!")
 elif arg == 'watch':
-    # Watch a tmux session and auto-respond to patterns
+    # Watch a session and auto-respond to patterns
     if not work_dir_arg:
         print("✗ Usage: aio watch <session_name> [duration_seconds]")
         print("\nExamples:")
@@ -2180,7 +1820,7 @@ elif arg == 'watch':
     else:
         print(f"   Mode: Auto-respond once and exit")
 
-    result = watch_tmux_session(session_name, default_expectations, duration)
+    result = watch_session(session_name, default_expectations, duration)
     if result:
         print("✓ Watch completed")
     else:
@@ -2293,12 +1933,10 @@ elif arg == 'multi':
             # Note: escaped_prompt already has quotes from shlex.quote()
             full_cmd = f'{base_cmd} {escaped_prompt}'
 
-            # Create tmux session in worktree with prompt already included
-            # IMPORTANT: Use clean environment to prevent GUI dialogs in the agent session
-            # Use the full worktree name (with project prefix) as session name
+            # Create session in worktree with prompt already included
             session_name = os.path.basename(worktree_path)
             env = get_noninteractive_git_env()
-            create_tmux_session(session_name, worktree_path, full_cmd, env=env)
+            session_new(session_name, worktree_path, full_cmd, env=env)
 
             launched_sessions.append((session_name, base_name, instance_num+1, worktree_path))
             print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
@@ -2319,7 +1957,7 @@ elif arg == 'multi':
         print(f"   aio -w {worktree_path}  # {agent_name} #{instance_num}")
     print(f"\n🔗 Attach to specific agent:")
     for session_name, agent_name, instance_num, worktree_path in launched_sessions:
-        print(f"   tmux attach -t {session_name}  # {agent_name} #{instance_num}")
+        print(f"   dtach -a {_sock(session_name)}  # {agent_name} #{instance_num}")
 elif arg == 'all':
     # Run agents across ALL saved projects (portfolio-level operation)
     # Usage: aio all c:2 "prompt" (parallel) OR aio all c:2 --seq "prompt" (sequential)
@@ -2479,15 +2117,12 @@ elif arg == 'all':
                 # Note: escaped_prompt already has quotes from shlex.quote()
                 full_cmd = f'{base_cmd} {escaped_prompt}'
 
-                # Create tmux session in worktree with prompt already included
-                # IMPORTANT: Use clean environment to prevent GUI dialogs in the agent session
-                # Use the full worktree name (with project prefix) as session name
+                # Create session in worktree with prompt already included
                 session_name = os.path.basename(worktree_path)
                 env = get_noninteractive_git_env()
-                result = create_tmux_session(session_name, worktree_path, full_cmd, env=env)
+                result = session_new(session_name, worktree_path, full_cmd, env=env)
                 if result.returncode != 0:
-                    print(f"✗ Failed to create tmux session: {result.stderr}")
-                    print(f"  Command was: tmux new-session -d -s {session_name} -c {worktree_path} {full_cmd[:100]}...")
+                    print(f"✗ Failed to create session: {result.stderr}")
 
                 project_sessions.append((session_name, base_name, instance_num+1, project_name, worktree_path))
                 print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
@@ -2527,7 +2162,7 @@ elif arg == 'all':
                 print(f"      aio -w {worktree_path}  # {agent_name} #{instance_num}")
             print(f"   🔗 Attach to agents:")
             for session_name, agent_name, instance_num, _, worktree_path in sessions:
-                print(f"      tmux attach -t {session_name}  # {agent_name} #{instance_num}")
+                print(f"      dtach -a {_sock(session_name)}  # {agent_name} #{instance_num}")
         elif status == "SKIPPED":
             print(f"\n   Project {proj_idx}: {proj_name} (SKIPPED - does not exist)")
         elif status == "FAILED":
@@ -2560,7 +2195,7 @@ elif arg == 'review':
         session = get_session_for_worktree(wt_path)
 
         # Include if no session or session is inactive
-        if not session or not is_pane_receiving_output(session):
+        if not session or not session_active(session):
             review_worktrees.append((wt_name, wt_path))
 
     if not review_worktrees:
@@ -2571,7 +2206,7 @@ elif arg == 'review':
 
     for idx, (wt_name, wt_path) in enumerate(review_worktrees):
         print(f"\n[{idx+1}/{len(review_worktrees)}] {wt_name}")
-        if sm.has_session(wt_name): launch_in_new_window(wt_name) if 'ZELLIJ' in os.environ or 'TMUX' in os.environ else sp.run(sm.attach(wt_name))
+        if session_exists(wt_name): launch_in_new_window(wt_name) if not sys.stdout.isatty() else sp.run(session_attach(wt_name))
 
         # Show commit message and changed lines only
         msg = sp.run(['git', '-C', wt_path, 'log', '-1', '--format=%s'], capture_output=True, text=True)
@@ -3006,45 +2641,33 @@ elif arg == 'remove-app':
         print(f"✗ {message}")
         sys.exit(1)
 elif arg == 'ls':
-    # List sessions with their directories
-    result = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'],
-                    capture_output=True, text=True)
-
-    if result.returncode != 0:
-        print("No tmux sessions found")
+    # List sessions
+    sessions_list = session_list()
+    if not sessions_list:
+        print("No sessions found")
         sys.exit(0)
-
-    sessions_list = result.stdout.strip().split('\n')
-    if not sessions_list or sessions_list == ['']:
-        print("No tmux sessions found")
-        sys.exit(0)
-
-    print("Tmux Sessions:\n")
-    for session in sessions_list:
-        # Get session info (windows, attached, created time)
-        info_result = sp.run(['tmux', 'list-sessions', '-F',
-                             '#{session_name}:#{session_windows} windows#{?session_attached, (attached),}'],
-                            capture_output=True, text=True)
-
-        # Get current path of the session
-        path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
-                             '#{pane_current_path}'],
-                            capture_output=True, text=True)
-
-        # Extract info for this specific session
-        session_info = [line for line in info_result.stdout.strip().split('\n')
-                       if line.startswith(session + ':')]
-
-        if session_info and path_result.returncode == 0:
-            info = session_info[0].split(':', 1)[1] if ':' in session_info[0] else ''
-            path = path_result.stdout.strip()
-            print(f"  {session}: {info}")
-            print(f"    └─ {path}")
-        else:
-            print(f"  {session}")
+    print("Sessions:\n")
+    for s in sessions_list:
+        active = "🏃 active" if session_active(s) else "📋 idle"
+        print(f"  {s}: {active}")
+        print(f"    └─ dtach -a {_sock(s)}")
+elif arg == 'read':
+    # Read session output (LLM-friendly)
+    if not work_dir_arg:
+        print("✗ Usage: aio read <session> [lines]")
+        print("\nAvailable sessions:")
+        for s in session_list(): print(f"  {s}")
+        sys.exit(1)
+    lines = int(sys.argv[3]) if len(sys.argv) > 3 else 100
+    output = session_read(work_dir_arg, lines=lines)
+    print(output if output else f"✗ No output for: {work_dir_arg}")
 elif arg == 'x':
-    sp.run(['tmux', 'kill-server'])
-    print("✓ All sessions killed")
+    # Kill all sessions by removing sockets
+    killed = 0
+    for s in session_list():
+        try: os.unlink(_sock(s)); killed += 1
+        except: pass
+    print(f"✓ Killed {killed} sessions")
 elif arg == 'push':
     # Quick commit and push in current directory
     cwd = os.getcwd()
@@ -3526,19 +3149,15 @@ elif arg.endswith('++') and not arg.startswith('w'):
             # Use the full worktree name (with project prefix) as session name
             session_name = os.path.basename(worktree_path)
             env = get_noninteractive_git_env()
-            create_tmux_session(session_name, worktree_path, cmd, env=env, capture_output=False)
-
+            session_new(session_name, worktree_path, cmd, env=env)
             if new_window:
                 launch_in_new_window(session_name)
-                if with_terminal:
-                    launch_terminal_in_dir(worktree_path)
-            elif "TMUX" in os.environ or "ZELLIJ" in os.environ or not sys.stdout.isatty():
-                # Already inside tmux/zellij or no TTY - let session run in background
+                if with_terminal: launch_terminal_in_dir(worktree_path)
+            elif not sys.stdout.isatty():
                 print(f"✓ Session running in background: {session_name}")
-                print(f"   Attach with: {' '.join(sm.attach(session_name))}")
+                print(f"   Attach: dtach -a {_sock(session_name)}")
             else:
-                # Not in tmux/zellij - attach normally
-                cmd = sm.attach(session_name)
+                cmd = session_attach(session_name)
                 os.execvp(cmd[0], cmd)
     else:
         print(f"✗ Unknown session key: {key}")
@@ -3547,68 +3166,40 @@ elif arg.endswith('++') and not arg.startswith('w'):
 else:
     # Try directory-based session logic first
     session_name = get_or_create_directory_session(arg, work_dir)
-
     if session_name is None:
         # Not a known session key, use original behavior
         name, cmd = sessions.get(arg, (arg, None))
-        # Use clean environment to prevent GUI dialogs
         env = get_noninteractive_git_env()
-        create_tmux_session(name, work_dir, cmd or arg, env=env)
+        session_new(name, work_dir, cmd or arg, env=env)
         session_name = name
     else:
-        # Got a directory-specific session name
-        # Check if it exists, create if not
-        if not sm.has_session(session_name):
-            # Session doesn't exist, create it
+        # Got a directory-specific session name, create if not exists
+        if not session_exists(session_name):
             _, cmd = sessions[arg]
-            # Use clean environment to prevent GUI dialogs
             env = get_noninteractive_git_env()
-            create_tmux_session(session_name, work_dir, cmd, env=env)
+            session_new(session_name, work_dir, cmd, env=env)
 
     # Check if this is a single-p session (cp, lp, gp but not cpp, lpp, gpp)
     is_single_p_session = arg.endswith('p') and not arg.endswith('pp') and len(arg) == 2 and arg in sessions
-
-    # Check if there's a prompt to send (remaining args after session key and work_dir)
-    # Determine where prompts start based on whether work_dir_arg was a directory or prompt
-    if is_work_dir_a_prompt:
-        # work_dir_arg itself is the start of the prompt
-        prompt_start_idx = 2
-    elif work_dir_arg:
-        # work_dir_arg was a real directory/project, prompts start after it
-        prompt_start_idx = 3
-    else:
-        # No work_dir_arg, prompts start at index 2
-        prompt_start_idx = 2
-
-    prompt_parts = []
-    for i in range(prompt_start_idx, len(sys.argv)):
-        if sys.argv[i] not in ['-w', '--new-window', '--yes', '-y', '-t', '--with-terminal']:
-            prompt_parts.append(sys.argv[i])
+    prompt_start_idx = 2 if is_work_dir_a_prompt or not work_dir_arg else 3
+    prompt_parts = [sys.argv[i] for i in range(prompt_start_idx, len(sys.argv)) if sys.argv[i] not in ['-w', '--new-window', '--yes', '-y', '-t', '--with-terminal']]
 
     if prompt_parts:
-        # Custom prompt provided on command line
         prompt = ' '.join(prompt_parts)
         print(f"📤 Sending prompt to session...")
         send_prompt_to_session(session_name, prompt, wait_for_completion=False, wait_for_ready=True, send_enter=not is_single_p_session)
     elif is_single_p_session:
-        # Single-p session without custom prompt - insert default prompt without running
-        # Map session key to prompt config key
         prompt_map = {'cp': CODEX_PROMPT, 'lp': CLAUDE_PROMPT, 'gp': GEMINI_PROMPT}
-        default_prompt = prompt_map.get(arg, '')
-        if default_prompt:
-            print(f"📝 Inserting default prompt into session...")
+        if default_prompt := prompt_map.get(arg, ''):
+            print(f"📝 Inserting default prompt...")
             send_prompt_to_session(session_name, default_prompt, wait_for_completion=False, wait_for_ready=True, send_enter=False)
 
     if new_window:
         launch_in_new_window(session_name)
-        # Also launch a regular terminal if requested
-        if with_terminal:
-            launch_terminal_in_dir(work_dir)
-    elif "TMUX" in os.environ or "ZELLIJ" in os.environ or not sys.stdout.isatty():
-        # Already inside tmux/zellij or no TTY - let session run in background
+        if with_terminal: launch_terminal_in_dir(work_dir)
+    elif not sys.stdout.isatty():
         print(f"✓ Session running in background: {session_name}")
-        print(f"   Attach with: {' '.join(sm.attach(session_name))}")
+        print(f"   Attach: dtach -a {_sock(session_name)}")
     else:
-        # Not in tmux/zellij - attach normally
-        cmd = sm.attach(session_name)
+        cmd = session_attach(session_name)
         os.execvp(cmd[0], cmd)
