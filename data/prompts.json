@@ -1,5 +1,5 @@
 {
-  "fix": "Analyze the codebase. Find problems and inefficiencies. Fix them following best practices. {task}",
+  "fix": "Follow these 11 steps: 1) List all files in the project 2) Read README and main entry point 3) Identify the core functionality 4) Run existing tests if any 5) Find code smells, bugs, or inefficiencies 6) Prioritize by impact 7) Fix the highest priority issue 8) Verify the fix works 9) Run tests again 10) Document what you changed 11) Suggest next improvements",
   "bug": "Fix this bug: {task}. Reproduce it first, then fix with minimal changes.",
   "feat": "Add this feature: {task}. Keep it simple, follow existing patterns."
 }

@@ -1975,19 +1975,23 @@ elif arg == 'update':
     # Explicitly update aio from git repository
     manual_update()
 elif arg in ('fix', 'bug', 'feat'):
-    # Prompt-based sessions: aio fix "task", aio fix c "task", aio fix l "task"
+    # Prompt-based sessions: aio fix, aio bug "task", aio feat "task"
     prompts = load_prompts()
     args = sys.argv[2:]
     agent = 'l'  # Default to claude
     if args and args[0] in ('c', 'l', 'g'):
         agent, args = args[0], args[1:]
-    task = ' '.join(args) if args else input(f"{arg}: ")
-    prompt = prompts[arg].format(task=task)
+    if arg == 'fix':
+        prompt = prompts[arg]  # fix: autonomous 11-step, no task needed
+        task = 'autonomous'
+    else:
+        task = ' '.join(args) if args else input(f"{arg}: ")
+        prompt = prompts[arg].format(task=task)
     agent_name, cmd = sessions[agent]
     session_name = f"{arg}-{agent}-{datetime.now().strftime('%H%M%S')}"
     print(f"📝 {arg.upper()} [{agent_name}]: {task[:50]}{'...' if len(task) > 50 else ''}")
     create_tmux_session(session_name, os.getcwd(), f"{cmd} {shlex.quote(prompt)}")
-    os.execvp(sm.attach(session_name)[0], sm.attach(session_name))
+    launch_in_new_window(session_name) if 'ZELLIJ' in os.environ or 'TMUX' in os.environ else os.execvp(sm.attach(session_name)[0], sm.attach(session_name))
 elif arg == 'install':
     # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
@@ -2550,8 +2554,7 @@ elif arg == 'review':
 
     for idx, (wt_name, wt_path) in enumerate(review_worktrees):
         print(f"\n[{idx+1}/{len(review_worktrees)}] {wt_name}")
-        if sm.has_session(wt_name):
-            sp.run(sm.attach(wt_name))
+        if sm.has_session(wt_name): launch_in_new_window(wt_name) if 'ZELLIJ' in os.environ or 'TMUX' in os.environ else sp.run(sm.attach(wt_name))
 
         # Show commit message and changed lines only
         msg = sp.run(['git', '-C', wt_path, 'log', '-1', '--format=%s'], capture_output=True, text=True)
