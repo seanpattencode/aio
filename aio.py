@@ -7,39 +7,30 @@ import pexpect
 import shlex
 import time
 
-# Session Manager abstraction - auto-detect tmux or zellij
-def which(cmd): return sp.run(['which', cmd], capture_output=True).returncode == 0
-ZELLIJ_PATH = os.path.expanduser('~/.local/bin/zellij')
-def find_zellij(): return ZELLIJ_PATH if os.path.exists(ZELLIJ_PATH) else '/tmp/zellij/bootstrap/zellij' if os.path.exists('/tmp/zellij/bootstrap/zellij') else 'zellij' if which('zellij') else None
+# Session Manager - generic multiplexer abstraction (tmux implementation)
+class Multiplexer:
+    """Generic terminal multiplexer interface. Override methods for other implementations."""
+    def new_session(self, n, d, c, e=None): raise NotImplementedError
+    def send_keys(self, n, t): raise NotImplementedError
+    def attach(self, n): raise NotImplementedError
+    def has_session(self, n): raise NotImplementedError
+    def list_sessions(self): raise NotImplementedError
+    def capture(self, n): raise NotImplementedError
 
-class SessionManager:
-    def new_session(self, n, d, c, e=None): return self._new(n, d, c, e)
-    def send_keys(self, n, t): return self._keys(n, t)
-    def attach(self, n): return self._att(n)
-    def has_session(self, n): return self._has(n)
-    def list_sessions(self): return self._list()
-    def capture(self, n): return self._cap(n)
+class TmuxManager(Multiplexer):
+    """Tmux multiplexer with enhanced options (scrollbars, mouse mode, keybindings)."""
+    def __init__(self):
+        self._ver = sp.check_output(['tmux', '-V'], text=True).split()[1] if sp.run(['which', 'tmux'], capture_output=True).returncode == 0 else '0'
+    def new_session(self, n, d, c, e=None): return sp.run(['tmux', 'new-session', '-d', '-s', n, '-c', d] + ([c] if c else []), capture_output=True, env=e)
+    def send_keys(self, n, t): return sp.run(['tmux', 'send-keys', '-l', '-t', n, t])
+    def attach(self, n): return ['tmux', 'attach', '-t', n]
+    def has_session(self, n): return sp.run(['tmux', 'has-session', '-t', n], capture_output=True).returncode == 0
+    def list_sessions(self): return sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
+    def capture(self, n): return sp.run(['tmux', 'capture-pane', '-p', '-t', n], capture_output=True, text=True)
+    @property
+    def version(self): return self._ver
 
-class TmuxManager(SessionManager):
-    def _new(self, n, d, c, e): return sp.run(['tmux', 'new-session', '-d', '-s', n, '-c', d] + ([c] if c else []), capture_output=True, env=e)
-    def _keys(self, n, t): return sp.run(['tmux', 'send-keys', '-l', '-t', n, t])
-    def _att(self, n): return ['tmux', 'attach', '-t', n]
-    def _has(self, n): return sp.run(['tmux', 'has-session', '-t', n], capture_output=True).returncode == 0
-    def _list(self): return sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
-    def _cap(self, n): return sp.run(['tmux', 'capture-pane', '-p', '-t', n], capture_output=True, text=True)
-
-class ZellijManager(SessionManager):
-    def __init__(self, cmd): self.z = cmd
-    def _new(self, n, d, c, e): r = sp.run([self.z, 'attach', n, '--create-background'], cwd=d, capture_output=True, env=e); sp.run([self.z, '--session', n, 'run', '--'] + shlex.split(c), cwd=d, capture_output=True) if c and r.returncode == 0 else None; return r
-    def _keys(self, n, t): return sp.run([self.z, '--session', n, 'action', 'write-chars', '--', t], capture_output=True)
-    def _att(self, n): return [self.z, 'attach', n, '--create']
-    def _has(self, n): r = sp.run([self.z, 'list-sessions', '--short', '--no-formatting'], capture_output=True, text=True); return r.returncode == 0 and n in r.stdout
-    def _list(self): return sp.run([self.z, 'list-sessions', '--short', '--no-formatting'], capture_output=True, text=True)
-    def _cap(self, n): return sp.run([self.z, '--session', n, 'action', 'dump-screen'], capture_output=True, text=True)
-
-z = find_zellij()
-sm = ZellijManager(z) if z else TmuxManager()  # Use zellij if available, otherwise tmux
-if not z: print("⚠ Zellij not found - using tmux. Run 'aio deps' to install dependencies.", file=sys.stderr)
+sm = TmuxManager()
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))  # realpath follows symlinks
@@ -480,41 +471,29 @@ PROJECTS = load_projects()
 APPS = load_apps()
 sessions = load_sessions(config)
 
-def ensure_tmux_mouse_mode():
-    """Ensure tmux mouse mode is enabled for better scrolling."""
-    # Check if tmux server is running
-    result = sp.run(['tmux', 'info'],
-                    stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    if result.returncode != 0:
-        # Tmux server not running yet, will be configured when it starts
-        return
-
-    # Check current mouse mode setting
-    result = sp.run(['tmux', 'show-options', '-g', 'mouse'],
-                    capture_output=True, text=True)
-
-    if result.returncode == 0:
-        output = result.stdout.strip()
-        # Output format: "mouse on" or "mouse off"
-        if 'on' in output:
-            return  # Already enabled
-
-    # Enable mouse mode
-    result = sp.run(['tmux', 'set-option', '-g', 'mouse', 'on'],
-                    capture_output=True)
-
-    if result.returncode == 0:
-        print("✓ Enabled tmux mouse mode for scrolling")
+_tmux_configured = False
+def ensure_tmux_options():
+    """Configure tmux with mouse mode, scrollbars (3.6+), and copy-to-clipboard bindings."""
+    global _tmux_configured
+    if _tmux_configured: return
+    if sp.run(['tmux', 'info'], stdout=sp.DEVNULL, stderr=sp.DEVNULL).returncode != 0: return
+    # Mouse mode
+    sp.run(['tmux', 'set-option', '-g', 'mouse', 'on'], capture_output=True)
+    # Scrollbars (tmux 3.6+)
+    if sm.version >= '3.6':
+        sp.run(['tmux', 'set-option', '-g', 'pane-scrollbars', 'on'], capture_output=True)
+        sp.run(['tmux', 'set-option', '-g', 'pane-scrollbars-position', 'right'], capture_output=True)
+    # Copy mode: mouse drag copies to clipboard
+    for mode in ['copy-mode', 'copy-mode-vi']:
+        sp.run(['tmux', 'bind-key', '-T', mode, 'MouseDragEnd1Pane', 'send-keys', '-X', 'copy-pipe-and-cancel', 'xclip -sel clip'], capture_output=True)
+    _tmux_configured = True
 
 # Tmux mouse mode check disabled for instant startup
 # Will be called lazily when creating tmux sessions
 
 def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
-    """Create a tmux session with mouse mode enabled."""
-    # Ensure mouse mode is enabled (only checks once per tmux server)
-    ensure_tmux_mouse_mode()
-
-    # Create the session using session manager
+    """Create a tmux session with enhanced options (mouse, scrollbars, clipboard)."""
+    ensure_tmux_options()
     return sm.new_session(session_name, work_dir, cmd or '', env)
 
 def detect_terminal():
@@ -1780,7 +1759,7 @@ APP MANAGEMENT:
   aio app rm <#|name>      Remove app
 SETUP:
   aio install         Install as global 'aio' command
-  aio deps            Install dependencies (node, zellij, codex, claude, gemini)
+  aio deps            Install dependencies (node, codex, claude, gemini)
   aio update          Update aio to latest version from git
   aio add [path]      Add project to saved list
   aio remove <#>      Remove project from list
@@ -1892,7 +1871,7 @@ Note: Works in any git directory, not just worktrees
 SETUP & CONFIGURATION
 ═══════════════════════════════════════════════════════════════════════════════
   aio install            Install as global 'aio' command
-  aio deps               Install dependencies (zellij, codex)
+  aio deps               Install dependencies (node, codex, claude, gemini)
   aio update             Update aio to latest version from git
   aio x                  Kill all tmux sessions
 FLAGS:
@@ -2008,7 +1987,7 @@ elif arg in ('fix', 'bug', 'feat', 'auto', 'del'):
     session_name = f"{arg}-{agent}-{datetime.now().strftime('%H%M%S')}"
     print(f"📝 {arg.upper()} [{agent_name}]: {task[:50]}{'...' if len(task) > 50 else ''}")
     create_tmux_session(session_name, os.getcwd(), f"{cmd} {shlex.quote(prompt)}")
-    launch_in_new_window(session_name) if 'ZELLIJ' in os.environ or 'TMUX' in os.environ else os.execvp(sm.attach(session_name)[0], sm.attach(session_name))
+    launch_in_new_window(session_name) if 'TMUX' in os.environ else os.execvp(sm.attach(session_name)[0], sm.attach(session_name))
 elif arg == 'install':
     # Install aio as a global command
     bin_dir = os.path.expanduser("~/.local/bin")
@@ -2044,33 +2023,19 @@ elif arg == 'install':
 
     print(f"\nThe script will auto-update from git on each run.")
 elif arg == 'deps':
-    # Install dependencies: zellij, node/npm, codex, claude, gemini
+    # Install dependencies: node/npm, codex, claude, gemini
     import platform, urllib.request, tarfile, lzma
+    def _which(cmd): return sp.run(['which', cmd], capture_output=True).returncode == 0
     bin_dir = os.path.expanduser('~/.local/bin')
     os.makedirs(bin_dir, exist_ok=True)
     print("📦 Installing dependencies...\n")
-    # 1. Zellij (binary)
-    if not os.path.exists(ZELLIJ_PATH):
-        arch = 'x86_64' if platform.machine() in ('x86_64', 'AMD64') else 'aarch64'
-        url = f'https://github.com/zellij-org/zellij/releases/latest/download/zellij-{arch}-unknown-linux-musl.tar.gz'
-        print(f"⬇️  zellij: downloading...")
-        try:
-            tar_path = '/tmp/zellij.tar.gz'
-            urllib.request.urlretrieve(url, tar_path)
-            with tarfile.open(tar_path, 'r:gz') as tar:
-                tar.extract('zellij', bin_dir, filter='data')
-            os.chmod(ZELLIJ_PATH, 0o755)
-            os.remove(tar_path)
-            print(f"✓ zellij installed")
-        except Exception as e:
-            print(f"✗ zellij failed: {e}")
-    else:
-        print("✓ zellij")
-    # 2. Node.js/npm (binary)
+    # Check tmux
+    print("✓ tmux" if _which('tmux') else "⚠ tmux not found - install via: sudo apt install tmux")
+    # Node.js/npm (binary)
     node_dir = os.path.expanduser('~/.local/node')
     node_bin = os.path.join(node_dir, 'bin')
     npm_path = os.path.join(node_bin, 'npm')
-    if not which('npm') and not os.path.exists(npm_path):
+    if not _which('npm') and not os.path.exists(npm_path):
         arch = 'x64' if platform.machine() in ('x86_64', 'AMD64') else 'arm64'
         url = f'https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-{arch}.tar.xz'
         print(f"⬇️  node/npm: downloading...")
@@ -2092,11 +2057,11 @@ elif arg == 'deps':
             print(f"✗ node/npm failed: {e}")
     else:
         print("✓ node/npm")
-    # 3. npm packages (codex, claude, gemini)
+    # npm packages (codex, claude, gemini)
     npm_cmd = npm_path if os.path.exists(npm_path) else 'npm'
     npm_deps = [('codex', '@openai/codex'), ('claude', '@anthropic-ai/claude-code'), ('gemini', '@google/gemini-cli')]
     for cmd, pkg in npm_deps:
-        if not which(cmd):
+        if not _which(cmd):
             print(f"⬇️  {cmd}: installing...")
             try:
                 sp.run([npm_cmd, 'install', '-g', pkg], check=True, capture_output=True)
@@ -2571,7 +2536,7 @@ elif arg == 'review':
 
     for idx, (wt_name, wt_path) in enumerate(review_worktrees):
         print(f"\n[{idx+1}/{len(review_worktrees)}] {wt_name}")
-        if sm.has_session(wt_name): launch_in_new_window(wt_name) if 'ZELLIJ' in os.environ or 'TMUX' in os.environ else sp.run(sm.attach(wt_name))
+        if sm.has_session(wt_name): launch_in_new_window(wt_name) if 'TMUX' in os.environ else sp.run(sm.attach(wt_name))
 
         # Show commit message and changed lines only
         msg = sp.run(['git', '-C', wt_path, 'log', '-1', '--format=%s'], capture_output=True, text=True)
@@ -3532,12 +3497,12 @@ elif arg.endswith('++') and not arg.startswith('w'):
                 launch_in_new_window(session_name)
                 if with_terminal:
                     launch_terminal_in_dir(worktree_path)
-            elif "TMUX" in os.environ or "ZELLIJ" in os.environ or not sys.stdout.isatty():
-                # Already inside tmux/zellij or no TTY - let session run in background
+            elif "TMUX" in os.environ or not sys.stdout.isatty():
+                # Already inside tmux or no TTY - let session run in background
                 print(f"✓ Session running in background: {session_name}")
                 print(f"   Attach with: {' '.join(sm.attach(session_name))}")
             else:
-                # Not in tmux/zellij - attach normally
+                # Not in tmux - attach normally
                 cmd = sm.attach(session_name)
                 os.execvp(cmd[0], cmd)
     else:
@@ -3604,11 +3569,11 @@ else:
         # Also launch a regular terminal if requested
         if with_terminal:
             launch_terminal_in_dir(work_dir)
-    elif "TMUX" in os.environ or "ZELLIJ" in os.environ or not sys.stdout.isatty():
-        # Already inside tmux/zellij or no TTY - let session run in background
+    elif "TMUX" in os.environ or not sys.stdout.isatty():
+        # Already inside tmux or no TTY - let session run in background
         print(f"✓ Session running in background: {session_name}")
         print(f"   Attach with: {' '.join(sm.attach(session_name))}")
     else:
-        # Not in tmux/zellij - attach normally
+        # Not in tmux - attach normally
         cmd = sm.attach(session_name)
         os.execvp(cmd[0], cmd)
