@@ -488,6 +488,9 @@ def ensure_tmux_options():
     # Copy mode: mouse drag copies to clipboard
     for mode in ['copy-mode', 'copy-mode-vi']:
         sp.run(['tmux', 'bind-key', '-T', mode, 'MouseDragEnd1Pane', 'send-keys', '-X', 'copy-pipe-and-cancel', 'xclip -sel clip'], capture_output=True)
+    # Chrome-like shortcuts: C-t new pane, C-w close pane, C-q detach
+    for k,a in [('C-t','split-window'),('C-w','kill-pane'),('C-q','detach')]: sp.run(['tmux','bind-key','-n',k,a],capture_output=True)
+    sp.run(['tmux','set-option','-g','status-right','C-t:New C-w:Close C-q:Quit | Drag=Copy'],capture_output=True)
     _tmux_configured = True
 
 # Tmux mouse mode check disabled for instant startup
@@ -2514,81 +2517,40 @@ elif arg == 'jobs':
     running_only = '--running' in sys.argv or '-r' in sys.argv
     list_jobs(running_only=running_only)
 elif arg == 'review':
-    # Review mode for worktrees
-    import time
-    import re
-    from datetime import datetime
-
-    # Get worktrees needing review
-    if not os.path.exists(WORKTREES_DIR):
-        print("No worktrees directory found")
-        sys.exit(0)
-
+    # Review mode: 4-pane layout (diff | terminal / session | ls)
+    if not os.path.exists(WORKTREES_DIR): print("No worktrees directory found"); sys.exit(0)
     worktrees = get_worktrees_sorted_by_datetime()
-    review_worktrees = []
-
-    for wt_name in worktrees:
-        wt_path = os.path.join(WORKTREES_DIR, wt_name)
-        session = get_session_for_worktree(wt_path)
-
-        # Include if no session or session is inactive
-        if not session or not is_pane_receiving_output(session):
-            review_worktrees.append((wt_name, wt_path))
-
-    if not review_worktrees:
-        print("✓ No worktrees need review!")
-        sys.exit(0)
-
-    print(f"\n📋 REVIEW ({len(review_worktrees)})")
+    review_worktrees = [(wt, os.path.join(WORKTREES_DIR, wt)) for wt in worktrees
+                        if not is_pane_receiving_output(get_session_for_worktree(os.path.join(WORKTREES_DIR, wt)) or '')]
+    if not review_worktrees: print("✓ No worktrees need review!"); sys.exit(0)
+    print(f"\n📋 REVIEW ({len(review_worktrees)}) - Ctrl+B D to detach, then choose action\n")
 
     for idx, (wt_name, wt_path) in enumerate(review_worktrees):
-        print(f"\n[{idx+1}/{len(review_worktrees)}] {wt_name}")
-        if sm.has_session(wt_name): launch_in_new_window(wt_name) if 'TMUX' in os.environ else sp.run(sm.attach(wt_name))
-
-        # Show commit message and changed lines only
-        msg = sp.run(['git', '-C', wt_path, 'log', '-1', '--format=%s'], capture_output=True, text=True)
-        print(f"\n📝 {msg.stdout.strip() or '(no commit)'}")
-        diff_range = 'origin/main...HEAD'
-        diff = sp.run(['git', '-C', wt_path, 'diff', diff_range], capture_output=True, text=True)
-        if diff.returncode != 0:
-            diff_range = 'HEAD~1'
-            diff = sp.run(['git', '-C', wt_path, 'diff', diff_range], capture_output=True, text=True)
-        lines = [l for l in diff.stdout.split('\n') if l and l[0] in '+-' and not l.startswith('+++') and not l.startswith('---')]
-        print('\n'.join(lines) if lines else '(no changes)')
-        stat = sp.run(['git', '-C', wt_path, 'diff', '--shortstat', diff_range], capture_output=True, text=True)
-        print(stat.stdout.strip())
-
-        print(f"\nd=diff t=term v=code | 1=main 2=branch 3=del 4=keep 5=stop")
-
-        while True:
-            action = input(": ").strip().lower()
-            if action == 'd':
-                result = sp.run(['git', '-C', wt_path, 'diff', diff_range], capture_output=True, text=True)
-                print(result.stdout or "(no diff)")
-                continue
-            elif action == 't':
-                launch_terminal_in_dir(wt_path)
-                continue
-            elif action == 'v':
-                sp.run(['code', wt_path], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-                continue
-            elif action == '1':
-                if input("Push to main? yes/no: ").strip().lower() == 'yes':
-                    msg = input("Commit msg: ").strip() or f"Merge {wt_name}"
-                    remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=True)
-                break
-            elif action == '2':
-                sp.run(['git', '-C', wt_path, 'push', '-u', 'origin', 'HEAD'], capture_output=True)
-                print("✓ Pushed to branch")
-                continue
-            elif action == '3':
-                remove_worktree(wt_path, push=False, skip_confirm=True)
-                break
-            elif action in ['4', '']:
-                break
-            elif action == '5':
-                sys.exit(0)
-
+        print(f"[{idx+1}/{len(review_worktrees)}] {wt_name}")
+        diff_range = 'origin/main...HEAD' if sp.run(['git','-C',wt_path,'rev-parse','origin/main'],capture_output=True).returncode==0 else 'HEAD~1'
+        rs = f"rv-{idx}"
+        sp.run(['tmux','kill-session','-t',rs], capture_output=True)
+        # 4 panes: diff(top-left) | terminal(top-right) / session(bot-left) | ls(bot-right)
+        sp.run(['tmux','new-session','-d','-s',rs,'-c',wt_path,f"bash -c 'git diff {diff_range} --color=always|less -R;exec bash'"])
+        sp.run(['tmux','split-window','-h','-t',rs,'-c',wt_path])
+        sess_cmd = f"watch -n2 -c tmux capture-pane -p -t {wt_name}" if sm.has_session(wt_name) else "echo 'No agent session';exec bash"
+        sp.run(['tmux','split-window','-v','-t',f'{rs}:0.0','-c',wt_path,f"bash -c '{sess_cmd}'"])
+        sp.run(['tmux','split-window','-v','-t',f'{rs}:0.1','-c',wt_path,"bash -c 'ls -la --color;exec bash'"])
+        sp.run(['tmux','select-layout','-t',rs,'tiled'])
+        sp.run(['tmux','select-pane','-t',f'{rs}:0.1'])  # Focus terminal
+        # Attach for review
+        sp.run(['tmux','attach','-t',rs])
+        sp.run(['tmux','kill-session','-t',rs], capture_output=True)
+        # Action menu after detach
+        print(f"\n1=push+del 2=branch 3=del 4=keep 5=stop")
+        action = input(": ").strip()
+        if action == '1':
+            if input("Push to main? yes/no: ").strip().lower() == 'yes':
+                msg = input("Commit msg: ").strip() or f"Merge {wt_name}"
+                remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=True)
+        elif action == '2': sp.run(['git','-C',wt_path,'push','-u','origin','HEAD'],capture_output=True); print("✓ Pushed to branch")
+        elif action == '3': remove_worktree(wt_path, push=False, skip_confirm=True)
+        elif action == '5': sys.exit(0)
     print(f"\n✅ Review complete!")
 elif arg == 'cleanup':
     # Delete all worktrees without pushing
