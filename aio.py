@@ -2992,8 +2992,19 @@ elif arg == 'push':
     # Check if git repo
     result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True, text=True)
     if result.returncode != 0:
-        print("✗ Not a git repository")
-        sys.exit(1)
+        # Auto-fix stale .git files pointing to non-existent worktrees
+        if '.git/worktrees/' in result.stderr:
+            stale = sp.run(f"find {cwd} -name .git -type f 2>/dev/null | xargs grep -l 'worktrees/worktree[0-9]' 2>/dev/null",
+                          shell=True, capture_output=True, text=True).stdout.strip().split('\n')
+            stale = [f for f in stale if f]
+            if stale and input(f"⚠️  Found {len(stale)} stale .git files. Remove? (y/n): ").strip().lower() in ['y', 'yes']:
+                for f in stale:
+                    os.remove(f)
+                print(f"✓ Removed. Continuing...")
+                result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True, text=True)
+        if result.returncode != 0:
+            print("✗ Not a git repository")
+            sys.exit(1)
 
     # Check if we're in a worktree
     git_dir = result.stdout.strip()
@@ -3046,6 +3057,15 @@ elif arg == 'push':
             print("ℹ No changes to commit in worktree")
         else:
             error_msg = result.stderr.strip() or result.stdout.strip()
+            if '.git/worktrees/' in error_msg:
+                stale = sp.run(f"find {cwd} -name .git -type f 2>/dev/null | xargs grep -l 'worktrees/worktree[0-9]' 2>/dev/null",
+                              shell=True, capture_output=True, text=True).stdout.strip().split('\n')
+                stale = [f for f in stale if f]
+                if stale and input(f"⚠️  Found {len(stale)} stale .git files. Remove? (y/n): ").strip().lower() in ['y', 'yes']:
+                    for f in stale:
+                        os.remove(f)
+                    print(f"✓ Removed {len(stale)} stale .git files. Run 'aio push' again.")
+                    sys.exit(0)
             print(f"✗ Commit failed: {error_msg}")
             sys.exit(1)
 
@@ -3212,8 +3232,17 @@ elif arg == 'push':
             print("  (Some files may be ignored or in submodules)")
             sys.exit(0)
         else:
-            # Show both stdout and stderr for better error messages
             error_msg = result.stderr.strip() or result.stdout.strip()
+            if '.git/worktrees/' in error_msg:
+                # Find and remove stale .git files in subdirectories pointing to bad worktrees
+                stale = sp.run(f"find {cwd} -name .git -type f 2>/dev/null | xargs grep -l 'worktrees/worktree[0-9]' 2>/dev/null",
+                              shell=True, capture_output=True, text=True).stdout.strip().split('\n')
+                stale = [f for f in stale if f]
+                if stale and input(f"⚠️  Found {len(stale)} stale .git files. Remove? (y/n): ").strip().lower() in ['y', 'yes']:
+                    for f in stale:
+                        os.remove(f)
+                    print(f"✓ Removed {len(stale)} stale .git files. Run 'aio push' again.")
+                    sys.exit(0)
             print(f"✗ Commit failed: {error_msg}")
             sys.exit(1)
 
