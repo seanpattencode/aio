@@ -494,9 +494,14 @@ def ensure_tmux_options():
 # Will be called lazily when creating tmux sessions
 
 def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
-    """Create a tmux session with enhanced options (mouse, scrollbars, clipboard)."""
+    """Create a tmux session with enhanced options. Agent sessions get agent+bash panes."""
     ensure_tmux_options()
-    return sm.new_session(session_name, work_dir, cmd or '', env)
+    result = sm.new_session(session_name, work_dir, cmd or '', env)
+    # Auto-add bash pane for agent sessions (side by side, focus agent)
+    if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
+        sp.run(['tmux', 'split-window', '-h', '-t', session_name, '-c', work_dir], capture_output=True)
+        sp.run(['tmux', 'select-pane', '-t', session_name, '-L'], capture_output=True)
+    return result
 
 def detect_terminal():
     """Detect available terminal emulator"""
