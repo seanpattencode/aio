@@ -2159,109 +2159,81 @@ elif arg == 'send':
     if not result:
         sys.exit(1)
 elif arg == 'multi':
-    # Run multiple agent instances in parallel worktrees
-    # Usage: aio multi c:3 "prompt" (current dir) OR aio multi <project#> c:3 "prompt"
-
-    # Check if first arg is a project number or agent spec
+    # Run multiple agents in ONE tmux session with tabs (windows), each in its own worktree
     if work_dir_arg and work_dir_arg.isdigit():
-        # Explicit project number provided: aio multi 3 c:2 "task"
         project_idx = int(work_dir_arg)
         if not (0 <= project_idx < len(PROJECTS)):
             print(f"✗ Invalid project index: {project_idx}")
             sys.exit(1)
         project_path = PROJECTS[project_idx]
-        start_parse_at = 3  # Start parsing from argv[3]
+        start_parse_at = 3
     else:
-        # No project number, use current directory: aio multi c:2 "task"
         project_path = os.getcwd()
-        start_parse_at = 2  # Start parsing from argv[2]
+        start_parse_at = 2
 
-    # Check for sequential flag
-    sequential = '--seq' in sys.argv or '--sequential' in sys.argv
-
-    # Parse agent specifications and prompt using helper function
     agent_specs, prompt, using_default_protocol = parse_agent_specs_and_prompt(sys.argv, start_parse_at)
-
     if not agent_specs:
         print("✗ No agent specifications provided")
         sys.exit(1)
 
-    # Calculate total instances
     total_instances = sum(count for _, count in agent_specs)
-
-    mode = "sequentially (one by one)" if sequential else "in parallel (all at once)"
-    print(f"🚀 Starting {total_instances} agent instances {mode}...")
-    print(f"   Project: {project_path}")
-    print(f"   Agents: {', '.join(f'{key}×{count}' for key, count in agent_specs)}")
-    if using_default_protocol:
-        print(f"   Task: 🔬 DEFAULT - Execute 11-step optimization protocol")
-        print(f"         (Ultrathink → Run → Find pain → Research → Simplify → Rewrite → Debug → Delete → Optimize → Debug → Report)")
-    else:
-        print(f"   Prompt: {prompt}")
-    if sequential:
-        print(f"   Mode: Sequential - each agent completes before next starts")
-    print()
-
-    # Create worktrees and launch sessions
-    launched_sessions = []
-
-    # Escape prompt for shell usage using stdlib
+    print(f"🚀 Starting {total_instances} agents as tabs in one session...")
     escaped_prompt = shlex.quote(prompt)
+
+    # Create ONE session with multiple windows (tabs)
+    date_str = datetime.now().strftime('%Y%m%d-%H%M%S')
+    session_name = f"multi-{date_str}"
+    env = get_noninteractive_git_env()
+    first_window = True
+    launched = []
 
     for agent_key, count in agent_specs:
         base_name, base_cmd = sessions.get(agent_key, (None, None))
-
         if not base_name:
-            print(f"✗ Unknown agent key: {agent_key}")
             continue
 
-        for instance_num in range(count):
-            # Create unique worktree name with agent key for guaranteed uniqueness
-            import time
-            date_str = datetime.now().strftime('%Y%m%d')
-            time_str = datetime.now().strftime('%H%M%S')
-            # Include agent key to ensure uniqueness when multiple agent types run
-            worktree_name = f"{base_name}-{date_str}-{time_str}-multi-{agent_key}{instance_num}"
-
+        for i in range(count):
             # Create worktree
-            worktree_result = create_worktree(project_path, worktree_name)
-            worktree_path = worktree_result[0] if worktree_result else None
-
-            if not worktree_path:
-                print(f"✗ Failed to create worktree for {base_name} instance {instance_num+1}")
+            wt_name = f"{base_name}-{date_str}-{agent_key}{i}"
+            wt_result = create_worktree(project_path, wt_name)
+            wt_path = wt_result[0] if wt_result else None
+            if not wt_path:
                 continue
 
-            # Construct full command with prompt baked in (like lpp/gpp/cpp)
-            # Note: escaped_prompt already has quotes from shlex.quote()
             full_cmd = f'{base_cmd} {escaped_prompt}'
+            window_name = f"{agent_key}{i}"
 
-            # Create tmux session in worktree with prompt already included
-            # IMPORTANT: Use clean environment to prevent GUI dialogs in the agent session
-            # Use the full worktree name (with project prefix) as session name
-            session_name = os.path.basename(worktree_path)
-            env = get_noninteractive_git_env()
-            create_tmux_session(session_name, worktree_path, full_cmd, env=env)
+            if first_window:
+                # Create session with first window
+                sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', window_name, '-c', wt_path, full_cmd], env=env)
+                first_window = False
+            else:
+                # Add new window (tab) to existing session
+                sp.run(['tmux', 'new-window', '-t', session_name, '-n', window_name, '-c', wt_path, full_cmd], env=env)
 
-            launched_sessions.append((session_name, base_name, instance_num+1, worktree_path))
-            print(f"✓ Created {base_name} instance {instance_num+1}: {session_name}")
+            # Split window: agent left, bash right
+            sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{window_name}', '-c', wt_path], env=env)
+            sp.run(['tmux', 'select-pane', '-t', f'{session_name}:{window_name}.0'], env=env)  # Focus agent
 
-    if not launched_sessions:
-        print("✗ No sessions were created")
+            launched.append((window_name, base_name, wt_path))
+            print(f"✓ Tab '{window_name}': {base_name} in {os.path.basename(wt_path)}")
+
+    if not launched:
+        print("✗ No agents created")
         sys.exit(1)
 
-    # No need to send prompts separately - they're already baked into the commands
-    print(f"\n✓ All {len(launched_sessions)} agents launched with prompts!")
+    # Apply tmux options to session
+    ensure_tmux_options()
+    sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'], capture_output=True)
 
-    mode_msg = "one by one" if sequential else "in parallel"
-    print(f"\n✓ All {len(launched_sessions)} agents launched {mode_msg}!")
-    print(f"\n📊 Monitor all agents:")
-    print(f"   aio jobs")
-    print(f"\n📂 Open worktree directory:")
-    for session_name, agent_name, instance_num, worktree_path in launched_sessions:
-        print(f"   aio -w {worktree_path}  # {agent_name} #{instance_num}")
-    print(f"\n🔗 Attach to specific agent:")
-    for session_name, agent_name, instance_num, worktree_path in launched_sessions:
-        print(f"   tmux attach -t {session_name}  # {agent_name} #{instance_num}")
+    print(f"\n✓ Session '{session_name}' created with {len(launched)} tabs")
+    print(f"   Click tabs in status bar or use Ctrl+B N/P to switch")
+
+    # Attach to session
+    if "TMUX" in os.environ:
+        print(f"   Attach: tmux switch-client -t {session_name}")
+    else:
+        os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
 elif arg == 'all':
     # Run agents across ALL saved projects (portfolio-level operation)
     # Usage: aio all c:2 "prompt" (parallel) OR aio all c:2 --seq "prompt" (sequential)
