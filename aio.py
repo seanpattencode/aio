@@ -2210,50 +2210,73 @@ elif arg == 'multi':
                     (run_id, project_path, prompt, json.dumps([f"{k}:{c}" for k, c in agent_specs])))
         conn.commit()
 
-    print(f"🚀 Starting {total} agents in {repo_name}/{run_id}...")
+    print(f"🚀 Starting {total} agents + reviewer in {repo_name}/{run_id}...")
     escaped_prompt = shlex.quote(prompt)
     env = get_noninteractive_git_env()
-    first_window = True
     launched = []
+    agent_num = {}  # Track count per agent type for naming
 
+    # Reviewer prompt
+    REVIEWER_PROMPT = '''You are a code review agent. Review each attempt directory (c0, c1, l0, etc).
+You do NOT edit code. Run tests to verify. Rank by: runs without errors, solves problem, shortest code, most library calls, fastest.
+Create REVIEW.md with rankings and recommendation. Say REVIEW COMPLETE when done.'''
+
+    first_window = True
     for agent_key, count in agent_specs:
         base_name, base_cmd = sessions.get(agent_key, (None, None))
         if not base_name: continue
 
         for i in range(count):
-            # Create worktree in run directory
+            # Better window name: codex-1, claude-2, etc.
+            agent_num[base_name] = agent_num.get(base_name, 0) + 1
+            window_name = f"{base_name}-{agent_num[base_name]}"
             attempt_name = f"{agent_key}{i}"
             wt_path = os.path.join(run_dir, attempt_name)
 
             # Create git worktree
             branch_name = f"wt-{repo_name}-{run_id}-{attempt_name}"
             sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', branch_name, wt_path], capture_output=True, env=env)
-
             if not os.path.exists(wt_path): continue
 
-            full_cmd = f'{base_cmd} {escaped_prompt}'
-
+            # Agent command signals when done via tmux wait-for
+            signal_name = f"{session_name}-{window_name}"
+            full_cmd = f'{base_cmd} {escaped_prompt}; tmux wait-for -S {signal_name}'
             if first_window:
-                sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', attempt_name, '-c', wt_path, full_cmd], env=env)
+                sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', window_name, '-c', wt_path, full_cmd], env=env)
                 first_window = False
             else:
-                sp.run(['tmux', 'new-window', '-t', session_name, '-n', attempt_name, '-c', wt_path, full_cmd], env=env)
+                sp.run(['tmux', 'new-window', '-t', session_name, '-n', window_name, '-c', wt_path, full_cmd], env=env)
 
             # Split: agent left, bash right
-            sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{attempt_name}', '-c', wt_path], env=env)
-            sp.run(['tmux', 'select-pane', '-t', f'{session_name}:{attempt_name}.0'], env=env)
+            sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{window_name}', '-c', wt_path], env=env)
+            sp.run(['tmux', 'select-pane', '-t', f'{session_name}:{window_name}.0'], env=env)
 
-            launched.append((attempt_name, base_name, wt_path))
-            print(f"✓ Tab '{attempt_name}': {base_name}")
+            launched.append((window_name, base_name, wt_path))
+            print(f"✓ {window_name}")
 
     if not launched:
         print("✗ No agents created"); sys.exit(1)
 
-    ensure_tmux_options()
-    sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'], capture_output=True)
+    # Add reviewer window (event-driven: waits for all agent signals, then auto-starts)
+    wait_cmds = '; '.join(f'echo "  waiting for {w}..."; tmux wait-for {session_name}-{w}; echo "  ✓ {w} done"' for w, _, _ in launched)
+    wait_script = f'''echo "⏳ Waiting for agents to finish..."
+echo "   Exit each agent (Ctrl+C or /exit) to trigger auto-review"
+echo ""
+{wait_cmds}
+echo ""
+echo "✓ All agents done. Starting review..."
+claude --dangerously-skip-permissions {shlex.quote(REVIEWER_PROMPT)}'''
+    sp.run(['tmux', 'new-window', '-t', session_name, '-n', '📋review', '-c', run_dir, f'bash -c {shlex.quote(wait_script)}'], env=env)
+    sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:📋review', '-c', run_dir], env=env)
+    print("✓ 📋review (auto-starts when agents finish)")
 
-    print(f"\n✓ Session '{session_name}' with {len(launched)} tabs")
-    print(f"   Review when done: aio review {run_id}")
+    # Select first agent window
+    sp.run(['tmux', 'select-window', '-t', f'{session_name}:{launched[0][0]}'], capture_output=True)
+    ensure_tmux_options()
+    sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', 'Ctrl+Q:Detach | 📋review auto-starts when done'], capture_output=True)
+
+    print(f"\n✓ Session '{session_name}': {len(launched)} agents + 📋review (auto-starts)")
+    print(f"   Use 'aio attach' to reconnect")
 
     if "TMUX" in os.environ:
         print(f"   Attach: tmux switch-client -t {session_name}")
@@ -2480,8 +2503,75 @@ elif arg == 'jobs':
     # Check for --running flag
     running_only = '--running' in sys.argv or '-r' in sys.argv
     list_jobs(running_only=running_only)
+elif arg == 'attach':
+    # Attach to session associated with current directory or run_id
+    run_id = work_dir_arg
+    cwd = os.getcwd()
+
+    # If in a worktree, find its session
+    if WORKTREES_DIR in cwd:
+        parts = cwd.replace(WORKTREES_DIR + '/', '').split('/')
+        if len(parts) >= 2:
+            repo_name, run_id = parts[0], parts[1]
+            session_name = f"{repo_name}-{run_id}"
+            if sm.has_session(session_name):
+                print(f"Attaching to {session_name}...")
+                if "TMUX" in os.environ:
+                    os.execvp('tmux', ['tmux', 'switch-client', '-t', session_name])
+                else:
+                    os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
+
+    # Otherwise list recent sessions
+    with WALManager(DB_PATH) as conn:
+        runs = conn.execute("SELECT id, repo FROM multi_runs ORDER BY created_at DESC LIMIT 10").fetchall()
+    if runs:
+        print("Recent sessions:")
+        for i, (rid, repo) in enumerate(runs):
+            sname = f"{os.path.basename(repo)}-{rid}"
+            status = "●" if sm.has_session(sname) else "○"
+            print(f"  {i}. {status} {sname}")
+        choice = input("Select #: ").strip()
+        if choice.isdigit() and int(choice) < len(runs):
+            rid, repo = runs[int(choice)]
+            session_name = f"{os.path.basename(repo)}-{rid}"
+            if "TMUX" in os.environ:
+                os.execvp('tmux', ['tmux', 'switch-client', '-t', session_name])
+            else:
+                os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
+    print("No session found")
+
+elif arg == 'killall':
+    # Kill all tmux sessions (except current if inside tmux)
+    sessions_out = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
+    if sessions_out.returncode != 0:
+        print("No tmux sessions running"); sys.exit(0)
+    all_sessions = [s for s in sessions_out.stdout.strip().split('\n') if s]
+    if not all_sessions:
+        print("No tmux sessions running"); sys.exit(0)
+
+    current = os.environ.get('TMUX', '').split(',')[0].split('/')[-1] if 'TMUX' in os.environ else None
+    if current:
+        # Get current session name
+        current = sp.run(['tmux', 'display-message', '-p', '#{session_name}'], capture_output=True, text=True).stdout.strip()
+        to_kill = [s for s in all_sessions if s != current]
+        msg = f"Kill {len(to_kill)} sessions (keeping '{current}')?"
+    else:
+        to_kill = all_sessions
+        msg = f"Kill all {len(to_kill)} tmux sessions?"
+
+    if not to_kill:
+        print("No other sessions to kill"); sys.exit(0)
+
+    print(f"Sessions to kill: {', '.join(to_kill)}")
+    if input(f"{msg} (y/n): ").strip().lower() in ['y', 'yes']:
+        for s in to_kill:
+            sp.run(['tmux', 'kill-session', '-t', s], capture_output=True)
+        print(f"✓ Killed {len(to_kill)} sessions")
+    else:
+        print("Cancelled")
+
 elif arg == 'review':
-    # Review mode: reviewer agent ranks worktrees, user can push/reject
+    # Review mode: add reviewer window to existing session
     import json
 
     REVIEWER_PROMPT = """You are a code review agent. Review the code in each worktree directory.
@@ -2512,7 +2602,6 @@ After creating REVIEW.md, say REVIEW COMPLETE."""
     if work_dir_arg:
         run_id = work_dir_arg
     else:
-        # List available runs
         with WALManager(DB_PATH) as conn:
             runs = conn.execute("SELECT id, repo, prompt, status FROM multi_runs ORDER BY created_at DESC LIMIT 10").fetchall()
         if not runs:
@@ -2521,118 +2610,49 @@ After creating REVIEW.md, say REVIEW COMPLETE."""
         print("Recent runs:")
         for i, (rid, repo, prompt, status) in enumerate(runs):
             print(f"  {i}. [{status}] {rid} - {os.path.basename(repo)}: {prompt[:40]}...")
-        choice = input("Select run # (or run_id): ").strip()
+        choice = input("Select #: ").strip()
         run_id = runs[int(choice)][0] if choice.isdigit() and int(choice) < len(runs) else choice
 
-    # Find run directory
+    # Find run directory and repo name
     run_dir = None
-    for repo_dir in os.listdir(WORKTREES_DIR) if os.path.exists(WORKTREES_DIR) else []:
-        candidate = os.path.join(WORKTREES_DIR, repo_dir, run_id)
+    repo_name = None
+    for rd in os.listdir(WORKTREES_DIR) if os.path.exists(WORKTREES_DIR) else []:
+        candidate = os.path.join(WORKTREES_DIR, rd, run_id)
         if os.path.exists(candidate):
             run_dir = candidate
+            repo_name = rd
             break
 
     if not run_dir:
         print(f"✗ Run not found: {run_id}")
         sys.exit(1)
 
-    # Load run info
-    run_json = os.path.join(run_dir, "run.json")
-    if os.path.exists(run_json):
-        with open(run_json) as f:
-            run_info = json.load(f)
-        print(f"📋 Reviewing: {run_info.get('prompt', 'unknown')[:60]}...")
-    else:
-        run_info = {}
-
-    # Get worktrees (attempt directories)
-    attempts = [d for d in os.listdir(run_dir) if os.path.isdir(os.path.join(run_dir, d)) and d != 'run.json']
-    if not attempts:
-        print("✗ No attempts found")
-        sys.exit(1)
-
-    # Create review session
-    session_name = f"review-{run_id}"
-    sp.run(['tmux', 'kill-session', '-t', session_name], capture_output=True)
+    # Session name matches multi command
+    session_name = f"{repo_name}-{run_id}"
     env = get_noninteractive_git_env()
 
-    # First window: reviewer agent + bash
+    # Add reviewer window to existing session (or create if doesn't exist)
     reviewer_cmd = f"claude {shlex.quote(REVIEWER_PROMPT)}"
-    sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', 'reviewer', '-c', run_dir, reviewer_cmd], env=env)
+    if sm.has_session(session_name):
+        # Add reviewer as new window
+        sp.run(['tmux', 'new-window', '-t', session_name, '-n', 'reviewer', '-c', run_dir, reviewer_cmd], env=env)
+    else:
+        # Create session with reviewer
+        sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', 'reviewer', '-c', run_dir, reviewer_cmd], env=env)
+
+    # Split reviewer window: agent left, bash right
     sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:reviewer', '-c', run_dir], env=env)
-
-    # Get original session name pattern
-    repo_name = os.path.basename(run_info.get('repo', ''))
-    orig_session = f"{repo_name}-{run_id}" if repo_name else None
-
-    # Add window for each attempt
-    for attempt in sorted(attempts):
-        wt_path = os.path.join(run_dir, attempt)
-        sp.run(['tmux', 'new-window', '-t', session_name, '-n', attempt, '-c', wt_path], env=env)
-
-        # Try to show original agent session in left pane, bash in right
-        if orig_session and sm.has_session(orig_session):
-            # Show live view of original agent
-            sp.run(['tmux', 'send-keys', '-t', f'{session_name}:{attempt}',
-                   f"watch -n1 -c tmux capture-pane -p -t {orig_session}:{attempt}.0 2>/dev/null || bash", 'Enter'], env=env)
-        sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{attempt}', '-c', wt_path], env=env)
-
-    ensure_tmux_options()
-    sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', 'Ctrl+Q:Detach then choose action'], capture_output=True)
     sp.run(['tmux', 'select-window', '-t', f'{session_name}:reviewer'], capture_output=True)
 
-    print(f"\n✓ Review session '{session_name}' created")
-    print(f"   Tabs: reviewer + {len(attempts)} attempts")
-    print(f"   Detach (Ctrl+Q) when done to choose action")
+    ensure_tmux_options()
+    print(f"✓ Added reviewer to session '{session_name}'")
+    print(f"   Use 'aio attach' to reconnect")
 
-    # Attach to session
-    if "TMUX" not in os.environ:
-        sp.run(['tmux', 'attach', '-t', session_name])
+    # Attach
+    if "TMUX" in os.environ:
+        os.execvp('tmux', ['tmux', 'switch-client', '-t', session_name])
     else:
-        sp.run(['tmux', 'switch-client', '-t', session_name])
-        sys.exit(0)
-
-    # After detach, show action menu
-    print(f"\n📋 Review Actions for {run_id}:")
-    for i, attempt in enumerate(sorted(attempts)):
-        print(f"  {i}. {attempt}")
-
-    print(f"\nCommands: push <#>, reject <#>, pushall, rejectall, done")
-    while True:
-        action = input("> ").strip().lower()
-        if action == 'done':
-            break
-        elif action.startswith('push '):
-            idx = int(action.split()[1])
-            wt_path = os.path.join(run_dir, sorted(attempts)[idx])
-            msg = input("Commit msg: ").strip() or f"Merge {sorted(attempts)[idx]}"
-            remove_worktree(wt_path, push=True, commit_msg=msg, skip_confirm=True)
-            print(f"✓ Pushed and removed {sorted(attempts)[idx]}")
-        elif action.startswith('reject '):
-            idx = int(action.split()[1])
-            wt_path = os.path.join(run_dir, sorted(attempts)[idx])
-            remove_worktree(wt_path, push=False, skip_confirm=True)
-            print(f"✓ Rejected {sorted(attempts)[idx]}")
-        elif action == 'pushall':
-            for attempt in sorted(attempts):
-                wt_path = os.path.join(run_dir, attempt)
-                if os.path.exists(wt_path):
-                    remove_worktree(wt_path, push=True, commit_msg=f"Merge {attempt}", skip_confirm=True)
-            print("✓ Pushed all")
-            break
-        elif action == 'rejectall':
-            for attempt in sorted(attempts):
-                wt_path = os.path.join(run_dir, attempt)
-                if os.path.exists(wt_path):
-                    remove_worktree(wt_path, push=False, skip_confirm=True)
-            print("✓ Rejected all")
-            break
-
-    # Update DB status
-    with WALManager(DB_PATH) as conn:
-        conn.execute("UPDATE multi_runs SET status = 'reviewed' WHERE id = ?", (run_id,))
-        conn.commit()
-    print("✅ Review complete!")
+        os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
 elif arg == 'cleanup':
     # Delete all worktrees without pushing
     if not os.path.exists(WORKTREES_DIR):
