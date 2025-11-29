@@ -521,10 +521,10 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     result = sm.new_session(session_name, work_dir, cmd or '', env)
     # Set per-session status bar
     sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'], capture_output=True)
-    # Auto-add bash pane for agent sessions (side by side, focus agent)
+    # Auto-add bash pane for agent sessions (bash left, agent right)
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
-        sp.run(['tmux', 'split-window', '-h', '-t', session_name, '-c', work_dir], capture_output=True)
-        sp.run(['tmux', 'select-pane', '-t', session_name, '-L'], capture_output=True)
+        sp.run(['tmux', 'split-window', '-bh', '-t', session_name, '-c', work_dir], capture_output=True)
+        sp.run(['tmux', 'select-pane', '-t', session_name, '-R'], capture_output=True)
     return result
 
 def detect_terminal():
