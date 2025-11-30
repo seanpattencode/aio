@@ -2287,9 +2287,10 @@ elif arg == 'multi':
             sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', branch_name, wt_path], capture_output=True, env=env)
             if not os.path.exists(wt_path): continue
 
-            # Agent command signals when done via tmux wait-for
             signal_name = f"{session_name}-{window_name}"
-            full_cmd = f'{base_cmd} {escaped_prompt}; tmux wait-for -S {signal_name}'
+            # Fallback 1: Signal on agent exit (handles crashes, user quit, completion)
+            exit_signal = f'; tmux wait-for -S {signal_name}'
+            full_cmd = f'{base_cmd} {escaped_prompt}{exit_signal}'
             if first_window:
                 sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', window_name, '-c', wt_path, full_cmd], env=env)
                 first_window = False
@@ -2299,6 +2300,15 @@ elif arg == 'multi':
             # Split: agent left, bash right
             sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{window_name}', '-c', wt_path], env=env)
             sp.run(['tmux', 'select-pane', '-t', f'{session_name}:{window_name}.0'], env=env)
+
+            # Fallback 2: Prompt detection (idle agent) - signals if prompt AND (>20 lines OR >10s elapsed)
+            detector = f'''sh -c 's=$(date +%s);n=0;while IFS= read -r l;do n=$((n+1));e=$(($(date +%s)-s));echo "$l"|sed "s/$(printf "\\033")\\[[0-9;]*[a-zA-Z]//g"|grep -q "[›>] "&&[ $n -gt 20 -o $e -gt 10 ]&&tmux wait-for -S {signal_name}&&exit 0;done' '''
+            sp.run(['tmux', 'pipe-pane', '-t', f'{session_name}:{window_name}.0', detector], env=env)
+
+            # Fallback 3: Inactivity timeout (30 min) - handles stuck agents
+            sp.run(['tmux', 'set-option', '-t', f'{session_name}:{window_name}', 'monitor-silence', '1800'], env=env)
+            sp.run(['tmux', 'set-hook', '-t', f'{session_name}:{window_name}', 'alert-silence',
+                    f'run-shell "tmux wait-for -S {signal_name}"'], env=env)
 
             launched.append((window_name, base_name, wt_path))
             print(f"✓ {window_name}")
@@ -2314,8 +2324,8 @@ elif arg == 'multi':
 
     # Add reviewer window (event-driven: waits for all agent signals, then auto-starts)
     wait_cmds = '; '.join(f'echo "  waiting for {w}..."; tmux wait-for {session_name}-{w}; echo "  ✓ {w} done"' for w, _, _ in launched)
-    wait_script = f'''echo "⏳ Waiting for agents to finish..."
-echo "   Exit each agent (Ctrl+C or /exit) to trigger auto-review"
+    wait_script = f'''echo "⏳ Waiting for agents to complete generation..."
+echo "   (signals when agent shows prompt - universal for all CLIs)"
 echo ""
 {wait_cmds}
 echo ""
