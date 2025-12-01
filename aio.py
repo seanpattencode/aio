@@ -2325,8 +2325,8 @@ elif arg == 'multi':
 
     # Add reviewer window (event-driven: waits for all agent signals, then auto-starts)
     wait_cmds = '; '.join(f'echo "  waiting for {w}..."; tmux wait-for {session_name}-{w}; echo "  ✓ {w} done"' for w, _, _ in launched)
-    wait_script = f'''echo "⏳ Waiting for agents to complete generation..."
-echo "   (signals when agent shows prompt - universal for all CLIs)"
+    wait_script = f'''echo "⏳ Waiting for agents to complete..."
+echo "   Run 'aio r' to force review now"
 echo ""
 {wait_cmds}
 echo ""
@@ -2652,9 +2652,12 @@ elif arg == 'prompt':
     else:
         print("No changes")
 
-elif arg == 'review':
+elif arg == 'r' or arg == 'review':
     # Review mode: add reviewer window to existing session
+    # 'aio r' = force review on most recent run (no prompt)
+    # 'aio review' = interactive selection
     import json
+    force_latest = (arg == 'r')
 
     # Find run to review
     if work_dir_arg:
@@ -2665,41 +2668,60 @@ elif arg == 'review':
         if not runs:
             print("No runs to review. Use 'aio multi' first.")
             sys.exit(0)
-        print("Recent runs:")
-        for i, (rid, repo, prompt, status, created_at) in enumerate(runs):
-            elapsed = ""
-            if created_at:
-                try:
-                    mins = int((datetime.now() - datetime.fromisoformat(created_at)).total_seconds() / 60)
-                    elapsed = f"{mins}m" if mins < 60 else f"{mins//60}h{mins%60}m"
-                except: pass
-            print(f"  {i}. [{status}] {elapsed:>5} {rid} - {os.path.basename(repo)}: {prompt[:40]}...")
-        choice = input("Select #: ").strip()
-        run_id = runs[int(choice)][0] if choice.isdigit() and int(choice) < len(runs) else choice
+        if force_latest:
+            # Auto-select most recent
+            run_id = runs[0][0]
+            print(f"📋 Force reviewing: {runs[0][2][:50]}...")
+        else:
+            print("Recent runs:")
+            for i, (rid, repo, prompt, status, created_at) in enumerate(runs):
+                elapsed = ""
+                if created_at:
+                    try:
+                        mins = int((datetime.now() - datetime.fromisoformat(created_at)).total_seconds() / 60)
+                        elapsed = f"{mins}m" if mins < 60 else f"{mins//60}h{mins%60}m"
+                    except: pass
+                print(f"  {i}. [{status}] {elapsed:>5} {rid} - {os.path.basename(repo)}: {prompt[:40]}...")
+            choice = input("Select #: ").strip()
+            run_id = runs[int(choice)][0] if choice.isdigit() and int(choice) < len(runs) else choice
 
-    # Find run directory and repo name
+    # Find run directory (nested: repo/run_id/) and worktrees (flat: repo-run_id-*)
     run_dir = None
     repo_name = None
-    for rd in os.listdir(WORKTREES_DIR) if os.path.exists(WORKTREES_DIR) else []:
-        candidate = os.path.join(WORKTREES_DIR, rd, run_id)
-        if os.path.exists(candidate):
-            run_dir = candidate
-            repo_name = rd
-            break
+    worktree_dirs = []
 
-    if not run_dir:
+    if os.path.exists(WORKTREES_DIR):
+        # Check nested structure for run.json
+        for rd in os.listdir(WORKTREES_DIR):
+            candidate = os.path.join(WORKTREES_DIR, rd, run_id)
+            if os.path.isdir(candidate):
+                run_dir = candidate
+                repo_name = rd
+                break
+
+        # Find flat worktrees matching repo-run_id-*
+        if repo_name:
+            prefix = f"{repo_name}-{run_id}-"
+            worktree_dirs = [d for d in os.listdir(WORKTREES_DIR)
+                           if d.startswith(prefix) and os.path.isdir(os.path.join(WORKTREES_DIR, d))]
+
+    if not run_dir and not worktree_dirs:
         print(f"✗ Run not found: {run_id}")
         sys.exit(1)
 
     # Load run context and build reviewer prompt
-    run_json = os.path.join(run_dir, "run.json")
     task, agents = "unknown", "unknown"
-    if os.path.exists(run_json):
-        with open(run_json) as f:
-            info = json.load(f)
-            task = info.get("task") or info.get("prompt", "unknown")
-            agents = ", ".join(info.get("agents", []))
-    dirs = ", ".join(d for d in os.listdir(run_dir) if os.path.isdir(os.path.join(run_dir, d)))
+    if run_dir:
+        run_json = os.path.join(run_dir, "run.json")
+        if os.path.exists(run_json):
+            with open(run_json) as f:
+                info = json.load(f)
+                task = info.get("task") or info.get("prompt", "unknown")
+                agents = ", ".join(info.get("agents", []))
+
+    # Use flat worktree dirs, or fall back to nested subdirs
+    dirs = ", ".join(worktree_dirs) if worktree_dirs else ", ".join(
+        d for d in os.listdir(run_dir) if os.path.isdir(os.path.join(run_dir, d)))
 
     prompt_template = get_prompt('reviewer') or "Review the code in {DIRS} for task: {TASK}"
     REVIEWER_PROMPT = prompt_template.format(TASK=task, AGENTS=agents, DIRS=dirs)
@@ -2710,17 +2732,20 @@ elif arg == 'review':
     session_name = f"{repo_name}-{run_id}"
     env = get_noninteractive_git_env()
 
+    # Working dir: first worktree (flat) or run_dir (nested)
+    review_cwd = os.path.join(WORKTREES_DIR, worktree_dirs[0]) if worktree_dirs else run_dir
+
     # Add reviewer window to existing session (or create if doesn't exist)
     reviewer_cmd = f"claude --dangerously-skip-permissions {shlex.quote(REVIEWER_PROMPT)}"
     if sm.has_session(session_name):
         # Add reviewer as new window
-        sp.run(['tmux', 'new-window', '-t', session_name, '-n', 'reviewer', '-c', run_dir, reviewer_cmd], env=env)
+        sp.run(['tmux', 'new-window', '-t', session_name, '-n', 'reviewer', '-c', review_cwd, reviewer_cmd], env=env)
     else:
         # Create session with reviewer
-        sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', 'reviewer', '-c', run_dir, reviewer_cmd], env=env)
+        sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', 'reviewer', '-c', review_cwd, reviewer_cmd], env=env)
 
     # Split reviewer window: agent left, bash right
-    sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:reviewer', '-c', run_dir], env=env)
+    sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:reviewer', '-c', review_cwd], env=env)
     sp.run(['tmux', 'select-window', '-t', f'{session_name}:reviewer'], capture_output=True)
 
     ensure_tmux_options()
@@ -3201,7 +3226,7 @@ elif arg == 'push':
     commit_msg = work_dir_arg if work_dir_arg else f"Update {os.path.basename(cwd)}"
 
     if is_worktree:
-        # We're in a worktree - need to find the main project and push to main
+        # We're in a worktree
         worktree_name = os.path.basename(cwd)
         project_path = get_project_for_worktree(cwd)
 
@@ -3210,28 +3235,30 @@ elif arg == 'push':
             print(f"  Worktree: {cwd}")
             sys.exit(1)
 
-        # Show confirmation dialogue
-        print(f"\n📍 You are in a worktree: {worktree_name}")
-        print(f"   Main project: {project_path}")
-        print(f"\nThis will:")
-        print(f"  1. Commit your changes in the worktree")
-        print(f"  2. Switch the main project to the main branch")
-        print(f"  3. Push to the main branch on remote")
-        print(f"  4. Auto-pull to sync main project with remote")
-        print(f"  5. Optionally delete the worktree (you'll be asked)")
-        print(f"\nCommit message: {commit_msg}")
-
-        skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
-        if not skip_confirm:
-            response = input("\nContinue? (y/n): ").strip().lower()
-            if response not in ['y', 'yes']:
-                print("✗ Cancelled")
-                sys.exit(0)
-
-        # Get the current branch name in worktree (needed for merging later)
+        # Get the current branch name in worktree
         result = sp.run(['git', '-C', cwd, 'branch', '--show-current'],
                         capture_output=True, text=True)
         worktree_branch = result.stdout.strip()
+
+        # Show options
+        print(f"\n📍 Worktree: {worktree_name}")
+        print(f"   Branch: {worktree_branch}")
+        print(f"   Project: {project_path}")
+        print(f"   Message: {commit_msg}")
+
+        skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
+        push_to_main = True  # default
+
+        if not skip_confirm:
+            print(f"\nPush to:")
+            print(f"  1. main (merge & push to main, optionally delete worktree)")
+            print(f"  2. branch (push to {worktree_branch} only)")
+            choice = input("Choice [1]: ").strip()
+            if choice == '2':
+                push_to_main = False
+            elif choice and choice != '1':
+                print("✗ Cancelled")
+                sys.exit(0)
 
         # Add and commit changes in worktree
         sp.run(['git', '-C', cwd, 'add', '-A'])
@@ -3256,76 +3283,88 @@ elif arg == 'push':
             print(f"✗ Commit failed: {error_msg}")
             sys.exit(1)
 
-        # Detect main branch name
-        result = sp.run(['git', '-C', project_path, 'symbolic-ref', 'refs/remotes/origin/HEAD'],
-                        capture_output=True, text=True)
-        if result.returncode == 0:
-            main_branch = result.stdout.strip().replace('refs/remotes/origin/', '')
-        else:
-            result = sp.run(['git', '-C', project_path, 'rev-parse', '--verify', 'main'],
-                           capture_output=True)
-            main_branch = 'main' if result.returncode == 0 else 'master'
-
-        print(f"→ Switching main project to {main_branch}...")
-
-        # Switch to main branch
-        result = sp.run(['git', '-C', project_path, 'checkout', main_branch],
-                        capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print(f"✗ Failed to switch to {main_branch}: {result.stderr.strip()}")
-            sys.exit(1)
-
-        print(f"✓ Switched to {main_branch}")
-
-        # Merge worktree branch into main (auto-resolve conflicts using worktree version)
-        print(f"→ Merging {worktree_branch} into {main_branch}...")
-        result = sp.run(['git', '-C', project_path, 'merge', worktree_branch, '--no-edit', '-X', 'theirs'],
-                        capture_output=True, text=True)
-
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() or result.stdout.strip()
-            print(f"✗ Merge failed: {error_msg}")
-            sys.exit(1)
-
-        print(f"✓ Merged {worktree_branch} into {main_branch} (conflicts auto-resolved)")
-
-        # Push to main
-        env = get_noninteractive_git_env()
-        result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
-                        capture_output=True, text=True, env=env)
-
-        if result.returncode == 0:
-            print(f"✓ Pushed to {main_branch}")
-        else:
-            error_msg = result.stderr.strip() or result.stdout.strip()
-            if 'rejected' in error_msg and 'non-fast-forward' in error_msg:
-                print(f"⚠️  Push rejected - remote has diverged. Force pushing...")
-                result = sp.run(['git', '-C', project_path, 'push', '--force-with-lease', 'origin', main_branch],
-                                capture_output=True, text=True, env=env)
-                if result.returncode == 0:
-                    print(f"✓ Force pushed to {main_branch} (remote was overwritten)")
-                else:
-                    print(f"✗ Force push failed: {result.stderr.strip()}")
-                    sys.exit(1)
+        if push_to_main:
+            # Detect main branch name
+            result = sp.run(['git', '-C', project_path, 'symbolic-ref', 'refs/remotes/origin/HEAD'],
+                            capture_output=True, text=True)
+            if result.returncode == 0:
+                main_branch = result.stdout.strip().replace('refs/remotes/origin/', '')
             else:
-                print(f"✗ Push failed: {error_msg}")
+                result = sp.run(['git', '-C', project_path, 'rev-parse', '--verify', 'main'],
+                               capture_output=True)
+                main_branch = 'main' if result.returncode == 0 else 'master'
+
+            print(f"→ Switching main project to {main_branch}...")
+
+            # Switch to main branch
+            result = sp.run(['git', '-C', project_path, 'checkout', main_branch],
+                            capture_output=True, text=True)
+
+            if result.returncode != 0:
+                print(f"✗ Failed to switch to {main_branch}: {result.stderr.strip()}")
                 sys.exit(1)
 
-        # Auto-pull to sync main project with remote
-        print(f"→ Syncing main project with remote...")
-        env = get_noninteractive_git_env()
-        fetch_result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
-                              capture_output=True, text=True, env=env)
-        if fetch_result.returncode == 0:
-            reset_result = sp.run(['git', '-C', project_path, 'reset', '--hard', f'origin/{main_branch}'],
-                                  capture_output=True, text=True)
-            if reset_result.returncode == 0:
-                print(f"✓ Synced main project with remote")
+            print(f"✓ Switched to {main_branch}")
+
+            # Merge worktree branch into main (auto-resolve conflicts using worktree version)
+            print(f"→ Merging {worktree_branch} into {main_branch}...")
+            result = sp.run(['git', '-C', project_path, 'merge', worktree_branch, '--no-edit', '-X', 'theirs'],
+                            capture_output=True, text=True)
+
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                print(f"✗ Merge failed: {error_msg}")
+                sys.exit(1)
+
+            print(f"✓ Merged {worktree_branch} into {main_branch} (conflicts auto-resolved)")
+
+            # Push to main
+            env = get_noninteractive_git_env()
+            result = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch],
+                            capture_output=True, text=True, env=env)
+
+            if result.returncode == 0:
+                print(f"✓ Pushed to {main_branch}")
             else:
-                print(f"⚠ Sync warning: {reset_result.stderr.strip()}")
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                if 'rejected' in error_msg and 'non-fast-forward' in error_msg:
+                    print(f"⚠️  Push rejected - remote has diverged. Force pushing...")
+                    result = sp.run(['git', '-C', project_path, 'push', '--force-with-lease', 'origin', main_branch],
+                                    capture_output=True, text=True, env=env)
+                    if result.returncode == 0:
+                        print(f"✓ Force pushed to {main_branch} (remote was overwritten)")
+                    else:
+                        print(f"✗ Force push failed: {result.stderr.strip()}")
+                        sys.exit(1)
+                else:
+                    print(f"✗ Push failed: {error_msg}")
+                    sys.exit(1)
+
+            # Auto-pull to sync main project with remote
+            print(f"→ Syncing main project with remote...")
+            env = get_noninteractive_git_env()
+            fetch_result = sp.run(['git', '-C', project_path, 'fetch', 'origin'],
+                                  capture_output=True, text=True, env=env)
+            if fetch_result.returncode == 0:
+                reset_result = sp.run(['git', '-C', project_path, 'reset', '--hard', f'origin/{main_branch}'],
+                                      capture_output=True, text=True)
+                if reset_result.returncode == 0:
+                    print(f"✓ Synced main project with remote")
+                else:
+                    print(f"⚠ Sync warning: {reset_result.stderr.strip()}")
+            else:
+                print(f"⚠ Fetch warning: {fetch_result.stderr.strip()}")
         else:
-            print(f"⚠ Fetch warning: {fetch_result.stderr.strip()}")
+            # Push to branch only
+            env = get_noninteractive_git_env()
+            result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', worktree_branch],
+                            capture_output=True, text=True, env=env)
+            if result.returncode == 0:
+                print(f"✓ Pushed to branch: {worktree_branch}")
+            else:
+                print(f"✗ Push failed: {result.stderr.strip()}")
+                sys.exit(1)
+            sys.exit(0)  # Done - don't ask about deleting worktree
 
         # Ask if user wants to delete the worktree
         if not skip_confirm:
