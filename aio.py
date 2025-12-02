@@ -591,11 +591,19 @@ def ensure_tmux_options():
     for k, a in [('C-t', 'split-window'), ('C-w', 'kill-pane'), ('C-q', 'detach')]:
         sp.run(['tmux', 'bind-key', '-n', k, a], capture_output=True)
     sp.run(['tmux', 'bind-key', '-n', 'C-x', 'confirm-before', '-p', 'Kill session? (y/n)', 'kill-session'], capture_output=True)
+    # Clickable status bar (tmux 3.2+): wrap each action in #[range=user|name]...#[norange]
+    if sm.version >= '3.2':
+        status_right = '#[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Detach#[norange]'
+        # Mouse click binding: check mouse_status_range and run corresponding action
+        click_binding = "if -F '#{==:#{mouse_status_range},new}' { split-window } { if -F '#{==:#{mouse_status_range},close}' { kill-pane } { if -F '#{==:#{mouse_status_range},kill}' { confirm-before -p 'Kill?' kill-session } { if -F '#{==:#{mouse_status_range},detach}' { detach } { if -F '#{==:#{mouse_status_range},window}' { select-window } } } } }"
+        sp.run(['tmux', 'bind-key', '-Troot', 'MouseDown1Status', click_binding], capture_output=True)
+    else:
+        status_right = 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'
     # Update status bar on all sessions
     r = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
     if r.returncode == 0:
         for s in r.stdout.strip().split('\n'):
-            if s: sp.run(['tmux', 'set-option', '-t', s, 'status-right', 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'], capture_output=True)
+            if s: sp.run(['tmux', 'set-option', '-t', s, 'status-right', status_right], capture_output=True)
     _tmux_configured = True
 
 # Apply tmux options immediately if tmux is running
@@ -605,8 +613,9 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     """Create a tmux session with enhanced options. Agent sessions get agent+bash panes."""
     ensure_tmux_options()
     result = sm.new_session(session_name, work_dir, cmd or '', env)
-    # Set per-session status bar
-    sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'], capture_output=True)
+    # Set per-session status bar (clickable in tmux 3.2+)
+    status = '#[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Detach#[norange]' if sm.version >= '3.2' else 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'
+    sp.run(['tmux', 'set-option', '-t', session_name, 'status-right', status], capture_output=True)
     # Auto-add bash pane for agent sessions (bash left, agent right)
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
         sp.run(['tmux', 'split-window', '-bh', '-t', session_name, '-c', work_dir], capture_output=True)
