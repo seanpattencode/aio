@@ -139,11 +139,53 @@ def manual_update():
         after_hash = after.stdout.strip()[:8]
         print(f"✅ Updated: {before_hash} → {after_hash}")
         print("🔄 Please run your command again to use the new version")
+        # Clear update marker
+        try: os.remove(os.path.join(os.path.expanduser('~/.local/share/aios'), '.update_available'))
+        except: pass
         return True
 
     return True
 
 # No auto-update - Git philosophy: explicit updates only
+# But warn user if remote has newer version (check every 30 min, forked to avoid lag)
+def check_for_updates_warning():
+    """Background check for newer git version, warns user if behind."""
+    ts_file = os.path.join(os.path.expanduser('~/.local/share/aios'), '.update_check')
+    # Only check every 30 minutes
+    if os.path.exists(ts_file) and time.time() - os.path.getmtime(ts_file) < 1800:
+        return
+    if not hasattr(os, 'fork') or os.fork() != 0:
+        return  # Parent returns immediately, child continues
+    try:
+        Path(ts_file).touch()
+        # Quick fetch to check for updates
+        result = sp.run(['git', '-C', SCRIPT_DIR, 'fetch', '--dry-run'],
+                       capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stderr.strip():
+            # There are updates available - write marker file
+            marker = os.path.join(os.path.expanduser('~/.local/share/aios'), '.update_available')
+            Path(marker).touch()
+    except: pass
+    os._exit(0)
+
+def show_update_warning():
+    """Show warning if updates are available (called at startup)."""
+    marker = os.path.join(os.path.expanduser('~/.local/share/aios'), '.update_available')
+    if os.path.exists(marker):
+        # Verify still behind by checking status
+        result = sp.run(['git', '-C', SCRIPT_DIR, 'status', '-uno'],
+                       capture_output=True, text=True)
+        if 'Your branch is behind' in result.stdout:
+            print("⚠️  Update available! Run 'aio update' to get latest version")
+        else:
+            # No longer behind, remove marker
+            try: os.remove(marker)
+            except: pass
+
+# Trigger background update check
+try:
+    check_for_updates_warning()
+except: pass
 
 def ensure_git_config():
     """Auto-configure git user from GitHub credentials if not set."""
@@ -1535,6 +1577,9 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
 
 # Parse args
 arg = sys.argv[1] if len(sys.argv) > 1 else None
+
+# Show update warning if available (non-blocking check was done at import time)
+show_update_warning()
 work_dir_arg = sys.argv[2] if len(sys.argv) > 2 else None
 new_window = '--new-window' in sys.argv or '-w' in sys.argv
 with_terminal = '--with-terminal' in sys.argv or '-t' in sys.argv
@@ -2036,7 +2081,7 @@ Automation:
   aio push "Fix login"     Quick commit and push
 ═══════════════════════════════════════════════════════════════════════════════
 NOTES:
-• Auto-updates from git on each run (always latest version)
+• Run 'aio update' to pull latest version from git
 • Auto-backup every 10 minutes (silent, zero delay, stored in ~/.local/share/aios)
 • Works in any git directory for push/worktree commands
 • Mouse mode enabled: Hold Shift to select and copy text
@@ -2110,7 +2155,7 @@ elif arg == 'install':
         print(f"\n✓ {bin_dir} is in your PATH")
         print(f"✓ You can now run 'aio' from anywhere!")
 
-    print(f"\nThe script will auto-update from git on each run.")
+    print(f"\nRun 'aio update' to check for and pull updates from git.")
 elif arg == 'deps':
     # Install dependencies: python packages, node/npm, codex, claude, gemini
     import platform, urllib.request, tarfile, lzma
