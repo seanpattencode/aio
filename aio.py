@@ -2128,7 +2128,9 @@ if arg and arg.startswith('w') and arg != 'watch':
         if arg.endswith('--'):
             # Remove and push: w0--, w1--, etc.
             pattern = arg[1:-2]  # Extract pattern between 'w' and '--'
-            commit_msg = work_dir_arg  # First arg after command is commit message
+            # Join all remaining args as commit message (supports both quoted and unquoted)
+            remaining_args = [a for a in sys.argv[2:] if a not in ['--yes', '-y']]
+            commit_msg = ' '.join(remaining_args) if remaining_args else None
             skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
 
             if not pattern:
@@ -3837,8 +3839,9 @@ elif arg == 'push':
     git_dir = result.stdout.strip()
     is_worktree = '.git/worktrees/' in git_dir or cwd.startswith(WORKTREES_DIR)
 
-    # Get commit message
-    commit_msg = work_dir_arg if work_dir_arg else f"Update {os.path.basename(cwd)}"
+    # Get commit message (join all remaining args - supports both quoted and unquoted)
+    remaining_args = [a for a in sys.argv[2:] if a not in ['--yes', '-y']]
+    commit_msg = ' '.join(remaining_args) if remaining_args else f"Update {os.path.basename(cwd)}"
 
     if is_worktree:
         # We're in a worktree
