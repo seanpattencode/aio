@@ -2191,7 +2191,7 @@ MULTI-AGENT:
   aio multi c:2 l:1         Mixed: 2 codex + 1 claude
   aio multi 0 c:2 "task"    Launch in project 0
 GIT:
-  aio push [file] [msg]  Commit and push (file or all)
+  aio push src/ msg      Push folder with message
   aio pull               Sync with server
 MANAGEMENT:
   aio jobs            Show active jobs
@@ -2300,11 +2300,11 @@ MULTI-AGENT PARALLEL:
 GIT OPERATIONS
 ═══════════════════════════════════════════════════════════════════════════════
   aio setup <url>        Initialize repo and add remote
-  aio push               Commit all and push
-  aio push msg here      Commit all with message (quotes optional)
-  aio push file.py       Commit only file.py
-  aio push src/          Commit only src/ directory
-  aio push file.py msg   Commit file.py with message
+  aio push                     Commit all and push
+  aio push fixed login bug     With message (no quotes needed)
+  aio push auth.py             Only auth.py
+  aio push utils/              Only utils/ directory
+  aio push auth.py fix auth    auth.py with message
   aio pull               Replace local with server (destructive, needs confirmation)
   aio pull -y            Pull without confirmation
   aio revert             Undo last commit
