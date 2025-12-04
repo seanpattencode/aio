@@ -625,8 +625,8 @@ def ensure_tmux_options():
     global _tmux_configured
     if _tmux_configured: return
     if sp.run(['tmux', 'info'], stdout=sp.DEVNULL, stderr=sp.DEVNULL).returncode != 0: return
-    # Status bar on top, mouse mode, 2-line status (tmux 2.9+)
-    for opt in [('mouse', 'on'), ('status-position', 'top'), ('status', '2')]:
+    # Status bar on bottom, mouse mode, 2-line status (tmux 2.9+)
+    for opt in [('mouse', 'on'), ('status-position', 'bottom'), ('status', '2')]:
         sp.run(['tmux', 'set-option', '-g', opt[0], opt[1]], capture_output=True)
     # Scrollbars (tmux 3.6+)
     if sm.version >= '3.6':
