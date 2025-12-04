@@ -629,8 +629,6 @@ def _write_tmux_conf():
     sh_full = '#[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Detach#[norange]'
     sh_min = '#[range=user|new]Ctrl+T#[norange] #[range=user|close]Ctrl+W#[norange] #[range=user|edit]Ctrl+E#[norange] #[range=user|kill]Ctrl+X#[norange] #[range=user|detach]Ctrl+Q#[norange]'
     line1 = '#{?#{e|<:#{client_width},50},' + sh_min + ',' + sh_full + '}'
-    click_cmd = 'if-shell -F "#{==:#{mouse_status_range},new}" { split-window } { if-shell -F "#{==:#{mouse_status_range},close}" { kill-pane } { if-shell -F "#{==:#{mouse_status_range},edit}" { split-window nvim } { if-shell -F "#{==:#{mouse_status_range},kill}" { confirm-before -p Kill? kill-session } { if-shell -F "#{==:#{mouse_status_range},detach}" { detach } { if-shell -F "#{==:#{mouse_status_range},window}" { select-window } } } } }'
-
     conf = f'''{_AIO_MARKER}
 set -g mouse on
 set -g status-position bottom
@@ -643,8 +641,7 @@ bind-key -n C-w kill-pane
 bind-key -n C-q detach
 bind-key -n C-x confirm-before -p "Kill session? (y/n)" kill-session
 bind-key -n C-e split-window "nvim ."
-bind-key -T root MouseDown1Status {click_cmd}
-bind-key -T root MouseUp1Status {click_cmd}
+bind-key -T root MouseDown1Status run-shell 'r="#{{mouse_status_range}}"; case "$r" in new) tmux split-window;; close) tmux kill-pane;; edit) tmux split-window nvim;; kill) tmux confirm-before -p "Kill?" kill-session;; detach) tmux detach;; esac'
 '''
     if sm.version >= '3.6':
         conf += 'set -g pane-scrollbars on\nset -g pane-scrollbars-position right\n'
