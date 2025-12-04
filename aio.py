@@ -650,23 +650,21 @@ def ensure_tmux_options():
     line0 = '#[align=left][#S]#[align=centre]#{W:#I:#W#{?window_active,*, } }'
     sp.run(['tmux', 'set-option', '-g', 'status-format[0]', line0], capture_output=True)
 
-    # Line 1: Shortcuts with 3-tier responsive width detection
-    # <45: minimal (^T ^W ^X ^Q), 45-70: short labels, >70: full labels
+    # Line 1: Shortcuts with 2-tier responsive width detection
+    # <50: minimal (Ctrl+X only), >=50: with labels
     if sm.version >= '3.2':
         # Clickable shortcuts with range markers
         sh_full = '#[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Detach#[norange]'
-        sh_med = '#[range=user|new]^T:New#[norange] #[range=user|close]^W:Close#[norange] #[range=user|edit]^E:Edit#[norange] #[range=user|kill]^X:Kill#[norange] #[range=user|detach]^Q:Quit#[norange]'
-        sh_min = '#[range=user|new]^T#[norange] #[range=user|close]^W#[norange] #[range=user|edit]^E#[norange] #[range=user|kill]^X#[norange] #[range=user|detach]^Q#[norange]'
+        sh_min = '#[range=user|new]Ctrl+T#[norange] #[range=user|close]Ctrl+W#[norange] #[range=user|edit]Ctrl+E#[norange] #[range=user|kill]Ctrl+X#[norange] #[range=user|detach]Ctrl+Q#[norange]'
         # Mouse click binding
         click_binding = "if -F '#{==:#{mouse_status_range},new}' { split-window } { if -F '#{==:#{mouse_status_range},close}' { kill-pane } { if -F '#{==:#{mouse_status_range},edit}' { split-window 'nvim . -c \"nmap <LeftMouse> <LeftMouse><CR>\"' } { if -F '#{==:#{mouse_status_range},kill}' { confirm-before -p 'Kill?' kill-session } { if -F '#{==:#{mouse_status_range},detach}' { detach } { if -F '#{==:#{mouse_status_range},window}' { select-window } } } } }"
         sp.run(['tmux', 'bind-key', '-Troot', 'MouseDown1Status', click_binding], capture_output=True)
     else:
-        sh_full = 'Ctrl+T:New Ctrl+W:Close Ctrl+X:Kill Ctrl+Q:Detach'
-        sh_med = '^T:New ^W:Close ^X:Kill ^Q:Quit'
-        sh_min = '^T ^W ^X ^Q'
+        sh_full = 'Ctrl+T:New Ctrl+W:Close Ctrl+E:Edit Ctrl+X:Kill Ctrl+Q:Detach'
+        sh_min = 'Ctrl+T Ctrl+W Ctrl+E Ctrl+X Ctrl+Q'
 
-    # Nested conditional: #{?#{e|<:width,45},MIN,#{?#{e|<:width,70},MED,FULL}}
-    line1 = '#{?#{e|<:#{client_width},45},' + sh_min + ',#{?#{e|<:#{client_width},70},' + sh_med + ',' + sh_full + '}}'
+    # Nested conditional: #{?#{e|<:width,50},MIN,FULL}}
+    line1 = '#{?#{e|<:#{client_width},50},' + sh_min + ',' + sh_full + '}'
     sp.run(['tmux', 'set-option', '-g', 'status-format[1]', '#[align=centre]' + line1], capture_output=True)
 
     # Clear status-right since we're using status-format now
