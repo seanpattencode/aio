@@ -624,24 +624,33 @@ _TMUX_CONF = os.path.expanduser('~/.tmux.conf')
 _AIO_MARKER = '# aio-managed-config'
 
 def _write_tmux_conf():
-    """Write tmux config to ~/.tmux.conf for persistence across restarts."""
+    """Write tmux config to ~/.tmux.conf for persistence across restarts.
+
+    TERMUX NOTE: Config is per-user (~/.tmux.conf). Termux has no system-wide
+    config, so each user must run aio once to set up their tmux environment.
+    The config persists across tmux/terminal restarts automatically.
+    """
     line0 = '#[align=left][#S]#[align=centre]#{W:#I:#W#{?window_active,*, } }'
     sh_full = '#[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Detach#[norange]'
     sh_min = '#[range=user|new]Ctrl+T#[norange] #[range=user|close]Ctrl+W#[norange] #[range=user|edit]Ctrl+E#[norange] #[range=user|kill]Ctrl+X#[norange] #[range=user|detach]Ctrl+Q#[norange]'
     line1 = '#{?#{e|<:#{client_width},50},' + sh_min + ',' + sh_full + '}'
+    # Line 2: Keyboard button for Termux - uses termux-dialog to trigger Android keyboard
+    # If termux-api not installed, shows hint. Install with: pkg install termux-api
+    line2 = '#[range=user|kbd]⌨ Keyboard#[norange]'
     conf = f'''{_AIO_MARKER}
 set -g mouse on
 set -g status-position bottom
-set -g status 2
+set -g status 3
 set -g status-right ""
 set -g status-format[0] "{line0}"
 set -g status-format[1] "#[align=centre]{line1}"
+set -g status-format[2] "#[align=centre]{line2}"
 bind-key -n C-t split-window
 bind-key -n C-w kill-pane
 bind-key -n C-q detach
 bind-key -n C-x confirm-before -p "Kill session? (y/n)" kill-session
 bind-key -n C-e split-window "nvim ."
-bind-key -T root MouseDown1Status run-shell 'r="#{{mouse_status_range}}"; case "$r" in new) tmux split-window;; close) tmux kill-pane;; edit) tmux split-window nvim;; kill) tmux confirm-before -p "Kill?" kill-session;; detach) tmux detach;; esac'
+bind-key -T root MouseDown1Status run-shell 'r="#{{mouse_status_range}}"; case "$r" in new) tmux split-window;; close) tmux kill-pane;; edit) tmux split-window nvim;; kill) tmux confirm-before -p "Kill?" kill-session;; detach) tmux detach;; kbd) tmux set -g mouse off; tmux display-message "Tap terminal now - mouse restores in 3s"; (sleep 3; tmux set -g mouse on) &;; esac'
 '''
     if sm.version >= '3.6':
         conf += 'set -g pane-scrollbars on\nset -g pane-scrollbars-position right\n'
@@ -659,23 +668,40 @@ bind-key -T root MouseDown1Status run-shell 'r="#{{mouse_status_range}}"; case "
     return True
 
 def ensure_tmux_options():
-    """Configure tmux: 2-line status bar, mouse, scrollbars, keyboard shortcuts."""
+    """Configure tmux: 3-line status bar, mouse, scrollbars, keyboard shortcuts.
+
+    Status bar layout:
+      Line 0: [session] window list
+      Line 1: Ctrl+T:New  Ctrl+W:Close  Ctrl+E:Edit  Ctrl+X:Kill  Ctrl+Q:Detach
+      Line 2: ⌨ Keyboard (tapping triggers virtual keyboard on Termux)
+
+    Called at module load and after session creation. Writes ~/.tmux.conf once,
+    then sources it into running tmux. Config persists across restarts.
+    """
     global _tmux_configured
     if _tmux_configured: return
 
-    # Write persistent config
+    # Write persistent config (skips if already up-to-date)
     conf_updated = _write_tmux_conf()
 
     # Apply to running tmux if available
     if sp.run(['tmux', 'info'], stdout=sp.DEVNULL, stderr=sp.DEVNULL).returncode != 0: return
 
-    # Source the config file to apply settings
-    sp.run(['tmux', 'source-file', _TMUX_CONF], capture_output=True)
+    # Source the config file to apply settings - check for errors
+    result = sp.run(['tmux', 'source-file', _TMUX_CONF], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"⚠ tmux config error: {result.stderr.strip()}")
+        return
     sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
     _tmux_configured = True
 
 # Apply tmux options immediately if tmux is running
 ensure_tmux_options()
+
+# Termux: Check for termux-api (needed for keyboard button)
+_TERMUX_DIALOG = '/data/data/com.termux/files/usr/bin/termux-dialog'
+if os.environ.get('TERMUX_VERSION') and not os.path.exists(_TERMUX_DIALOG):
+    print("⚠ Keyboard button needs: pkg install termux-api")
 
 def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
     """Create a tmux session with enhanced options. Agent sessions get agent+bash panes."""
