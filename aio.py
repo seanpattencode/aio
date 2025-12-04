@@ -420,10 +420,16 @@ Say REVIEW COMPLETE when done."""
                     ('c', 'codex', 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox'),
                     ('cp', 'codex-p', 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox "{CODEX_PROMPT}"'),
                     ('l', 'claude', 'claude --dangerously-skip-permissions'),
-                    ('lp', 'claude-p', 'claude --dangerously-skip-permissions "{CLAUDE_PROMPT}"')
+                    ('lp', 'claude-p', 'claude --dangerously-skip-permissions "{CLAUDE_PROMPT}"'),
+                    ('o', 'claude', 'claude --dangerously-skip-permissions')
                 ]
                 for key, name, cmd in default_sessions:
                     conn.execute("INSERT INTO sessions VALUES (?, ?, ?)", (key, name, cmd))
+
+            # Add 'o' shortcut to existing databases (maps to default agent: claude)
+            cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE key = 'o'")
+            if cursor.fetchone()[0] == 0:
+                conn.execute("INSERT INTO sessions VALUES ('o', 'claude', 'claude --dangerously-skip-permissions')")
 
 def load_config():
     """Load configuration from database."""
