@@ -656,9 +656,12 @@ def ensure_tmux_options():
         # Clickable shortcuts with range markers
         sh_full = '#[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Detach#[norange]'
         sh_min = '#[range=user|new]Ctrl+T#[norange] #[range=user|close]Ctrl+W#[norange] #[range=user|edit]Ctrl+E#[norange] #[range=user|kill]Ctrl+X#[norange] #[range=user|detach]Ctrl+Q#[norange]'
-        # Mouse click binding
-        click_binding = "if -F '#{==:#{mouse_status_range},new}' { split-window } { if -F '#{==:#{mouse_status_range},close}' { kill-pane } { if -F '#{==:#{mouse_status_range},edit}' { split-window 'nvim . -c \"nmap <LeftMouse> <LeftMouse><CR>\"' } { if -F '#{==:#{mouse_status_range},kill}' { confirm-before -p 'Kill?' kill-session } { if -F '#{==:#{mouse_status_range},detach}' { detach } { if -F '#{==:#{mouse_status_range},window}' { select-window } } } } }"
-        sp.run(['tmux', 'bind-key', '-Troot', 'MouseDown1Status', click_binding], capture_output=True)
+        # Mouse click binding - bind both Down and Up for maximum compatibility
+        # Desktop uses MouseDown, some touch interfaces may generate MouseUp
+        # Note: nvim cmd simplified - complex args cause tmux quoting issues
+        click_binding = "if -F '#{==:#{mouse_status_range},new}' { split-window } { if -F '#{==:#{mouse_status_range},close}' { kill-pane } { if -F '#{==:#{mouse_status_range},edit}' { split-window nvim } { if -F '#{==:#{mouse_status_range},kill}' { confirm-before -p Kill? kill-session } { if -F '#{==:#{mouse_status_range},detach}' { detach } { if -F '#{==:#{mouse_status_range},window}' { select-window } } } } }"
+        for mouse_event in ['MouseDown1Status', 'MouseUp1Status']:
+            sp.run(['tmux', 'bind-key', '-Troot', mouse_event, click_binding], capture_output=True)
     else:
         sh_full = 'Ctrl+T:New Ctrl+W:Close Ctrl+E:Edit Ctrl+X:Kill Ctrl+Q:Detach'
         sh_min = 'Ctrl+T Ctrl+W Ctrl+E Ctrl+X Ctrl+Q'
@@ -669,6 +672,8 @@ def ensure_tmux_options():
 
     # Clear status-right since we're using status-format now
     sp.run(['tmux', 'set-option', '-g', 'status-right', ''], capture_output=True)
+    # Force refresh so changes are immediately visible
+    sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
     _tmux_configured = True
 
 # Apply tmux options immediately if tmux is running
@@ -676,8 +681,8 @@ ensure_tmux_options()
 
 def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
     """Create a tmux session with enhanced options. Agent sessions get agent+bash panes."""
-    ensure_tmux_options()
     result = sm.new_session(session_name, work_dir, cmd or '', env)
+    ensure_tmux_options()  # After session creation so tmux server is running
     # Status bar configured globally via status-format[1] in ensure_tmux_options()
     # Auto-add bash pane for agent sessions (bash left, agent right)
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
