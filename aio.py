@@ -2549,6 +2549,59 @@ elif arg == 'install':
         print(f"\n✓ {bin_dir} is in your PATH")
         print(f"✓ You can now run 'aio' from anywhere!")
 
+    # Check dependencies and offer to install
+    print(f"\n{'─'*60}")
+    print("Checking dependencies...")
+    missing = []
+    installed = []
+
+    # Python packages
+    for pkg, import_name in [('pexpect', 'pexpect'), ('prompt_toolkit', 'prompt_toolkit')]:
+        try:
+            __import__(import_name)
+            installed.append(pkg)
+        except ImportError:
+            missing.append(f"{pkg} (Python package for interactive sessions)")
+
+    # tmux
+    if shutil.which('tmux'):
+        installed.append('tmux')
+    else:
+        missing.append("tmux (terminal multiplexer - install via apt/pkg)")
+
+    # Node.js/npm
+    node_dir = os.path.expanduser('~/.local/node')
+    npm_path = os.path.join(node_dir, 'bin', 'npm')
+    if shutil.which('npm') or os.path.exists(npm_path):
+        installed.append('node/npm')
+    else:
+        missing.append("node/npm (Node.js runtime, ~30MB download)")
+
+    # AI CLI tools
+    for cmd, desc in [('codex', 'OpenAI Codex CLI'), ('claude', 'Anthropic Claude CLI'), ('gemini', 'Google Gemini CLI')]:
+        if shutil.which(cmd):
+            installed.append(cmd)
+        else:
+            missing.append(f"{cmd} ({desc})")
+
+    if installed:
+        print(f"✓ Installed: {', '.join(installed)}")
+
+    if missing:
+        print(f"\n⚠ Missing dependencies:")
+        for dep in missing:
+            print(f"  • {dep}")
+        print(f"\n'aio deps' will install: pip packages, node/npm binary, and AI CLIs via npm")
+        try:
+            answer = input("\nInstall dependencies now? [y/N]: ").strip().lower()
+            if answer == 'y':
+                print()
+                os.execvp(sys.executable, [sys.executable, script_path, 'deps'])
+        except (EOFError, KeyboardInterrupt):
+            print()
+    else:
+        print("✓ All dependencies installed!")
+
     print(f"\nRun 'aio update' to check for and pull updates from git.")
 elif arg == 'deps':
     # Install dependencies: python packages, node/npm, codex, claude, gemini
