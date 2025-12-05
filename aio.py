@@ -101,11 +101,13 @@ class TmuxManager(Multiplexer):
         return self._ver
 
 sm = TmuxManager()
-# Auto-update tmux every 12h in background (installs to ~/.local, zero lag)
+# Auto-update tmux every 12h in background (Linux only - compiles from source to ~/.local)
+# Skipped on Mac (use brew upgrade tmux) due to missing GNU tools (grep -oP, nproc)
 try:
-    _ts_dir = os.path.expanduser('~/.local/share/aios'); os.makedirs(_ts_dir, exist_ok=True)
-    _ts = os.path.join(_ts_dir, '.tmux_update')
-    ((not os.path.exists(_ts) or time.time()-os.path.getmtime(_ts)>43200) and os.fork()==0) and (Path(_ts).touch(),os.system(f'v=$(curl -sL api.github.com/repos/tmux/tmux/releases/latest 2>/dev/null|grep -oP \'"tag_name":"\\K[^"]+\');[ "$v" \\> "{sm.version}" ]&&cd /tmp&&rm -rf tmux-update&&git clone -q --depth 1 -b $v https://github.com/tmux/tmux tmux-update 2>/dev/null&&cd tmux-update&&sh autogen.sh>/dev/null 2>&1&&./configure --prefix=$HOME/.local>/dev/null 2>&1&&make -j$(nproc)>/dev/null 2>&1&&make install>/dev/null 2>&1'),os._exit(0))
+    if sys.platform != 'darwin':
+        _ts_dir = os.path.expanduser('~/.local/share/aios'); os.makedirs(_ts_dir, exist_ok=True)
+        _ts = os.path.join(_ts_dir, '.tmux_update')
+        ((not os.path.exists(_ts) or time.time()-os.path.getmtime(_ts)>43200) and os.fork()==0) and (Path(_ts).touch(),os.system(f'v=$(curl -sL api.github.com/repos/tmux/tmux/releases/latest 2>/dev/null|grep -oP \'"tag_name":"\\K[^"]+\');[ "$v" \\> "{sm.version}" ]&&cd /tmp&&rm -rf tmux-update&&git clone -q --depth 1 -b $v https://github.com/tmux/tmux tmux-update 2>/dev/null&&cd tmux-update&&sh autogen.sh>/dev/null 2>&1&&./configure --prefix=$HOME/.local>/dev/null 2>&1&&make -j$(nproc)>/dev/null 2>&1&&make install>/dev/null 2>&1'),os._exit(0))
 except: pass
 
 # Auto-update: Pull latest version from git repo
@@ -2686,15 +2688,53 @@ elif arg == 'deps':
                 except: pass
             if not installed:
                 print(f"✗ {pkg} - install manually: pip install {pkg} OR apt install {apt_pkg}")
-    # Check tmux
-    print("✓ tmux" if _which('tmux') else "⚠ tmux not found - install via: pkg install tmux (Termux) or sudo apt install tmux")
+    # Check/install tmux
+    if not _which('tmux'):
+        installed_tmux = False
+        # Try brew (macOS)
+        if sys.platform == 'darwin' and _which('brew'):
+            print("⬇️  tmux: installing via brew...")
+            try:
+                result = sp.run(['brew', 'install', 'tmux'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    print("✓ tmux installed (brew)")
+                    installed_tmux = True
+            except: pass
+        # Try apt (Linux)
+        if not installed_tmux and _which('apt-get'):
+            print("⬇️  tmux: installing via apt...")
+            try:
+                need_sudo = os.geteuid() != 0 if hasattr(os, 'geteuid') else False
+                apt_cmd = ['sudo', 'apt-get'] if need_sudo else ['apt-get']
+                result = sp.run(apt_cmd + ['install', '-y', 'tmux'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    print("✓ tmux installed (apt)")
+                    installed_tmux = True
+            except: pass
+        # Try pkg (Termux)
+        if not installed_tmux and _which('pkg'):
+            print("⬇️  tmux: installing via pkg...")
+            try:
+                result = sp.run(['pkg', 'install', '-y', 'tmux'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    print("✓ tmux installed (pkg)")
+                    installed_tmux = True
+            except: pass
+        if not installed_tmux:
+            if sys.platform == 'darwin':
+                print("⚠ tmux not found - install via: brew install tmux")
+            else:
+                print("⚠ tmux not found - install via: apt install tmux (Linux) or pkg install tmux (Termux)")
+    else:
+        print("✓ tmux")
     # Node.js/npm (binary)
     node_dir = os.path.expanduser('~/.local/node')
     node_bin = os.path.join(node_dir, 'bin')
     npm_path = os.path.join(node_bin, 'npm')
     if not _which('npm') and not os.path.exists(npm_path):
         arch = 'x64' if platform.machine() in ('x86_64', 'AMD64') else 'arm64'
-        url = f'https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-{arch}.tar.xz'
+        plat = 'darwin' if sys.platform == 'darwin' else 'linux'
+        url = f'https://nodejs.org/dist/v22.11.0/node-v22.11.0-{plat}-{arch}.tar.xz'
         print(f"⬇️  node/npm: downloading...")
         try:
             xz_path = '/tmp/node.tar.xz'
@@ -2702,7 +2742,7 @@ elif arg == 'deps':
             with lzma.open(xz_path) as xz:
                 with tarfile.open(fileobj=xz) as tar:
                     tar.extractall(os.path.expanduser('~/.local'), filter='data')
-            os.rename(os.path.expanduser(f'~/.local/node-v22.11.0-linux-{arch}'), node_dir)
+            os.rename(os.path.expanduser(f'~/.local/node-v22.11.0-{plat}-{arch}'), node_dir)
             os.remove(xz_path)
             # Symlink npm and node to bin_dir
             for cmd in ['node', 'npm', 'npx']:
