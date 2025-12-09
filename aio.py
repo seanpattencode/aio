@@ -796,9 +796,9 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
         sp.run(['tmux', 'split-window', '-bh', '-t', session_name, '-c', work_dir], capture_output=True)
         sp.run(['tmux', 'select-pane', '-t', session_name, '-R'], capture_output=True)
-        # Idle monitor: tracks agent pane cursor (not window_activity which triggers on clicks). 🔴 when idle, spinner when outputting
-        # Old window_activity version (triggers on clicks): a=$(tmux display-message -t SESSION -p "#{window_activity}");if [ $((n-a)) -gt IDLE ]
-        sp.Popen(['bash', '-c', f'p=(⠋ ⠙ ⠹ ⠸);i=0;s="";c="";printf -v t "%(%s)T" -1;while tmux has-session -t {shlex.quote(session_name)} 2>/dev/null;do x=$(tmux display-message -t {shlex.quote(session_name)}:0.1 -p "#{{cursor_x}},#{{cursor_y}}");printf -v n "%(%s)T" -1;[ "$x" != "$c" ]&&{{ c=$x;t=$n; }};if [ $((n-t)) -gt {REDDOT_IDLE} ];then [ "$s" != i ]&&tmux set-option -t {shlex.quote(session_name)} set-titles-string "🔴 #S:#W";s=i;else tmux set-option -t {shlex.quote(session_name)} set-titles-string "${{p[i]}} #S:#W";i=$(((i+1)%4));s=a;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        # Idle monitor: tracks agent pane cursor (not window_activity which triggers on clicks). 🔴 idle, 🟢 active
+        # Old spinner version: p=(⠋ ⠙ ⠹ ⠸);i=0;...;tmux set-option -t SESSION set-titles-string "${p[i]} #S:#W";i=$(((i+1)%4))
+        sp.Popen(['bash', '-c', f's="";c="";printf -v t "%(%s)T" -1;while tmux has-session -t {shlex.quote(session_name)} 2>/dev/null;do x=$(tmux display-message -t {shlex.quote(session_name)}:0.1 -p "#{{cursor_x}},#{{cursor_y}}");printf -v n "%(%s)T" -1;[ "$x" != "$c" ]&&{{ c=$x;t=$n; }};if [ $((n-t)) -gt {REDDOT_IDLE} ];then [ "$s" != r ]&&tmux set-option -t {shlex.quote(session_name)} set-titles-string "🔴 #S:#W";s=r;else [ "$s" != g ]&&tmux set-option -t {shlex.quote(session_name)} set-titles-string "🟢 #S:#W";s=g;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     return result
 
 def detect_terminal():
@@ -3312,11 +3312,12 @@ elif arg == 'send':
 
     session_name = work_dir_arg
     wait = '--wait' in sys.argv
+    no_enter = '--no-enter' in sys.argv
 
     # Get prompt from remaining args
     prompt_parts = []
     for i in range(3, len(sys.argv)):
-        if sys.argv[i] == '--wait':
+        if sys.argv[i] in ('--wait', '--no-enter'):
             continue
         prompt_parts.append(sys.argv[i])
 
@@ -3327,7 +3328,7 @@ elif arg == 'send':
     prompt = ' '.join(prompt_parts)
 
     # Send the prompt
-    result = send_prompt_to_session(session_name, prompt, wait_for_completion=wait, timeout=60)
+    result = send_prompt_to_session(session_name, prompt, wait_for_completion=wait, timeout=60, send_enter=not no_enter)
     if not result:
         sys.exit(1)
 elif arg == 'multi':
@@ -4079,7 +4080,7 @@ elif arg == 'reddot':
         for session in sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True).stdout.strip().split('\n'):
             if not session or not any(a in session for a in ['codex', 'claude', 'gemini']): continue
             if sp.run(['pgrep', '-f', f'tmux has-session.*{session}'], capture_output=True).returncode != 0:
-                sp.Popen(['bash', '-c', f'p=(⠋ ⠙ ⠹ ⠸);i=0;s="";c="";printf -v t "%(%s)T" -1;while tmux has-session -t {shlex.quote(session)} 2>/dev/null;do x=$(tmux display-message -t {shlex.quote(session)}:0.1 -p "#{{cursor_x}},#{{cursor_y}}");printf -v n "%(%s)T" -1;[ "$x" != "$c" ]&&{{ c=$x;t=$n; }};if [ $((n-t)) -gt {REDDOT_IDLE} ];then [ "$s" != i ]&&tmux set-option -t {shlex.quote(session)} set-titles-string "🔴 #S:#W";s=i;else tmux set-option -t {shlex.quote(session)} set-titles-string "${{p[i]}} #S:#W";i=$(((i+1)%4));s=a;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+                sp.Popen(['bash', '-c', f's="";c="";printf -v t "%(%s)T" -1;while tmux has-session -t {shlex.quote(session)} 2>/dev/null;do x=$(tmux display-message -t {shlex.quote(session)}:0.1 -p "#{{cursor_x}},#{{cursor_y}}");printf -v n "%(%s)T" -1;[ "$x" != "$c" ]&&{{ c=$x;t=$n; }};if [ $((n-t)) -gt {REDDOT_IDLE} ];then [ "$s" != r ]&&tmux set-option -t {shlex.quote(session)} set-titles-string "🔴 #S:#W";s=r;else [ "$s" != g ]&&tmux set-option -t {shlex.quote(session)} set-titles-string "🟢 #S:#W";s=g;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
                 print(f"  ✓ Started monitor for {session}")
 elif arg == 'attach':
     # Attach to session associated with current directory or run_id
@@ -5376,11 +5377,11 @@ elif arg.endswith('++') and not arg.startswith('w'):
             env = get_noninteractive_git_env()
             create_tmux_session(session_name, worktree_path, cmd, env=env, capture_output=False)
 
-            # For Claude sessions, send the prefix (user can continue typing)
+            # For Claude sessions, send the prefix in background (user can continue typing)
             if key in ('l', 'o'):
                 prefix = config.get('claude_prefix', 'Ultrathink. ')
                 if prefix:
-                    send_prompt_to_session(session_name, prefix, wait_for_completion=False, wait_for_ready=True, send_enter=False)
+                    sp.Popen([sys.executable, __file__, 'send', session_name, prefix, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
             if new_window:
                 launch_in_new_window(session_name)
@@ -5460,23 +5461,25 @@ else:
     is_claude = arg in ('l', 'lp', 'o') or (session_name and 'claude' in session_name.lower())
 
     if prompt_parts:
-        # Custom prompt provided on command line
+        # Custom prompt provided - spawn aio send in background (non-blocking)
         prompt = ' '.join(prompt_parts)
-        print(f"📤 Sending prompt to session...")
-        send_prompt_to_session(session_name, prompt, wait_for_completion=False, wait_for_ready=True, send_enter=not is_single_p_session)
+        print(f"📤 Prompt queued (will send when agent ready)")
+        cmd = [sys.executable, __file__, 'send', session_name, prompt]
+        if is_single_p_session:
+            cmd.append('--no-enter')
+        sp.Popen(cmd, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     elif is_single_p_session:
         # Single-p session without custom prompt - insert default prompt without running
-        # Map session key to prompt config key
         prompt_map = {'cp': CODEX_PROMPT, 'lp': CLAUDE_PROMPT, 'gp': GEMINI_PROMPT}
         default_prompt = prompt_map.get(arg, '')
         if default_prompt:
-            print(f"📝 Inserting default prompt into session...")
-            send_prompt_to_session(session_name, default_prompt, wait_for_completion=False, wait_for_ready=True, send_enter=False)
+            print(f"📝 Prompt queued (inserting when agent ready)")
+            sp.Popen([sys.executable, __file__, 'send', session_name, default_prompt, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     elif is_claude:
         # Claude session without prompt - insert just the prefix (user can continue typing)
         prefix = config.get('claude_prefix', 'Ultrathink. ')
         if prefix:
-            send_prompt_to_session(session_name, prefix, wait_for_completion=False, wait_for_ready=True, send_enter=False)
+            sp.Popen([sys.executable, __file__, 'send', session_name, prefix, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
     if new_window:
         launch_in_new_window(session_name)
