@@ -796,9 +796,9 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
         sp.run(['tmux', 'split-window', '-bh', '-t', session_name, '-c', work_dir], capture_output=True)
         sp.run(['tmux', 'select-pane', '-t', session_name, '-R'], capture_output=True)
-        # Idle monitor: 🔴 when idle, spinner ⠋⠙⠹⠸ when active. Red dot persists until new activity (not auto-dismissed on view)
-        # Old auto-dismiss: [ "$s" != a ]&&tmux set-option -t SESSION set-titles-string "#S:#W";s=a
-        sp.Popen(['bash', '-c', f'p=(⠋ ⠙ ⠹ ⠸);i=0;s="";while tmux has-session -t {shlex.quote(session_name)} 2>/dev/null;do a=$(tmux display-message -t {shlex.quote(session_name)} -p "#{{window_activity}}");printf -v n "%(%s)T" -1;if [ $((n-a)) -gt {REDDOT_IDLE} ];then [ "$s" != i ]&&tmux set-option -t {shlex.quote(session_name)} set-titles-string "🔴 #S:#W";s=i;else tmux set-option -t {shlex.quote(session_name)} set-titles-string "${{p[i]}} #S:#W";i=$(((i+1)%4));s=a;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        # Idle monitor: tracks agent pane cursor (not window_activity which triggers on clicks). 🔴 when idle, spinner when outputting
+        # Old window_activity version (triggers on clicks): a=$(tmux display-message -t SESSION -p "#{window_activity}");if [ $((n-a)) -gt IDLE ]
+        sp.Popen(['bash', '-c', f'p=(⠋ ⠙ ⠹ ⠸);i=0;s="";c="";printf -v t "%(%s)T" -1;while tmux has-session -t {shlex.quote(session_name)} 2>/dev/null;do x=$(tmux display-message -t {shlex.quote(session_name)}:0.1 -p "#{{cursor_x}},#{{cursor_y}}");printf -v n "%(%s)T" -1;[ "$x" != "$c" ]&&{{ c=$x;t=$n; }};if [ $((n-t)) -gt {REDDOT_IDLE} ];then [ "$s" != i ]&&tmux set-option -t {shlex.quote(session_name)} set-titles-string "🔴 #S:#W";s=i;else tmux set-option -t {shlex.quote(session_name)} set-titles-string "${{p[i]}} #S:#W";i=$(((i+1)%4));s=a;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     return result
 
 def detect_terminal():
@@ -4079,7 +4079,7 @@ elif arg == 'reddot':
         for session in sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True).stdout.strip().split('\n'):
             if not session or not any(a in session for a in ['codex', 'claude', 'gemini']): continue
             if sp.run(['pgrep', '-f', f'tmux has-session.*{session}'], capture_output=True).returncode != 0:
-                sp.Popen(['bash', '-c', f'p=(⠋ ⠙ ⠹ ⠸);i=0;s="";while tmux has-session -t {shlex.quote(session)} 2>/dev/null;do a=$(tmux display-message -t {shlex.quote(session)} -p "#{{window_activity}}");printf -v n "%(%s)T" -1;if [ $((n-a)) -gt {REDDOT_IDLE} ];then [ "$s" != i ]&&tmux set-option -t {shlex.quote(session)} set-titles-string "🔴 #S:#W";s=i;else tmux set-option -t {shlex.quote(session)} set-titles-string "${{p[i]}} #S:#W";i=$(((i+1)%4));s=a;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+                sp.Popen(['bash', '-c', f'p=(⠋ ⠙ ⠹ ⠸);i=0;s="";c="";printf -v t "%(%s)T" -1;while tmux has-session -t {shlex.quote(session)} 2>/dev/null;do x=$(tmux display-message -t {shlex.quote(session)}:0.1 -p "#{{cursor_x}},#{{cursor_y}}");printf -v n "%(%s)T" -1;[ "$x" != "$c" ]&&{{ c=$x;t=$n; }};if [ $((n-t)) -gt {REDDOT_IDLE} ];then [ "$s" != i ]&&tmux set-option -t {shlex.quote(session)} set-titles-string "🔴 #S:#W";s=i;else tmux set-option -t {shlex.quote(session)} set-titles-string "${{p[i]}} #S:#W";i=$(((i+1)%4));s=a;fi;sleep .2;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
                 print(f"  ✓ Started monitor for {session}")
 elif arg == 'attach':
     # Attach to session associated with current directory or run_id
