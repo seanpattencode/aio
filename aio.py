@@ -730,6 +730,7 @@ set -g visual-bell off
 set -g bell-action any
 set -g activity-action none
 set -g silence-action other
+set-hook -g alert-silence 'refresh-client -S'
 set -g status-position bottom
 set -g status 3
 set -g status-right ""
@@ -793,8 +794,8 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
         sp.run(['tmux', 'split-window', '-bh', '-t', session_name, '-c', work_dir], capture_output=True)
         sp.run(['tmux', 'select-pane', '-t', session_name, '-R'], capture_output=True)
-        # Enable silence detection: window_silence_flag set automatically after 2s of no output
-        sp.run(['tmux', 'set-option', '-t', session_name, 'monitor-silence', '2'], capture_output=True)
+        # Start idle monitor: checks window_activity, sets 🔴 title when idle >10s (monitor-silence doesn't work with attached clients)
+        sp.Popen(['bash', '-c', f'while tmux has-session -t {shlex.quote(session_name)} 2>/dev/null; do a=$(tmux display-message -t {shlex.quote(session_name)} -p "#{{window_activity}}" 2>/dev/null);[ $(($(date +%s)-a)) -gt 10 ]&&tmux set-option -t {shlex.quote(session_name)} set-titles-string "🔴 #S:#W"||tmux set-option -t {shlex.quote(session_name)} set-titles-string "#S:#W";sleep 5;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     return result
 
 def detect_terminal():
@@ -4058,6 +4059,25 @@ elif arg == 'jobs':
     # Check for --running flag
     running_only = '--running' in sys.argv or '-r' in sys.argv
     list_jobs(running_only=running_only)
+elif arg == 'reddot':
+    # Red dot diagnostic: show idle status for all agent sessions, optionally start monitors
+    print("🔴 Red Dot Status\n")
+    now = int(time.time())
+    for session in sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True).stdout.strip().split('\n'):
+        if not session: continue
+        act = sp.run(['tmux', 'display-message', '-t', session, '-p', '#{window_activity}'], capture_output=True, text=True).stdout.strip()
+        title = sp.run(['tmux', 'show-options', '-t', session, '-v', 'set-titles-string'], capture_output=True, text=True).stdout.strip() or '(global)'
+        age = now - int(act) if act.isdigit() else 0
+        has_monitor = '🔴' in title or sp.run(['pgrep', '-f', f'tmux has-session.*{session}'], capture_output=True).returncode == 0
+        status = '🔴 IDLE' if age > 10 else '✓ active'
+        print(f"  {session}: {status} ({age}s) monitor={'yes' if has_monitor else 'no'} title='{title}'")
+    if '--start' in sys.argv:
+        print("\nStarting monitors for agent sessions without one...")
+        for session in sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True).stdout.strip().split('\n'):
+            if not session or not any(a in session for a in ['codex', 'claude', 'gemini']): continue
+            if sp.run(['pgrep', '-f', f'tmux has-session.*{session}'], capture_output=True).returncode != 0:
+                sp.Popen(['bash', '-c', f'while tmux has-session -t {shlex.quote(session)} 2>/dev/null; do a=$(tmux display-message -t {shlex.quote(session)} -p "#{{window_activity}}" 2>/dev/null);[ $(($(date +%s)-a)) -gt 10 ]&&tmux set-option -t {shlex.quote(session)} set-titles-string "🔴 #S:#W"||tmux set-option -t {shlex.quote(session)} set-titles-string "#S:#W";sleep 5;done'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+                print(f"  ✓ Started monitor for {session}")
 elif arg == 'attach':
     # Attach to session associated with current directory or run_id
     run_id = work_dir_arg
