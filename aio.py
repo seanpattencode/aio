@@ -5216,23 +5216,35 @@ elif arg == 'setup':
                 if result.returncode != 0:
                     error_msg = result.stderr.strip() or result.stdout.strip()
                     if 'already exists' in error_msg.lower():
-                        print(f"✗ Repository '{repo_name}' already exists on GitHub")
+                        # Repo exists - offer to connect to it
+                        print(f"ℹ Repository '{repo_name}' already exists. Connect to it? (y/n): ", end='', flush=True)
+                        connect = input().strip().lower()
+                        if connect not in ['y', 'yes']:
+                            print("✗ Cancelled")
+                            sys.exit(1)
+                        # Get user and construct URL
+                        gh_user = sp.run(['gh', 'api', 'user', '-q', '.login'], capture_output=True, text=True)
+                        if gh_user.returncode == 0:
+                            repo_url = f"https://github.com/{gh_user.stdout.strip()}/{repo_name}.git"
+                        else:
+                            print("✗ Could not determine repository URL")
+                            sys.exit(1)
+                        print(f"✓ Connecting to existing repository")
                     else:
                         print(f"✗ Failed to create repository: {error_msg}")
-                    sys.exit(1)
-
-                # Get the repo URL from stdout (gh prints it)
-                repo_url = result.stdout.strip()
-                if not repo_url:
-                    # Fallback: construct URL
-                    gh_user = sp.run(['gh', 'api', 'user', '-q', '.login'], capture_output=True, text=True)
-                    if gh_user.returncode == 0:
-                        repo_url = f"https://github.com/{gh_user.stdout.strip()}/{repo_name}.git"
-                    else:
-                        print("✗ Could not determine repository URL")
                         sys.exit(1)
-
-                print(f"✓ Created GitHub repository")
+                else:
+                    # Get the repo URL from stdout (gh prints it)
+                    repo_url = result.stdout.strip()
+                    if not repo_url:
+                        # Fallback: construct URL
+                        gh_user = sp.run(['gh', 'api', 'user', '-q', '.login'], capture_output=True, text=True)
+                        if gh_user.returncode == 0:
+                            repo_url = f"https://github.com/{gh_user.stdout.strip()}/{repo_name}.git"
+                        else:
+                            print("✗ Could not determine repository URL")
+                            sys.exit(1)
+                    print(f"✓ Created GitHub repository")
 
                 # Add remote
                 sp.run(['git', '-C', cwd, 'remote', 'add', 'origin', repo_url], capture_output=True)
@@ -5244,6 +5256,19 @@ elif arg == 'setup':
                                     capture_output=True, text=True, env=env)
                 if push_result.returncode == 0:
                     print("✓ Pushed to remote")
+                elif 'rejected' in push_result.stderr or 'fetch first' in push_result.stderr:
+                    # Histories diverged - offer force push for new projects
+                    print("⚠ Remote has different history. Force push? (y/n): ", end='', flush=True)
+                    force = input().strip().lower()
+                    if force in ['y', 'yes']:
+                        force_result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main', '--force'],
+                                            capture_output=True, text=True, env=env)
+                        if force_result.returncode == 0:
+                            print("✓ Force pushed to remote")
+                        else:
+                            print(f"✗ Force push failed: {force_result.stderr.strip()}")
+                    else:
+                        print("✗ Push cancelled. You may need to pull and merge first.")
                 else:
                     print(f"✗ Push failed: {push_result.stderr.strip()}")
                 sys.exit(0)
