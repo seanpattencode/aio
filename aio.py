@@ -2588,9 +2588,12 @@ Working directory: {WORK_DIR}
             print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'diff':
     import re; sp.run(['git', 'fetch', 'origin'], capture_output=True)
+    cwd = os.getcwd()
     b = sp.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True, text=True).stdout.strip()
     diff = sp.run(['git', 'diff', f'origin/{b}'], capture_output=True, text=True).stdout
     untracked = sp.run(['git', 'ls-files', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.strip()
+    print(f"📂 {cwd}")
+    print(f"🌿 {b}")
     if not diff and not untracked: print("No changes"); sys.exit(0)
     G, R, X, f = '\033[48;2;26;84;42m', '\033[48;2;117;34;27m', '\033[0m', ''
     if diff:
@@ -3520,13 +3523,24 @@ elif arg == 'overnight' or arg == 'on':
             print("✗ No requirements entered"); sys.exit(1)
         with open(aio_md, 'w') as f:
             f.write(f"# Requirements\n\n{requirements}\n")
-        print(f"✓ Created {aio_md}")
+        print(f"✓ Created {aio_md}\n")
     else:
         with open(aio_md) as f:
             requirements = f.read().strip()
         if not requirements:
-            print(f"✗ aio.md is empty. Add your requirements.")
-            sys.exit(1)
+            print(f"✗ aio.md is empty"); sys.exit(1)
+        # Show requirements, offer edit if interactive
+        print(f"📄 {aio_md}:\n" + "─" * 50)
+        print('\n'.join(f"  {l}" for l in requirements.split('\n')[:10]))
+        if requirements.count('\n') > 10: print(f"  ...")
+        print("─" * 50)
+        if sys.stdin.isatty():
+            try:
+                if input("[Enter=run, e=edit]: ").strip().lower() == 'e':
+                    sp.run([os.environ.get('EDITOR', 'nvim'), aio_md])
+                    with open(aio_md) as f: requirements = f.read().strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n✗ Cancelled"); sys.exit(0)
 
     # Parse agent specs from command line or use default
     agent_specs, _, _ = parse_agent_specs_and_prompt(sys.argv, 3 if work_dir_arg and work_dir_arg.isdigit() else 2)
@@ -3786,13 +3800,24 @@ sleep 2
 claude --dangerously-skip-permissions {review_prompt_escaped}'''
 
     sp.run(['tmux', 'new-window', '-t', session_name, '-n', '📋review', '-c', candidates_dir, f'bash -c {shlex.quote(wait_script)}'], env=env)
-    # Right pane: watch for REVIEW.md and auto-open in editor when complete
+    # Right pane: watch for REVIEW.md, open editor, then open shell in winner dir
     editor = os.environ.get('EDITOR', 'nvim')
     review_watcher = f'''echo "📄 Waiting for REVIEW.md..."
 while [ ! -f "{candidates_dir}/REVIEW.md" ]; do sleep 2; done
-echo "✅ Review complete! Opening..."
-sleep 1
-{editor} "{candidates_dir}/REVIEW.md"'''
+echo "✅ Review complete!"
+# Parse winner from REVIEW.md (looks for **c0** or **l0** pattern in Recommendation)
+winner=$(grep -oE "\\*\\*[cl][0-9]+\\*\\*" "{candidates_dir}/REVIEW.md" | head -1 | tr -d '*')
+if [ -n "$winner" ] && [ -d "{candidates_dir}/$winner" ]; then
+    echo "🏆 Winner: $winner"
+    echo "   Opening editor + shell in winner dir..."
+    sleep 1
+    # Open editor with REVIEW.md
+    tmux split-window -v -t "{session_name}:📋review" -c "{candidates_dir}/$winner" "echo '🏆 Winner: $winner - ready to test/merge'; exec bash"
+    {editor} "{candidates_dir}/REVIEW.md"
+else
+    echo "⚠ Could not detect winner, opening REVIEW.md"
+    {editor} "{candidates_dir}/REVIEW.md"
+fi'''
     sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:📋review', '-c', candidates_dir, f'bash -c {shlex.quote(review_watcher)}'], env=env)
 
     # Select monitor window first
@@ -5133,13 +5158,38 @@ elif arg == 'setup':
     # Initialize git repo with remote
     cwd = os.getcwd()
 
-    # Check if already a repo
-    result = sp.run(['git', '-C', cwd, 'rev-parse', '--git-dir'], capture_output=True)
-    if result.returncode == 0:
+    # Check if .git exists in THIS directory (not parent)
+    git_dir = os.path.join(cwd, '.git')
+    if os.path.isdir(git_dir):
         print("ℹ Already a git repository")
     else:
-        sp.run(['git', '-C', cwd, 'init'], capture_output=True)
+        # Initialize with main as default branch
+        sp.run(['git', '-C', cwd, 'init', '-b', 'main'], capture_output=True)
         print("✓ Initialized git repository")
+
+    # Ensure we have an initial commit
+    result = sp.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True)
+    if result.returncode != 0:
+        # No commits yet - create one
+        sp.run(['git', '-C', cwd, 'add', '-A'], capture_output=True)
+        # Check if anything was staged
+        staged = sp.run(['git', '-C', cwd, 'diff', '--cached', '--quiet'], capture_output=True)
+        if staged.returncode == 0:
+            # Nothing staged - create .gitignore so we have something to commit
+            gitignore_path = os.path.join(cwd, '.gitignore')
+            if not os.path.exists(gitignore_path):
+                with open(gitignore_path, 'w') as f:
+                    f.write('')
+                sp.run(['git', '-C', cwd, 'add', '.gitignore'], capture_output=True)
+        commit_result = sp.run(['git', '-C', cwd, 'commit', '-m', 'Initial commit'], capture_output=True)
+        if commit_result.returncode == 0:
+            print("✓ Created initial commit")
+        else:
+            print("✗ Failed to create initial commit")
+            sys.exit(1)
+
+    # Ensure main branch
+    sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
 
     # Check if remote exists
     result = sp.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True)
@@ -5152,37 +5202,51 @@ elif arg == 'setup':
     if not remote_url and not has_remote:
         # Try using GitHub CLI to create repo automatically
         if shutil.which('gh'):
-            print("🚀 No remote configured. Creating GitHub repository...")
             repo_name = os.path.basename(cwd)
-            print(f"   Repository name: {repo_name}")
+            print(f"🚀 Create GitHub repository '{repo_name}'? (y/n/private): ", end='', flush=True)
+            response = input().strip().lower()
 
-            # Ask for confirmation
-            response = input("\n   Create public GitHub repo? (y/n/private): ").strip().lower()
             if response in ['y', 'yes', 'private', 'p']:
                 visibility = '--private' if response in ['private', 'p'] else '--public'
 
-                # Create initial commit if needed
-                result = sp.run(['git', '-C', cwd, 'rev-parse', 'HEAD'], capture_output=True)
+                # Create repo (without --source/--push, more reliable)
+                result = sp.run(['gh', 'repo', 'create', repo_name, visibility],
+                              capture_output=True, text=True, timeout=30)
+
                 if result.returncode != 0:
-                    sp.run(['git', '-C', cwd, 'add', '-A'], capture_output=True)
-                    sp.run(['git', '-C', cwd, 'commit', '-m', 'Initial commit'], capture_output=True)
-                    print("✓ Created initial commit")
+                    error_msg = result.stderr.strip() or result.stdout.strip()
+                    if 'already exists' in error_msg.lower():
+                        print(f"✗ Repository '{repo_name}' already exists on GitHub")
+                    else:
+                        print(f"✗ Failed to create repository: {error_msg}")
+                    sys.exit(1)
 
-                # Set main as default branch
-                sp.run(['git', '-C', cwd, 'branch', '-M', 'main'], capture_output=True)
+                # Get the repo URL from stdout (gh prints it)
+                repo_url = result.stdout.strip()
+                if not repo_url:
+                    # Fallback: construct URL
+                    gh_user = sp.run(['gh', 'api', 'user', '-q', '.login'], capture_output=True, text=True)
+                    if gh_user.returncode == 0:
+                        repo_url = f"https://github.com/{gh_user.stdout.strip()}/{repo_name}.git"
+                    else:
+                        print("✗ Could not determine repository URL")
+                        sys.exit(1)
 
-                # Create repo and push
-                result = sp.run(['gh', 'repo', 'create', repo_name, visibility, '--source=.', '--push'],
-                              capture_output=True, text=True)
+                print(f"✓ Created GitHub repository")
 
-                if result.returncode == 0:
-                    print("✓ Created GitHub repository")
-                    print("✓ Added remote origin")
+                # Add remote
+                sp.run(['git', '-C', cwd, 'remote', 'add', 'origin', repo_url], capture_output=True)
+                print(f"✓ Added remote origin")
+
+                # Push
+                env = get_noninteractive_git_env()
+                push_result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', 'main'],
+                                    capture_output=True, text=True, env=env)
+                if push_result.returncode == 0:
                     print("✓ Pushed to remote")
-                    sys.exit(0)
                 else:
-                    print(f"✗ GitHub repo creation failed: {result.stderr.strip()}")
-                    print("\nFalling back to manual setup...")
+                    print(f"✗ Push failed: {push_result.stderr.strip()}")
+                sys.exit(0)
             else:
                 print("✗ Cancelled")
                 sys.exit(0)
