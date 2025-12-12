@@ -3817,55 +3817,63 @@ elif arg == 'prompt':
 
 elif arg == 'r' or arg == 'review':
     # Review mode: add reviewer window to existing session
-    # 'aio r' = force review on most recent run (no prompt)
-    # 'aio review' = interactive selection
     import json
     force_latest = (arg == 'r')
 
+    def run_dir_exists(rid, repo):
+        return os.path.isdir(os.path.join(WORKTREES_DIR, os.path.basename(repo), rid))
+
     # Find run to review
+    run_repo = None
     if work_dir_arg:
         run_id = work_dir_arg
+        with WALManager(DB_PATH) as conn:
+            row = conn.execute("SELECT repo FROM multi_runs WHERE id = ?", (run_id,)).fetchone()
+            if row: run_repo = row[0]
     else:
         with WALManager(DB_PATH) as conn:
-            runs = conn.execute("SELECT id, repo, prompt, status, created_at FROM multi_runs ORDER BY created_at DESC LIMIT 10").fetchall()
-        if not runs:
+            all_runs = conn.execute("SELECT id, repo, prompt, status, created_at FROM multi_runs ORDER BY created_at DESC").fetchall()
+        if not all_runs:
             print("No runs to review. Use 'aio multi' first.")
             sys.exit(0)
+        # Check for stale entries and offer removal
+        stale_ids = [r[0] for r in all_runs if not run_dir_exists(r[0], r[1])]
+        if stale_ids and not force_latest and input(f"⚠️  {len(stale_ids)} runs cleaned up. Remove from list? [y/N]: ").strip().lower() == 'y':
+            with WALManager(DB_PATH) as conn:
+                conn.execute(f"DELETE FROM multi_runs WHERE id IN ({','.join('?'*len(stale_ids))})", stale_ids)
+                conn.commit()
+            all_runs = [r for r in all_runs if r[0] not in stale_ids]
+            print(f"✓ Removed {len(stale_ids)} stale entries")
+        runs = all_runs[:10]
+        if not runs:
+            print("No runs left to review.")
+            sys.exit(0)
         if force_latest:
-            # Auto-select most recent
-            run_id = runs[0][0]
+            run_id, run_repo = runs[0][0], runs[0][1]
             print(f"📋 Force reviewing: {runs[0][2][:50]}...")
         else:
             print("Recent runs:")
             for i, (rid, repo, prompt, status, created_at) in enumerate(runs):
-                elapsed = ""
+                elapsed, exists = "", "✓" if run_dir_exists(rid, repo) else "✗"
                 if created_at:
                     try:
                         mins = int((datetime.now() - datetime.fromisoformat(created_at)).total_seconds() / 60)
                         elapsed = f"{mins}m" if mins < 60 else f"{mins//60}h{mins%60}m"
                     except: pass
-                print(f"  {i}. [{status}] {elapsed:>5} {rid} - {os.path.basename(repo)}: {prompt[:40]}...")
+                print(f"  {i}. {exists} [{status}] {elapsed:>5} {rid} - {os.path.basename(repo)}: {prompt[:40]}...")
             choice = input("Select #: ").strip()
-            run_id = runs[int(choice)][0] if choice.isdigit() and int(choice) < len(runs) else choice
+            idx = int(choice) if choice.isdigit() and int(choice) < len(runs) else None
+            run_id = runs[idx][0] if idx is not None else choice
+            run_repo = runs[idx][1] if idx is not None else None
 
-    # Find run directory: WORKTREES_DIR/repo/run_id/
-    # Worktrees are in: WORKTREES_DIR/repo/run_id/candidates/c0, l0, etc.
-    run_dir = None
-    repo_name = None
-    candidates_dir = None
-
-    if os.path.exists(WORKTREES_DIR):
-        for rd in os.listdir(WORKTREES_DIR):
-            candidate = os.path.join(WORKTREES_DIR, rd, run_id)
-            if os.path.isdir(candidate):
-                run_dir = candidate
-                repo_name = rd
-                candidates_dir = os.path.join(run_dir, "candidates")
-                break
-
-    if not run_dir:
-        print(f"✗ Run not found: {run_id}")
+    # Find run directory
+    run_dir = os.path.join(WORKTREES_DIR, os.path.basename(run_repo), run_id) if run_repo else None
+    if not run_dir or not os.path.isdir(run_dir):
+        expected = run_dir or f"{WORKTREES_DIR}/*/{run_id}"
+        print(f"✗ Run cleaned up: {run_id}\n   Was at: {expected}")
         sys.exit(1)
+    repo_name = os.path.basename(run_repo)
+    candidates_dir = os.path.join(run_dir, "candidates")
 
     # Load run context and build reviewer prompt
     task, agents = "unknown", "unknown"
