@@ -18,23 +18,39 @@
 
 ## Recommendation
 
-**Best: `unshare (user+pid)`** — 1.59ms avg, +0.59ms overhead
+### Fastest: `unshare` — 1.59ms (+0.59ms overhead)
+Basic PID/user namespace isolation. Requires manual mount setup.
+
+### Best for agents: `bwrap (full sandbox)` — 5.12ms (+4.12ms overhead)
+Complete isolation with easy filesystem controls. **This is what Claude Code uses.**
 
 ### For aio.py agent sandboxing:
 
 ```python
-SANDBOX_CMD = '''bwrap --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64 \
-    --ro-bind /bin /bin --ro-bind /sbin /sbin --ro-bind /etc/resolv.conf /etc/resolv.conf \
-    --bind {workspace} /workspace --tmpfs /tmp --tmpfs /home --proc /proc --dev /dev \
-    --unshare-all --share-net --die-with-parent --chdir /workspace {cmd}'''
+def sandboxed_run(workspace: str, cmd: str) -> subprocess.CompletedProcess:
+    """Run command in bubblewrap sandbox (~5ms overhead)."""
+    return subprocess.run([
+        "bwrap",
+        "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib",
+        "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/bin", "/bin",
+        "--ro-bind", "/sbin", "/sbin", "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
+        "--ro-bind", "/etc/ssl", "/etc/ssl",  # HTTPS certs
+        "--bind", workspace, "/workspace",
+        "--tmpfs", "/tmp", "--tmpfs", "/home",
+        "--proc", "/proc", "--dev", "/dev",
+        "--unshare-all", "--share-net", "--die-with-parent",
+        "--chdir", "/workspace",
+        "bash", "-c", cmd
+    ])
 ```
 
-### Why bubblewrap:
-- **+0.59ms overhead** — negligible vs 1000ms budget
-- **PID isolation** — agent can't see/kill host processes
-- **Filesystem isolation** — only workspace is writable
+### Why bubblewrap over unshare:
+- **+4.12ms overhead** — still 195x faster than 1000ms requirement
+- **Verified PID isolation** — only 3 processes visible (sandbox + bwrap + cmd)
+- **Filesystem isolation** — `/home` is tmpfs, only workspace writable
+- **Easy bind mounts** — simple CLI vs manual mount syscalls
 - **No root required** — uses unprivileged user namespaces
-- **ARM64 native** — in Ubuntu repos for Raspberry Pi
+- **ARM64 native** — `apt install bubblewrap` on Raspberry Pi
 
 ## Raw Data
 
