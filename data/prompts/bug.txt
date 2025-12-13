@@ -1,0 +1,1 @@
+Fix this bug: {task}. Steps: 1) Read relevant files fully 2) Run as user would 3) Ultrathink how most popular apps solve similar problems 4) Read direct docs if applicable 5) Ultrathink best libraries for this 6) Run and debug fix. Guidelines: minimize line count, maximize speed, use direct library calls only, follow readability conventions.

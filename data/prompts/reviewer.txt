@@ -1,0 +1,22 @@
+You are reviewing code implementations for: {TASK}
+
+Agents used: {AGENTS}
+Directories to review: {DIRS}
+
+You do NOT edit code. Run tests to verify. Rank by:
+1. Runs without errors
+2. Solves the problem
+3. Shortest code (fewer lines)
+4. Most library calls (library glue pattern)
+5. Fastest execution
+
+Create REVIEW.md with:
+# Review Results
+## Ranking
+1. [best] - reason
+2. [next] - reason
+
+## Recommendation
+Which to push to main and why.
+
+Say REVIEW COMPLETE when done.

@@ -149,20 +149,7 @@ except: pass
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))  # realpath follows symlinks
-PROMPTS_FILE = os.path.join(SCRIPT_DIR, 'data', 'prompts.json')
-DEFAULT_PROMPTS = {
-    "fix": "Analyze codebase, find issues, fix them.",
-    "bug": "Fix this bug: {task}. Minimize line count, use direct library calls only.",
-    "feat": "Add this feature: {task}. Use library glue, minimize line count.",
-    "auto": "Auto-improve: find pain points, simplify, rewrite with more library calls.",
-    "del": "Deletion mode: delete aggressively, add back only what user fights for.",
-    "gen": "Guidelines: minimize line count, maximize speed, use direct library calls only."
-}
-
-def load_prompts():
-    try:
-        with open(PROMPTS_FILE) as f: return {**DEFAULT_PROMPTS, **json.load(f)}
-    except: return DEFAULT_PROMPTS
+PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
 
 def manual_update():
     """Update aio from git repository - explicit user command only."""
@@ -383,12 +370,6 @@ def init_database():
                 )
             """)
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS prompts (
-                    name TEXT PRIMARY KEY,
-                    content TEXT NOT NULL
-                )
-            """)
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS multi_runs (
@@ -402,61 +383,10 @@ def init_database():
                 )
             """)
 
-            # Check if prompts exist
-            cursor = conn.execute("SELECT COUNT(*) FROM prompts")
-            if cursor.fetchone()[0] == 0:
-                # Insert default prompt once
-                default_prompt = """When given a task follow the 3 steps:
-
-Step 1: Read project and relevant files. Then ultrathink how to best solve this.
-For any technical decision or problem, first ask what the most popular/deployed apps in the world do most similar to this project. Assume the best way to solve the problem already exists and your task is just to figure out how to find that and use it, not create your own method. Ask how did they solve it and how they implemented the solution? If applicable, look up the most direct source relevant docs.
-
-Step 2: Write the changes with the following:
-
-Write in the style I would call "library glue", where you only use library functions, no or almost no business logic, and fully rely on the library to do everything for all code lines.
-
-Make line count as minimal as possible while doing exactly the same things, use direct library calls as often as possible, keep it readable and follow all program readability conventions, and manually run debug and inspect output and fix issues.
-If rewriting existing sections of code with no features added, each change must be readable and follow all program readability conventions, run as fast or faster than previous code, be lower in line count or equal to original, use the same or greater number of direct library calls, reduce the number of states the program could be in or keep it equal, and make it simpler or keep the same complexity than before.
-Specific practices:
-No polling whatsoever, only event based.
-
-Step 3:
-After you make edits, run manually exactly as the user would, and check the output manually, if applicable inspect screenshots. Set an aggressive timeout on any terminal command. Don't add any features just make sure everything works and fix any issues according to library glue principles."""
-                conn.execute("INSERT INTO prompts VALUES ('default', ?)", (default_prompt,))
-
-            # Add reviewer prompt if not exists
-            cursor = conn.execute("SELECT COUNT(*) FROM prompts WHERE name = 'reviewer'")
-            if cursor.fetchone()[0] == 0:
-                reviewer_prompt = """You are reviewing code implementations for: {TASK}
-
-Agents used: {AGENTS}
-Directories to review: {DIRS}
-
-You do NOT edit code. Run tests to verify. Rank by:
-1. Runs without errors
-2. Solves the problem
-3. Shortest code (fewer lines)
-4. Most library calls (library glue pattern)
-5. Fastest execution
-
-Create REVIEW.md with:
-# Review Results
-## Ranking
-1. [best] - reason
-2. [next] - reason
-
-## Recommendation
-Which to push to main and why.
-
-Say REVIEW COMPLETE when done."""
-                conn.execute("INSERT INTO prompts VALUES ('reviewer', ?)", (reviewer_prompt,))
-
             # Check if config exists
             cursor = conn.execute("SELECT COUNT(*) FROM config")
             if cursor.fetchone()[0] == 0:
-                # Insert default config - reference the default prompt
-                cursor = conn.execute("SELECT content FROM prompts WHERE name = 'default'")
-                default_prompt = cursor.fetchone()[0]
+                default_prompt = get_prompt('default') or ''
                 conn.execute("INSERT INTO config VALUES ('claude_prompt', ?)", (default_prompt,))
                 conn.execute("INSERT INTO config VALUES ('codex_prompt', ?)", (default_prompt,))
                 conn.execute("INSERT INTO config VALUES ('gemini_prompt', ?)", (default_prompt,))
@@ -522,12 +452,13 @@ def load_config():
         config = dict(cursor.fetchall())
     return config
 
-def get_prompt(name):
-    """Load a prompt from database by name."""
-    with WALManager(DB_PATH) as conn:
-        cursor = conn.execute("SELECT content FROM prompts WHERE name = ?", (name,))
-        row = cursor.fetchone()
-        return row[0] if row else None
+def get_prompt(name, show_location=False):
+    """Load a prompt from data/prompts/{name}.txt file."""
+    prompt_file = PROMPTS_DIR / f'{name}.txt'
+    if prompt_file.exists():
+        if show_location: print(f"📝 Prompt: {prompt_file}")
+        return prompt_file.read_text().strip()
+    return None
 
 def load_projects():
     """Load projects from database."""
@@ -1195,10 +1126,10 @@ def get_session_for_worktree(worktree_path):
     if result.returncode != 0:
         return None
 
-    sessions = result.stdout.strip().split('\n')
+    tmux_sessions = result.stdout.strip().split('\n')
 
     # Check each session's current path
-    for session in sessions:
+    for session in tmux_sessions:
         if not session:
             continue
         path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
@@ -1574,10 +1505,10 @@ def list_jobs(running_only=False):
     jobs_by_path = {}  # path -> list of sessions
 
     if result.returncode == 0:
-        sessions = [s for s in result.stdout.strip().split('\n') if s]
+        tmux_sessions = [s for s in result.stdout.strip().split('\n') if s]
 
         # Get directory for each session
-        for session in sessions:
+        for session in tmux_sessions:
             path_result = sp.run(['tmux', 'display-message', '-p', '-t', session,
                                  '#{pane_current_path}'],
                                 capture_output=True, text=True)
@@ -2440,17 +2371,16 @@ elif arg == 'font':
     handle_font_command(sys.argv[2:])
 elif arg in ('fix', 'bug', 'feat', 'auto', 'del'):
     # Prompt-based sessions: aio fix, aio bug "task", aio feat "task", aio auto, aio del
-    prompts = load_prompts()
     args = sys.argv[2:]
     agent = 'l'  # Default to claude
     if args and args[0] in ('c', 'l', 'g'):
         agent, args = args[0], args[1:]
+    prompt_template = get_prompt(arg, show_location=True) or '{task}'
     if arg in ('fix', 'auto', 'del'):
-        prompt = prompts[arg]  # autonomous modes, no task needed
-        task = 'autonomous'
+        prompt, task = prompt_template, 'autonomous'
     else:
         task = ' '.join(args) if args else input(f"{arg}: ")
-        prompt = prompts[arg].format(task=task)
+        prompt = prompt_template.format(task=task)
     agent_name, cmd = sessions[agent]
     session_name = f"{arg}-{agent}-{datetime.now().strftime('%H%M%S')}"
     print(f"📝 {arg.upper()} [{agent_name}]: {task[:50]}{'...' if len(task) > 50 else ''}")
@@ -2984,7 +2914,7 @@ elif arg == 'send':
 elif arg == 'multi':
     # Run multiple agents in ONE tmux session with tabs, each in its own worktree
     # Structure: WORKTREES_DIR/repo_name/run_id/attempt_N
-    import json, hashlib
+    import json
 
     # Handle 'aio multi set c:2 l:1' to change default
     if work_dir_arg == 'set':
@@ -3021,12 +2951,10 @@ elif arg == 'multi':
         default_specs = config.get('multi_default', 'c:3')
         agent_specs, _, _ = parse_agent_specs_and_prompt([''] + default_specs.split(), 1)
         print(f"Using default: {default_specs}  (change with: aio multi set <specs>)")
-    # Load prompts first - the input box shows the FULL prompt for editing
-    prompts = load_prompts()
-
+    feat_template = get_prompt('feat', show_location=True) or '{task}'
     if used_default:
         # No task provided - show full feat prompt template for editing
-        initial_prompt = prompts['feat'].format(task="<describe task>")
+        initial_prompt = feat_template.format(task="<describe task>")
         prompt = input_box(initial_prompt, "Prompt (Ctrl+D to run, Ctrl+C to cancel)")
         if prompt is None: sys.exit(0)  # Ctrl+C cancellation
         prompt = prompt.strip()
@@ -3034,7 +2962,7 @@ elif arg == 'multi':
         task = prompt  # Store final prompt for run_info
     else:
         # Task provided on command line - wrap and execute directly
-        prompt = prompts['feat'].format(task=task)
+        prompt = feat_template.format(task=task)
 
     total = sum(count for _, count in agent_specs)
     repo_name = os.path.basename(project_path)
@@ -3113,7 +3041,7 @@ elif arg == 'multi':
     # Build reviewer prompt with context
     agents_str = ", ".join(f"{k}:{c}" for k, c in agent_specs)
     dirs_str = ", ".join(os.path.basename(p) for _, _, p in launched)
-    prompt_template = get_prompt('reviewer') or "Review {DIRS} for: {TASK}"
+    prompt_template = get_prompt('reviewer', show_location=True) or "Review {DIRS} for: {TASK}"
     REVIEWER_PROMPT = prompt_template.format(TASK=prompt, AGENTS=agents_str, DIRS=dirs_str)
     # Add Ultrathink. prefix for Claude reviewer (increases thinking budget)
     REVIEWER_PROMPT = claude_prefix_prompt(REVIEWER_PROMPT, True)
@@ -3561,7 +3489,14 @@ elif arg == 'all':
             else:
                 print(f"cd {path} && git remote set-url origin git@github.com:USER/REPO.git")
 
-        print("""\n" + "=\nℹ️  WHY SSH IS BETTER:\n   • No password prompts\n   • Works with aio's no-dialog approach\n   • More secure than storing passwords\n\n✅ After fixing, run 'aio all' again and all projects will work!""")
+        print("""
+================================================================================
+ℹ️  WHY SSH IS BETTER:
+   • No password prompts
+   • Works with aio's no-dialog approach
+   • More secure than storing passwords
+
+✅ After fixing, run 'aio all' again and all projects will work!""")
         sys.exit(1)
 
     print("\n✅ All projects authenticated successfully!")
@@ -3800,19 +3735,20 @@ elif arg == 'config':
 
 elif arg == 'prompt':
     # Edit prompts: aio prompt [name]
-    prompts = load_prompts()
     name = work_dir_arg or 'feat'
-    if name not in prompts:
-        print(f"Available: {', '.join(prompts.keys())}")
+    prompt_file = PROMPTS_DIR / f'{name}.txt'
+    if not prompt_file.exists():
+        print(f"📝 Prompts dir: {PROMPTS_DIR}")
+        print(f"Available: {', '.join(p.stem for p in PROMPTS_DIR.glob('*.txt'))}")
         sys.exit(1)
-    new_val = input_box(prompts[name], f"Edit '{name}' (Ctrl+D to save, Ctrl+C to cancel)")
+    print(f"📝 Editing: {prompt_file}")
+    current = prompt_file.read_text().strip()
+    new_val = input_box(current, f"Edit '{name}' (Ctrl+D to save, Ctrl+C to cancel)")
     if new_val is None:
         print("Cancelled")
-    elif new_val != prompts[name]:
-        prompts[name] = new_val
-        os.makedirs(os.path.dirname(PROMPTS_FILE), exist_ok=True)
-        with open(PROMPTS_FILE, 'w') as f: json.dump(prompts, f, indent=2)
-        print(f"✓ Saved '{name}' prompt")
+    elif new_val.strip() != current:
+        prompt_file.write_text(new_val.strip())
+        print(f"✓ Saved to {prompt_file}")
     else:
         print("No changes")
 
@@ -3892,7 +3828,7 @@ elif arg == 'r' or arg == 'review':
                          if os.path.isdir(os.path.join(candidates_dir, d))]
     dirs = ", ".join(candidate_names)
 
-    prompt_template = get_prompt('reviewer') or "Review the code in {DIRS} for task: {TASK}"
+    prompt_template = get_prompt('reviewer', show_location=True) or "Review the code in {DIRS} for task: {TASK}"
     REVIEWER_PROMPT = prompt_template.format(TASK=task, AGENTS=agents, DIRS=dirs)
     # Add Ultrathink. prefix for Claude reviewer (increases thinking budget)
     REVIEWER_PROMPT = claude_prefix_prompt(REVIEWER_PROMPT, True)
