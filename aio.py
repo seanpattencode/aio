@@ -4482,8 +4482,15 @@ elif arg == 'push':
             if result.returncode == 0:
                 print(f"✓ Pushed to branch: {worktree_branch}")
             else:
-                print(f"✗ Push failed: {result.stderr.strip()}")
-                sys.exit(1)
+                err = result.stderr.strip()
+                if 'Permission denied' in err or 'Authentication' in err:
+                    remote_url = sp.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+                    if remote_url.startswith('git@') and sp.run(['gh', 'config', 'get', 'git_protocol'], capture_output=True, text=True).stdout.strip() == 'https':
+                        if _confirm("⚠️  Remote uses SSH but gh uses HTTPS. Switch to HTTPS?"):
+                            sp.run(['git', '-C', cwd, 'remote', 'set-url', 'origin', remote_url.replace('git@github.com:', 'https://github.com/').replace('.git', '')])
+                            result = sp.run(['git', '-C', cwd, 'push', '-u', 'origin', worktree_branch], capture_output=True, text=True, env=env)
+                            if result.returncode == 0: print(f"✓ Pushed to branch: {worktree_branch}"); sys.exit(0)
+                print(f"✗ Push failed: {err}"); sys.exit(1)
             sys.exit(0)  # Done - don't ask about deleting worktree
 
         # Ask if user wants to delete the worktree
@@ -4639,16 +4646,16 @@ elif arg == 'push':
                     print(f"✗ Force push failed: {result.stderr.strip()}")
                     sys.exit(1)
             elif 'Authentication failed' in error_msg or 'could not read Username' in error_msg or 'Permission denied' in error_msg:
-                print(f"❌ Authentication failed. Please set up git credentials:")
-                print(f"   • For SSH (recommended):")
-                print(f"     1. Check if you have an SSH key: ls ~/.ssh/id_*.pub")
-                print(f"     2. If not, generate one: ssh-keygen -t ed25519")
-                print(f"     3. Add to GitHub: gh ssh-key add ~/.ssh/id_ed25519.pub")
-                print(f"     4. Test: ssh -T git@github.com")
-                print(f"   • For HTTPS:")
-                print(f"     1. Run: git config --global credential.helper cache")
-                print(f"     2. Then: git push (will prompt for username/token)")
-                print(f"   • Quick fix: Run 'git push' manually once to authenticate")
+                # Check if SSH URL but gh uses HTTPS - offer to switch
+                remote_url = sp.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+                gh_proto = sp.run(['gh', 'config', 'get', 'git_protocol'], capture_output=True, text=True).stdout.strip()
+                if remote_url.startswith('git@') and gh_proto == 'https':
+                    if _confirm("⚠️  Remote uses SSH but gh uses HTTPS. Switch to HTTPS?"):
+                        https_url = remote_url.replace('git@github.com:', 'https://github.com/').replace('.git', '')
+                        sp.run(['git', '-C', cwd, 'remote', 'set-url', 'origin', https_url])
+                        result = sp.run(['git', '-C', cwd, 'push', 'origin', main_branch], capture_output=True, text=True, env=env)
+                        if result.returncode == 0: print(f"✓ Pushed to {main_branch}"); sys.exit(0)
+                print(f"❌ Authentication failed. Run 'git push' manually or set up SSH keys.")
             else:
                 print(f"✗ Push failed: {error_msg}")
             sys.exit(1)
