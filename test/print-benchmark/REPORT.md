@@ -176,16 +176,48 @@ time for i in $(seq 1 1000); do echo "Hello" >/dev/null; done
 - **No ELF parsing** - already in memory
 - **No page table setup** - uses shell's memory
 
+## Stripping to the Core
+
+| Method | Time | Overhead |
+|--------|------|----------|
+| **Raw write() syscall** | **260 ns** | Kernel floor |
+| Bash inline `echo H` | 3,890 ns | +3,630 ns shell |
+| Bash loop echo | 20,000 ns | +16,000 ns loop |
+| Binary execution | 10,000,000 ns | +9.98ms process |
+
+### Component Breakdown
+
+```
+Start: Binary execution         10,000,000 ns
+  └─ Remove fork/exec            -9,980,000 ns
+       ↓
+     Shell with loop               20,000 ns
+       └─ Remove loop overhead     -16,000 ns
+            ↓
+          Shell inline              3,890 ns
+            └─ Remove shell          -3,630 ns
+                 ↓
+               Raw syscall            260 ns ← FLOOR
+```
+
+### What Each Component Costs
+
+| Component | Cost | % of Binary |
+|-----------|------|-------------|
+| Process creation (fork+exec) | 9,980 μs | 99.8% |
+| Loop iteration overhead | 16 μs | 0.16% |
+| Shell builtin dispatch | 3.6 μs | 0.04% |
+| Kernel syscall | 0.26 μs | 0.003% |
+
 ## Conclusion
 
-| Approach | Time | Notes |
-|----------|------|-------|
-| Raw syscall | 0.0004ms | In-process only |
-| **Shell builtin** | **0.09ms** | **Best practical option** |
-| Minimal binary | 10ms | Process creation overhead |
-| Python | 100ms | Interpreter startup |
+| Approach | Time | Speedup |
+|----------|------|---------|
+| Raw syscall | 0.00026 ms | 38,000x |
+| Shell inline | 0.004 ms | 2,500x |
+| Shell loop | 0.02 ms | 500x |
+| **Binary** | **10 ms** | **baseline** |
 
-**Shell builtin `echo` achieves 0.09ms** - 100x faster than any standalone binary.
+**The 260ns write() syscall is the absolute floor** - pure kernel time.
 
-The 154-byte ELF (10ms) represents the floor for standalone executables.
-The shell builtin (0.09ms) represents the floor for practical CLI use.
+To go faster: kernel module or hardware.
