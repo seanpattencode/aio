@@ -1996,17 +1996,20 @@ if is_directory_only:
 # Also determine if work_dir_arg is actually a prompt (for later)
 is_work_dir_a_prompt = False
 
-if work_dir_arg and work_dir_arg.isdigit():
+# Commands that take numeric args (don't execute commands for these)
+_cmd_keywords = {'add', 'remove', 'rm', 'cmd', 'command', 'commands', 'app', 'apps', 'prompt', 'multi', 'review', 'w'}
+
+if work_dir_arg and work_dir_arg.isdigit() and arg not in _cmd_keywords:
     idx = int(work_dir_arg)
     if 0 <= idx < len(PROJECTS):
         work_dir = PROJECTS[idx]
     elif 0 <= idx - len(PROJECTS) < len(APPS):
-        # Execute app command
+        # Execute command using user's shell (not /bin/sh which lacks python etc.)
         app_name, app_command = APPS[idx - len(PROJECTS)]
-        print(f"Running app: {app_name}")
-        print(f"Command: {app_command}")
-        os.system(app_command)
-        sys.exit(0)
+        print(f"▶️  Running: {app_name}")
+        print(f"   Command: {app_command}")
+        shell = os.environ.get('SHELL', '/bin/bash')
+        os.execvp(shell, [shell, '-c', app_command])
     else:
         work_dir = WORK_DIR
 elif work_dir_arg and os.path.isdir(os.path.expanduser(work_dir_arg)):
@@ -2189,20 +2192,15 @@ if arg and arg.isdigit() and not work_dir_arg:
         os.chdir(project_path)
         os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
     elif 0 <= idx - len(PROJECTS) < len(APPS):
-        # Execute app command
+        # Execute command using user's shell
         app_name, app_command = APPS[idx - len(PROJECTS)]
-
-        # Display what we're running
-        cmd_display = format_app_command(app_command)
         print(f"▶️  Running: {app_name}")
-        print(f"   Command: {cmd_display}")
-
-        os.system(app_command)
+        print(f"   Command: {format_app_command(app_command)}")
+        shell = os.environ.get('SHELL', '/bin/bash')
+        os.execvp(shell, [shell, '-c', app_command])
         sys.exit(0)
     else:
-        print(f"✗ Invalid index: {idx}")
-        print(f"   Valid range: 0-{len(PROJECTS) + len(APPS) - 1}")
-        print(f"   Projects: 0-{len(PROJECTS)-1}, Apps: {len(PROJECTS)}-{len(PROJECTS) + len(APPS) - 1}")
+        print(f"✗ Invalid index: {idx} (valid: 0-{len(PROJECTS) + len(APPS) - 1})")
         sys.exit(1)
 
 # Handle worktree commands (but not 'watch' or existing files like 'webgpu-walk.html')
@@ -3914,26 +3912,35 @@ elif arg == 'p':
             cmd_display = format_app_command(app_cmd)
             print(f"  {len(PROJECTS) + i}. {app_name} → {cmd_display}")
 elif arg == 'add':
-    # Unified add: project (path) or app (name + command)
-    # aio add             → add cwd as project
-    # aio add ~/path      → add path as project
-    # aio add name "cmd"  → add app
+    # Unified add: project (path) or command (name + shell string)
+    # aio add                    → add cwd as project
+    # aio add ~/path             → add path as project
+    # aio add name "cmd"         → add command
+    # aio add python script.py   → prompt for name (detects interpreter)
     args = sys.argv[2:]
     is_global = '--global' in args
     args = [a for a in args if a != '--global']
 
-    # Detect app: 2+ args where first isn't a valid directory
+    # Detect command: 2+ args where first isn't a valid directory
     if len(args) >= 2 and not os.path.isdir(os.path.expanduser(args[0])):
-        app_name, app_cmd = args[0], ' '.join(args[1:])
-        if app_cmd.startswith('[') and app_cmd.endswith(']'): app_cmd = app_cmd[1:-1]
+        # Check if first arg is an interpreter (python, node, etc.) - prompt for name
+        interpreters = ['python', 'python3', 'node', 'npm', 'ruby', 'perl', 'java', 'go', 'sh', 'bash', 'npx']
+        if args[0] in interpreters:
+            cmd_val = ' '.join(args)  # whole thing is the command
+            print(f"Command: {cmd_val}")
+            cmd_name = input("Name for this command: ").strip()
+            if not cmd_name: print("✗ Cancelled"); sys.exit(1)
+        else:
+            cmd_name, cmd_val = args[0], ' '.join(args[1:])
+        if cmd_val.startswith('[') and cmd_val.endswith(']'): cmd_val = cmd_val[1:-1]
         cwd, home = os.getcwd(), os.path.expanduser('~')
-        if not is_global and cwd != home and not app_cmd.startswith('cd '):
-            app_cmd = f"cd {cwd.replace(home, '~')} && {app_cmd}"
+        if not is_global and cwd != home and not cmd_val.startswith('cd '):
+            cmd_val = f"cd {cwd.replace(home, '~')} && {cmd_val}"
             print(f"📍 Context: {cwd.replace(home, '~')}")
         existing = {n.lower(): n for n, _ in load_apps()}
-        if app_name.lower() in existing:
-            print(f"✗ '{existing[app_name.lower()]}' exists. Use: aio cmd edit {app_name}"); sys.exit(1)
-        ok, msg = add_app(app_name, app_cmd)
+        if cmd_name.lower() in existing:
+            print(f"✗ '{existing[cmd_name.lower()]}' exists. Use: aio cmd edit {cmd_name}"); sys.exit(1)
+        ok, msg = add_app(cmd_name, cmd_val)
         print(f"{'✓' if ok else '✗'} {msg}")
         if ok: auto_backup_check(); list_all_items()
         sys.exit(0 if ok else 1)
