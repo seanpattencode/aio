@@ -774,10 +774,10 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     """Create a tmux session with enhanced options. Agent sessions get agent+bash panes."""
     result = sm.new_session(session_name, work_dir, cmd or '', env)
     ensure_tmux_options()  # After session creation so tmux server is running
-    # Auto-add bash pane for agent sessions (bash left, agent right)
+    # Auto-add bash pane for agent sessions (agent top, bash bottom)
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
-        sp.run(['tmux', 'split-window', '-bh', '-t', session_name, '-c', work_dir], capture_output=True)
-        sp.run(['tmux', 'select-pane', '-t', session_name, '-R'], capture_output=True)
+        sp.run(['tmux', 'split-window', '-v', '-t', session_name, '-c', work_dir], capture_output=True)
+        sp.run(['tmux', 'select-pane', '-t', session_name, '-U'], capture_output=True)
         # Activity monitor via pipe-pane: green on output, red after 5s silence (no orphan processes)
         monitor_script = f'''bash -c 's={shlex.quote(session_name)};tmux set -t $s set-titles-string "🔴 #S:#W";while true;do if IFS= read -t5 l;then tmux set -t $s set-titles-string "🟢 #S:#W";elif [[ $? -gt 128 ]];then tmux set -t $s set-titles-string "🔴 #S:#W";else exit;fi;done' '''
         sp.run(['tmux', 'pipe-pane', '-t', session_name, '-o', monitor_script], capture_output=True)
@@ -4844,7 +4844,7 @@ else:
     # If inside tmux and arg is simple agent key (c/l/g), create pane instead of session
     if 'TMUX' in os.environ and arg in sessions and len(arg) == 1:
         _, cmd = sessions[arg]
-        sp.run(['tmux', 'split-window', '-h', '-c', work_dir, cmd])
+        sp.run(['tmux', 'split-window', '-bv', '-c', work_dir, cmd])
         # For Claude sessions, send the prefix to the new pane
         if arg in ('l', 'o'):
             time.sleep(0.5)  # Wait for pane to initialize
