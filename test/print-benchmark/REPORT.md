@@ -120,8 +120,47 @@ for i in $(seq 1 30); do
 done
 ```
 
+## Syscall Floor Analysis
+
+Benchmarked the raw write() syscall from within a running process to find the true floor:
+
+| Target | Min | Avg |
+|--------|-----|-----|
+| /dev/null | 312 ns | 352 ns |
+| Real TTY | 364 ns | 463 ns |
+| TTY overhead | - | ~111 ns |
+
+### The Math
+
+```
+Best binary execution:  10,000,000 ns (10 ms)
+Actual write syscall:        ~400 ns (0.0004 ms)
+Process creation:        9,999,600 ns (9.9996 ms)
+
+Process creation overhead: 99.996%
+```
+
+**The write syscall takes 400 nanoseconds. Process creation takes 10 milliseconds.**
+
+This means our 154-byte binary spends:
+- 0.004% doing actual work (write syscall)
+- 99.996% in kernel process creation (fork, execve, mmap, ELF loading)
+
+### Additional Files
+
+- `syscall_bench.c` - Benchmark write() to /dev/null (1000 runs)
+- `syscall_bench_real.c` - Compare /dev/null vs TTY performance
+- `breakdown.c` - In-process timing breakdown
+
 ## Conclusion
 
 **Achieved 10ms execution** - 50% below the 20ms target.
 
-The hand-crafted 154-byte ELF is the fastest possible "Hello, World!" on this platform without resorting to kernel modules or staying resident in memory.
+The write syscall itself takes only **~400 nanoseconds**. The remaining **99.996%** of execution time is pure Linux process creation overhead (fork, execve, memory mapping, ELF parsing).
+
+The only ways to go faster:
+1. Stay in-process (daemon, shell builtin)
+2. Kernel module (bypass userspace entirely)
+3. Faster hardware/kernel
+
+The 154-byte ELF represents the practical floor for a standalone executable on this platform.
