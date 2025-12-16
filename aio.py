@@ -2333,9 +2333,9 @@ MANAGEMENT:
   aio prompt [name]   Edit prompts (feat, fix, bug, auto, del)
 NOTES & BACKUP:
   aio note            List notes, select to view
+  aio note 2          Open note #2
   aio note "text"     Create note (first line = name)
-  aio gdrive          Show backup status (auto-syncs)
-  aio gdrive login    Setup Google Drive backup
+  aio gdrive          Backup status | aio gdrive login
 Run 'aio help' for all commands""")
     list_all_items(show_help=False)
 elif arg == 'help' or arg == '--help' or arg == '-h':
@@ -2367,8 +2367,8 @@ GIT: push [file] [msg] | pull [-y] | revert [N] | setup <url>
 CONFIG: install | deps | update | font [+|-|N] | config [key] [val]
   claude_prefix="Ultrathink. "  (auto-prefixes Claude prompts)
 
-NOTES: note [content] - markdown notes, first line becomes name
-  note          List & select  |  note ls       List only
+NOTES: note [#|content] - markdown notes, first line becomes name
+  note          List & select  |  note 2        Open note #2
   note "hello"  Create note    |  auto-syncs to Google Drive
 
 BACKUP: gdrive [login] - auto-syncs data/ to Google Drive on note save
@@ -3781,29 +3781,36 @@ elif arg == 'gdrive':
     else: _err("Not logged in. Run: aio gdrive login")
 
 elif arg == 'note':
-    # Notes: aio note [content] - first line becomes filename
-    import re
+    # Notes: aio note [#|content] - number opens note, text creates note
+    import re, threading
     NOTEBOOK_DIR = Path(SCRIPT_DIR) / 'data' / 'notebook'
     NOTEBOOK_DIR.mkdir(parents=True, exist_ok=True)
     def _note_slug(s): return re.sub(r'[^\w\-]', '', s.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
     def _note_preview(p): return p.read_text().split('\n')[0][:60]
-    content = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 and sys.argv[2] != 'ls' else None
-    if not content:  # List notes
-        _rclone_pull_notes()
+    def _list_notes():
         notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
+        threading.Thread(target=_rclone_pull_notes, daemon=True).start()
         if not notes: print("No notes. Create: aio note <content>"); sys.exit(0)
         for i, n in enumerate(notes): print(f"{i}. {_note_preview(n)}")
-        if work_dir_arg == 'ls': sys.exit(0)
+        return notes
+    raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
+    if not raw or raw == 'ls':  # List notes
+        notes = _list_notes()
+        if raw == 'ls': sys.exit(0)
         choice = input("View #: ").strip()
+        notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
         if choice.isdigit() and int(choice) < len(notes): print(f"\n{notes[int(choice)].read_text()}")
+    elif raw.isdigit():  # Open note by number
+        notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
+        if int(raw) < len(notes): print(notes[int(raw)].read_text())
+        else: print(f"No note #{raw}"); _list_notes()
     else:  # Create note
-        content = content if content.strip() else input_box('', 'Note (Ctrl+D save, Ctrl+C cancel)')
+        content = raw if raw.strip() else input_box('', 'Note (Ctrl+D save, Ctrl+C cancel)')
         if content:
             note_file = NOTEBOOK_DIR / f"{_note_slug(content)}-{datetime.now().strftime('%m%d%H%M')}.md"
             note_file.write_text(content); print(f"✓ {_note_preview(note_file)}")
-            started, ok = _rclone_sync_data(wait=True)
-            if started: print("☁ Synced" if ok else "☁ Sync failed")
-            else: print("💡 Run 'aio gdrive login' for cloud backup")
+            started, _ = _rclone_sync_data()
+            print("☁ Syncing..." if started else "💡 Run 'aio gdrive login' for cloud backup")
         else: print("Cancelled")
 
 elif arg == 'r' or arg == 'review':
