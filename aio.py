@@ -3772,7 +3772,7 @@ elif arg == 'gdrive':
     # Google Drive backup: aio gdrive [login|logout]
     if work_dir_arg == 'login':
         if not shutil.which('rclone'):
-            print("Installing rclone..."); sp.run('curl https://rclone.org/install.sh | sudo bash', shell=True)
+            print("Installing rclone..."); sp.run(['pkg', 'install', '-y', 'rclone'] if os.environ.get('TERMUX_VERSION') else ['sh', '-c', 'curl https://rclone.org/install.sh | sudo bash'])
         if _rclone_configured():
             print(f"Already logged in as {_rclone_account() or 'unknown'}")
             if not _confirm("Switch to different account?"): sys.exit(0)
