@@ -2353,6 +2353,7 @@ WORKFLOWS: aio fix|bug|feat|auto|del [agent] ["task"]
   fix=autonomous  bug=debug  feat=add  auto=improve  del=cleanup
 
 OVERNIGHT: aio on [#] [c:N l:N]  Read aio.md, agents work, auto-review
+IDEA: aio idea [#|path] [l:N]   Agents use project as customer → ISSUES.md
 
 WORKTREES: aio w  list | w<#>  open | w<#>-  delete | w<#>--  push+delete
 
@@ -3441,6 +3442,35 @@ fi'''
         print(f"   Switch: tmux switch-client -t {session_name}")
     else:
         os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
+elif arg == 'idea':
+    # Idea gathering: agents use project as customer, identify top issue → ISSUES.md
+    # Usage: aio idea [project#|path] [l:N] - defaults to cwd, l:3
+    project_path = PROJECTS[int(work_dir_arg)] if work_dir_arg and work_dir_arg.isdigit() and int(work_dir_arg) < len(PROJECTS) else (work_dir_arg if work_dir_arg and os.path.isdir(work_dir_arg) else os.getcwd())
+    agent_specs, _, _ = parse_agent_specs_and_prompt(sys.argv, 3 if work_dir_arg else 2)
+    if not agent_specs: agent_specs = [('l', 3)]
+
+    repo, run_id = os.path.basename(project_path), datetime.now().strftime('%Y%m%d-%H%M%S')
+    session_name, issues_file = f"idea-{repo}-{run_id}", os.path.join(project_path, 'ISSUES.md')
+    run_dir = os.path.join(WORKTREES_DIR, repo, f"idea-{run_id}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    prompt = f'Ultrathink. 1) Use this project as customer 2) Find TOP issue 3) Write to {issues_file}\nFormat: ## Issue: title\\n**Severity**: high/med/low\\n### Repro\\n### Fix'
+
+    print(f"💡 idea: {repo} → {issues_file}")
+    env, first, base_cmd = get_noninteractive_git_env(), True, sessions.get('l', (None, None))[1]
+    for i in range(sum(c for _, c in agent_specs if _ == 'l')):
+        wt = os.path.join(run_dir, f"l{i}")
+        sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f'idea-{run_id}-l{i}', wt], capture_output=True, env=env)
+        if not os.path.exists(wt): continue
+        cmd = f'{base_cmd} {shlex.quote(prompt)}'
+        (sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', f'l{i}', '-c', wt, cmd], env=env) if first else sp.run(['tmux', 'new-window', '-t', session_name, '-n', f'l{i}', '-c', wt, cmd], env=env))
+        first = False
+        print(f"  ✓ l{i} → {wt}")
+
+    if first: _die("No agents launched")
+    ensure_tmux_options()
+    print(f"📄 {issues_file}")
+    os.execvp('tmux', ['tmux', 'attach', '-t', session_name]) if "TMUX" not in os.environ else print(f"tmux switch-client -t {session_name}")
 elif arg == 'all':
     # Run agents across ALL saved projects (portfolio-level operation)
     # Usage: aio all c:2 "prompt" (parallel) OR aio all c:2 --seq "prompt" (sequential)
