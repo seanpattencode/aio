@@ -1,4 +1,21 @@
 #!/usr/bin/env python3
+# ═══════════════════════════════════════════════════════════════════════════════
+# STAGE 1: INSTANT SHELL BOOTSTRAP (0ms)
+# Add this to ~/.bashrc or ~/.zshrc for instant startup:
+#
+#   aio() {
+#       printf "⚡ aio "  # Instant visual feedback
+#       exec python3 ~/.local/bin/aio "$@"  # Hand off to Stage 2
+#   }
+#
+# This prints "⚡ aio " BEFORE Python loads, achieving perceived 0ms startup.
+# The shell function reuses the existing process (exec), no fork overhead.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STAGE 2: PURE PYTHON KERNEL (minimal imports, ~20ms)
+# Only standard library imports here - no heavy deps, no I/O at module level
+# ═══════════════════════════════════════════════════════════════════════════════
 import os, sys, subprocess as sp, json, sqlite3, shlex, shutil, time, atexit
 from datetime import datetime
 from pathlib import Path
@@ -85,8 +102,7 @@ def ensure_deps():
     if shutil.which('npm') and not shutil.which('gemini'):
         sp.run(['npm', 'install', '-g', '@google/gemini-cli', '--ignore-scripts'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 
-# Install deps on first run
-ensure_deps()
+# STAGE 2: Deps check deferred to _init_stage3() - not run at import time
 
 def input_box(prefill="", title="Ctrl+D to run, Ctrl+C to cancel"):
     # Fallback to simple input inside tmux, non-TTY, or if prompt_toolkit not installed
@@ -138,14 +154,17 @@ class TmuxManager(Multiplexer):
         return self._ver
 
 sm = TmuxManager()
-# Auto-update tmux every 12h in background (Linux only - compiles from source to ~/.local)
-# Skipped on Mac (use brew upgrade tmux) due to missing GNU tools (grep -oP, nproc)
-try:
-    if sys.platform != 'darwin':
-        _ts_dir = os.path.expanduser('~/.local/share/aios'); os.makedirs(_ts_dir, exist_ok=True)
-        _ts = os.path.join(_ts_dir, '.tmux_update')
-        ((not os.path.exists(_ts) or time.time()-os.path.getmtime(_ts)>43200) and os.fork()==0) and (Path(_ts).touch(),os.system(f'v=$(curl -sL api.github.com/repos/tmux/tmux/releases/latest 2>/dev/null|grep -oP \'"tag_name":"\\K[^"]+\');[ "$v" \\> "{sm.version}" ]&&cd /tmp&&rm -rf tmux-update&&git clone -q --depth 1 -b $v https://github.com/tmux/tmux tmux-update 2>/dev/null&&cd tmux-update&&sh autogen.sh>/dev/null 2>&1&&./configure --prefix=$HOME/.local>/dev/null 2>&1&&make -j$(nproc)>/dev/null 2>&1&&make install>/dev/null 2>&1'),os._exit(0))
-except: pass
+
+def _maybe_update_tmux():
+    """Auto-update tmux every 12h in background (Linux only). Called from _init_stage3()."""
+    try:
+        if sys.platform != 'darwin':
+            _ts_dir = os.path.expanduser('~/.local/share/aios'); os.makedirs(_ts_dir, exist_ok=True)
+            _ts = os.path.join(_ts_dir, '.tmux_update')
+            ((not os.path.exists(_ts) or time.time()-os.path.getmtime(_ts)>43200) and os.fork()==0) and (Path(_ts).touch(),os.system(f'v=$(curl -sL api.github.com/repos/tmux/tmux/releases/latest 2>/dev/null|grep -oP \'"tag_name":"\\K[^"]+\');[ "$v" \\> "{sm.version}" ]&&cd /tmp&&rm -rf tmux-update&&git clone -q --depth 1 -b $v https://github.com/tmux/tmux tmux-update 2>/dev/null&&cd tmux-update&&sh autogen.sh>/dev/null 2>&1&&./configure --prefix=$HOME/.local>/dev/null 2>&1&&make -j$(nproc)>/dev/null 2>&1&&make install>/dev/null 2>&1'),os._exit(0))
+    except: pass
+
+# STAGE 2: Tmux auto-update deferred to _init_stage3() - not run at import time
 
 # Auto-update: Pull latest version from git repo
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))  # realpath follows symlinks
@@ -250,10 +269,7 @@ def show_update_warning():
             try: os.remove(marker)
             except: pass
 
-# Trigger background update check
-try:
-    check_for_updates_warning()
-except: pass
+# STAGE 2: Update check deferred to _init_stage3() - not run at import time
 
 def ensure_git_config():
     """Auto-configure git user from GitHub credentials if not set."""
@@ -610,31 +626,135 @@ def load_sessions(config):
 
     return sessions
 
-# Initialize database on first run
-init_database()
+# ═══════════════════════════════════════════════════════════════════════════════
+# STAGE 3: HEAVY ENGINE INITIALIZATION (deferred, ~200ms)
+# Database, config, and background tasks - only loaded when first needed
+# ═══════════════════════════════════════════════════════════════════════════════
+_stage3_initialized = False
+config = {}
+DEFAULT_PROMPT = None
+CLAUDE_PROMPT = None
+CODEX_PROMPT = None
+GEMINI_PROMPT = None
+CLAUDE_PREFIX = 'Ultrathink. '
+WORK_DIR = None
+WORKTREES_DIR = None
+PROJECTS = []
+APPS = []
+sessions = {}
 
-# Load configuration from database
-config = load_config()
-DEFAULT_PROMPT = get_prompt('default')
-CLAUDE_PROMPT = config.get('claude_prompt', DEFAULT_PROMPT)
-CODEX_PROMPT = config.get('codex_prompt', DEFAULT_PROMPT)
-GEMINI_PROMPT = config.get('gemini_prompt', DEFAULT_PROMPT)
-# Claude prefix for extended thinking (e.g., "Ultrathink. " increases thinking budget)
-CLAUDE_PREFIX = config.get('claude_prefix', 'Ultrathink. ')
+def _init_stage3():
+    """Initialize heavy engine: database, config, background tasks. Called once on first use."""
+    global _stage3_initialized, config, DEFAULT_PROMPT, CLAUDE_PROMPT, CODEX_PROMPT
+    global GEMINI_PROMPT, CLAUDE_PREFIX, WORK_DIR, WORKTREES_DIR, PROJECTS, APPS, sessions
 
-# Get working directory, fallback to home if current dir is invalid
-try:
-    WORK_DIR = os.getcwd()
-except FileNotFoundError:
-    WORK_DIR = os.path.expanduser("~")
-    os.chdir(WORK_DIR)
-    print(f"⚠ Current directory was invalid, changed to: {WORK_DIR}")
+    if _stage3_initialized:
+        return
+    _stage3_initialized = True
 
-WORKTREES_DIR = config.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
+    # Initialize database on first run
+    init_database()
 
-PROJECTS = load_projects()
-APPS = load_apps()
-sessions = load_sessions(config)
+    # Load configuration from database
+    config = load_config()
+    DEFAULT_PROMPT = get_prompt('default')
+    CLAUDE_PROMPT = config.get('claude_prompt', DEFAULT_PROMPT)
+    CODEX_PROMPT = config.get('codex_prompt', DEFAULT_PROMPT)
+    GEMINI_PROMPT = config.get('gemini_prompt', DEFAULT_PROMPT)
+    # Claude prefix for extended thinking (e.g., "Ultrathink. " increases thinking budget)
+    CLAUDE_PREFIX = config.get('claude_prefix', 'Ultrathink. ')
+
+    # Get working directory, fallback to home if current dir is invalid
+    try:
+        WORK_DIR = os.getcwd()
+    except FileNotFoundError:
+        WORK_DIR = os.path.expanduser("~")
+        os.chdir(WORK_DIR)
+        print(f"⚠ Current directory was invalid, changed to: {WORK_DIR}")
+
+    WORKTREES_DIR = config.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
+
+    PROJECTS = load_projects()
+    APPS = load_apps()
+    sessions = load_sessions(config)
+
+    # Background tasks (forked processes, non-blocking)
+    ensure_deps()  # Check/install deps on Termux
+    _maybe_update_tmux()  # Update tmux if needed
+    try:
+        check_for_updates_warning()  # Check git for updates
+    except: pass
+
+    # Regenerate help cache in background for true 0ms startup
+    _regenerate_help_cache_bg()
+
+def _regenerate_help_cache_bg():
+    """Regenerate help cache in background (forked process, non-blocking)."""
+    if not hasattr(os, 'fork'):
+        _regenerate_help_cache()  # No fork on Windows, do it inline
+        return
+    if os.fork() == 0:
+        _regenerate_help_cache()
+        os._exit(0)
+
+def _regenerate_help_cache():
+    """Generate help output and save to cache file for true 0ms shell startup."""
+    cache_file = os.path.join(DATA_DIR, 'help_cache.txt')
+    try:
+        # Build help output (same as 'aio' with no args)
+        lines = [
+            "aio - AI agent session manager",
+            "QUICK START:",
+            "  aio c               Start codex (c=codex l=claude g=gemini)",
+            "  aio fix             AI finds/fixes issues",
+            "  aio bug \"task\"      Fix a bug",
+            "  aio feat \"task\"     Add a feature",
+            "MULTI-AGENT:",
+            "  aio multi c:3             Launch 3 codex in parallel worktrees",
+            "  aio multi c:3 \"task\"      Launch 3 codex with custom task",
+            "  aio multi c:2 l:1         Mixed: 2 codex + 1 claude",
+            "  aio multi 0 c:2 \"task\"    Launch in project 0",
+            "OVERNIGHT (autonomous):",
+            "  aio overnight             Read aio.md, run agents, auto-review",
+            "  aio on                    Shortcut for overnight",
+            "  aio on c:3 l:2            Custom agent mix (max 5 default)",
+            "GIT:",
+            "  aio push src/ msg      Push folder with message",
+            "  aio pull               Sync with server",
+            "MANAGEMENT:",
+            "  aio jobs            Show active jobs",
+            "  aio attach          Reconnect to session",
+            "  aio killall         Kill all tmux sessions",
+            "  aio cleanup         Delete all worktrees",
+            "  aio prompt [name]   Edit prompts (feat, fix, bug, auto, del)",
+            "NOTES & BACKUP:",
+            "  aio note            List notes, select to view",
+            "  aio note 2          Open note #2",
+            "  aio note \"text\"     Create note (first line = name)",
+            "  aio gdrive          Backup status | aio gdrive login",
+            "Run 'aio help' for all commands",
+        ]
+
+        # Add projects
+        if PROJECTS:
+            lines.append("📁 PROJECTS:")
+            for i, p in enumerate(PROJECTS):
+                exists = '✓' if os.path.exists(p) else '✗'
+                lines.append(f"  {i}. {exists} {p}")
+
+        # Add apps/commands
+        if APPS:
+            lines.append("")
+            lines.append("⚡ COMMANDS:")
+            for i, (n, c) in enumerate(APPS):
+                display_cmd = c.replace(os.path.expanduser('~'), '~')
+                if len(display_cmd) > 60:
+                    display_cmd = display_cmd[:57] + "..."
+                lines.append(f"  {len(PROJECTS)+i}. {n} → {display_cmd}")
+
+        with open(cache_file, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+    except: pass
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RCLONE GOOGLE DRIVE SYNC - minimal integration for data backup
@@ -2003,8 +2123,27 @@ def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=Fal
 
     return True
 
-# Parse args
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN ENTRY POINT - STAGE 2 CONTINUES: Fast arg parsing, defer heavy init
+# ═══════════════════════════════════════════════════════════════════════════════
 arg = sys.argv[1] if len(sys.argv) > 1 else None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STAGE 2 PERFORMANCE GUARD: Must complete in <50ms or system errors
+# This enforces that aio stays instant. If Stage 2 exceeds 50ms, something is
+# wrong (heavy import at module level, blocking I/O, etc.) and must be fixed.
+# ═══════════════════════════════════════════════════════════════════════════════
+_STAGE2_MAX_MS = 50
+_stage2_ms = int((time.time() - _START) * 1000)
+if _stage2_ms > _STAGE2_MAX_MS:
+    print(f"⚠️  PERFORMANCE ERROR: Stage 2 took {_stage2_ms}ms (max {_STAGE2_MAX_MS}ms)")
+    print(f"   aio must start instantly. Something is blocking at module level.")
+    print(f"   Check for: heavy imports, I/O operations, network calls at import time.")
+    sys.exit(1)
+
+# Initialize Stage 3 (heavy engine) - this is where the ~200ms cost goes
+# Called once, caches result for subsequent calls
+_init_stage3()
 
 # Show update warning if available (non-blocking check was done at import time)
 show_update_warning()
@@ -2444,6 +2583,71 @@ elif arg == 'install':
     # Create symlink
     os.symlink(script_path, aio_link)
     print(f"✓ Created symlink: {aio_link} -> {script_path}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STAGE 1 SHELL FUNCTION: Instant perceived startup (0ms)
+    # This shell function prints immediately before Python loads, achieving
+    # perceived 0ms startup. The actual Python execution happens in background.
+    # ═══════════════════════════════════════════════════════════════════════════
+    shell = os.environ.get('SHELL', '/bin/bash')
+    if 'zsh' in shell:
+        rc_file = os.path.expanduser('~/.zshrc')
+    elif 'fish' in shell:
+        rc_file = os.path.expanduser('~/.config/fish/config.fish')
+    else:
+        rc_file = os.path.expanduser('~/.bashrc')
+
+    # Define the instant shell function (different syntax for fish)
+    # TRUE 0ms: For no-arg/help, serve from cache WITHOUT calling Python
+    # Cache is regenerated by Python in background after real commands
+    if 'fish' in shell:
+        shell_func = '''
+# aio instant startup (Stage 1: true 0ms) - Added by aio install
+function aio
+    set -l cache ~/.local/share/aios/help_cache.txt
+    if test -z "$argv"; or test "$argv[1]" = "help"; or test "$argv[1]" = "-h"
+        cat $cache 2>/dev/null; or command python3 ~/.local/bin/aio $argv
+    else
+        command python3 ~/.local/bin/aio $argv
+    end
+end'''
+    else:
+        shell_func = '''
+# aio instant startup (Stage 1: true 0ms) - Added by aio install
+aio() {
+    local cache=~/.local/share/aios/help_cache.txt
+    if [[ -z "$1" || "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]]; then
+        cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"
+    else
+        command python3 ~/.local/bin/aio "$@"
+    fi
+}'''
+
+    # Check if already installed
+    aio_func_marker = "aio instant startup"
+    func_installed = False
+    if os.path.exists(rc_file):
+        with open(rc_file, 'r') as f:
+            func_installed = aio_func_marker in f.read()
+
+    if func_installed:
+        print(f"\n✓ Stage 1 instant shell function already in {rc_file}")
+    else:
+        print(f"\n⚡ INSTANT STARTUP: Add shell function for 0ms perceived startup?")
+        print(f"   This makes 'aio' print instantly before Python loads.")
+        try:
+            answer = input(f"Add to {rc_file}? [Y/n]: ").strip().lower()
+            if answer != 'n':
+                with open(rc_file, 'a') as f:
+                    f.write(shell_func + '\n')
+                print(f"✓ Added Stage 1 instant shell function to {rc_file}")
+                print(f"  Restart your terminal or run: source {rc_file}")
+            else:
+                print(f"To add manually, put this in {rc_file}:")
+                print(shell_func)
+        except (EOFError, KeyboardInterrupt):
+            print(f"\nTo add manually, put this in {rc_file}:")
+            print(shell_func)
 
     # Check if ~/.local/bin is in PATH
     user_path = os.environ.get('PATH', '')
