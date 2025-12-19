@@ -757,6 +757,67 @@ def _regenerate_help_cache():
     except: pass
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# GHOST SESSIONS - Pre-warm CLI tools for instant startup
+# Problem: Claude/Codex/Gemini take 2-5s to start. Solution: spawn them BEFORE
+# user needs them. When user runs 'aio 0', we predict they'll want an agent there,
+# so we spawn ghost sessions in background. When 'aio c' runs, we claim the ghost
+# instead of cold-starting. Ghosts auto-kill after 5 min to avoid resource waste.
+# ═══════════════════════════════════════════════════════════════════════════════
+_GHOST_PREFIX = '_aio_ghost_'  # Hidden session prefix
+_GHOST_TIMEOUT = 300  # 5 minutes - kill idle ghosts after this
+_GHOST_STATE = os.path.join(DATA_DIR, 'ghost_state.json')
+# Map session keys to ghost keys (o=claude uses l ghost)
+_GHOST_MAP = {'c': 'c', 'l': 'l', 'g': 'g', 'o': 'l', 'cp': 'c', 'lp': 'l', 'gp': 'g'}
+
+def _ghost_cleanup():
+    """Kill stale ghosts (>5 min old). Called lazily on each aio command."""
+    try:
+        with open(_GHOST_STATE) as f:
+            state = json.load(f)
+        if time.time() - state.get('time', 0) > _GHOST_TIMEOUT:
+            for k in ['c', 'l', 'g']:
+                sp.run(['tmux', 'kill-session', '-t', f'{_GHOST_PREFIX}{k}'], capture_output=True)
+            os.remove(_GHOST_STATE)
+    except: pass
+
+def _ghost_spawn(dir_path):
+    """Spawn ghost sessions for all agents in directory (background, non-blocking).
+    Called when user navigates with 'aio <num>' - strong signal they'll use an agent."""
+    if not os.path.isdir(dir_path) or not shutil.which('tmux'):
+        return
+    _ghost_cleanup()  # Kill old ghosts first
+    # Agent commands - skip permissions for instant start, will re-prompt if needed
+    cmds = {'c': 'codex', 'l': 'claude --dangerously-skip-permissions', 'g': 'gemini'}
+    for key, cmd in cmds.items():
+        ghost = f'{_GHOST_PREFIX}{key}'
+        if sm.has_session(ghost):  # Already exists, check if same dir
+            r = sp.run(['tmux', 'display-message', '-p', '-t', ghost, '#{pane_current_path}'], capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip() == dir_path:
+                continue  # Ghost exists in correct dir, keep it
+            sp.run(['tmux', 'kill-session', '-t', ghost], capture_output=True)  # Wrong dir, kill
+        # Spawn new ghost - runs agent idle, waiting for input
+        sp.Popen(['tmux', 'new-session', '-d', '-s', ghost, '-c', dir_path, cmd], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    # Record spawn time for cleanup
+    try:
+        with open(_GHOST_STATE, 'w') as f:
+            json.dump({'dir': dir_path, 'time': time.time()}, f)
+    except: pass
+
+def _ghost_claim(agent_key, target_dir):
+    """Try to claim a ghost session for instant startup. Returns ghost name or None.
+    If ghost exists in correct dir, user gets instant agent. Fallback: return None, caller spawns fresh."""
+    ghost_key = _GHOST_MAP.get(agent_key, agent_key)
+    ghost = f'{_GHOST_PREFIX}{ghost_key}'
+    if not sm.has_session(ghost):
+        return None  # No ghost, fallback to fresh spawn
+    # Verify ghost is in correct directory
+    r = sp.run(['tmux', 'display-message', '-p', '-t', ghost, '#{pane_current_path}'], capture_output=True, text=True)
+    if r.returncode != 0 or r.stdout.strip() != target_dir:
+        sp.run(['tmux', 'kill-session', '-t', ghost], capture_output=True)  # Wrong dir, kill
+        return None  # Fallback
+    return ghost  # Success! Return ghost session to attach to
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # RCLONE GOOGLE DRIVE SYNC - minimal integration for data backup
 # ═══════════════════════════════════════════════════════════════════════════════
 RCLONE_REMOTE = 'aio-gdrive'
@@ -2372,6 +2433,7 @@ if arg and arg.isdigit() and not work_dir_arg:
     if 0 <= idx < len(PROJECTS):
         project_path = PROJECTS[idx]
         print(f"📂 Opening project {idx}: {project_path}")
+        _ghost_spawn(project_path)  # Pre-warm agents - user likely wants 'aio c' soon
         os.chdir(project_path)
         os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
     elif 0 <= idx - len(PROJECTS) < len(APPS):
@@ -5076,6 +5138,24 @@ elif arg and os.path.isfile(arg):
     elif ext in ('.html', '.htm'): __import__('webbrowser').open('file://' + os.path.abspath(arg)); sys.exit(0)
     elif ext == '.md': os.execvp(os.environ.get('EDITOR', 'nvim'), [os.environ.get('EDITOR', 'nvim'), arg])
 else:
+    # GHOST SESSION CLAIMING - Try to use pre-warmed agent for instant startup
+    # If user ran 'aio 0' earlier, ghosts are waiting. Claim one for instant response.
+    if arg in _GHOST_MAP and not work_dir_arg:  # Simple agent command (c/l/g/o)
+        ghost = _ghost_claim(arg, work_dir)
+        if ghost:
+            print(f"⚡ Ghost claimed - instant startup!")
+            # Rename ghost to proper session name and attach
+            agent_name = sessions[arg][0] if arg in sessions else arg
+            session_name = f"{agent_name}-{os.path.basename(work_dir)}"
+            sp.run(['tmux', 'rename-session', '-t', ghost, session_name], capture_output=True)
+            if 'TMUX' in os.environ:
+                launch_in_new_window(session_name)
+            else:
+                cmd = sm.attach(session_name)
+                os.execvp(cmd[0], cmd)
+            sys.exit(0)
+        # No ghost available - fall through to normal flow (fresh spawn)
+
     # If inside tmux and arg is simple agent key (c/l/g), create pane instead of session
     if 'TMUX' in os.environ and arg in sessions and len(arg) == 1:
         _, cmd = sessions[arg]
