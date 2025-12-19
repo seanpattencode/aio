@@ -689,12 +689,17 @@ def _init_stage3():
     _regenerate_help_cache_bg()
 
 def _regenerate_help_cache_bg():
-    """Regenerate help cache in background (forked process, non-blocking)."""
+    """Regenerate help+projects cache in background (forked process, non-blocking)."""
     if not hasattr(os, 'fork'):
-        _regenerate_help_cache()  # No fork on Windows, do it inline
+        _regenerate_help_cache()
         return
     if os.fork() == 0:
         _regenerate_help_cache()
+        # Also cache project paths for instant shell navigation
+        try:
+            with open(os.path.join(DATA_DIR, 'projects.txt'), 'w') as f:
+                f.write('\n'.join(PROJECTS) + '\n')
+        except: pass
         os._exit(0)
 
 def _regenerate_help_cache():
@@ -2493,6 +2498,13 @@ if new_window and not arg:
     launch_terminal_in_dir(work_dir)
     sys.exit(0)
 
+# Internal: ghost spawn from shell function (background, minimal output)
+if arg == '_ghost':
+    if len(sys.argv) > 2:
+        _init_stage3()
+        _ghost_spawn(sys.argv[2], sessions)
+    sys.exit(0)
+
 if not arg:
     print(f"""aio - AI agent session manager
 QUICK START:
@@ -2661,12 +2673,13 @@ end'''
         shell_func = '''
 # aio instant startup (Stage 1: true 0ms) - Added by aio install
 aio() {
-    local cache=~/.local/share/aios/help_cache.txt
-    if [[ -z "$1" || "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]]; then
-        cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"
-    else
-        command python3 ~/.local/bin/aio "$@"
+    local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt
+    if [[ "$1" =~ ^[0-9]+$ ]]; then
+        local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null)
+        [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; ( python3 ~/.local/bin/aio _ghost "$dir" & ) &>/dev/null; return; }
     fi
+    [[ -z "$1" || "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"; return; }
+    command python3 ~/.local/bin/aio "$@"
 }'''
 
     # Check if already installed
