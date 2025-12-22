@@ -4108,8 +4108,8 @@ elif arg == 'sync':
     # Sync to gdrive: aio sync [agents|data|all]
     what = work_dir_arg or 'all'
     if not _rclone_configured(): _die("Not logged in. Run: aio gdrive login")
-    if what in ('agents', 'all'): _rclone_sync_agents(); print("☁ Syncing agents: ~/.claude ~/.codex ~/.gemini")
-    if what in ('data', 'all'): _rclone_sync_data(); print(f"☁ Syncing data: {SCRIPT_DIR}/data")
+    if what in ('agents', 'all'): [sp.run(['rclone', 'copy', str(p), f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/agents/{n}', '-u', '-P']) for n, p in _AGENT_DIRS.items() if p.exists()]
+    if what in ('data', 'all'): sp.run(['rclone', 'sync', str(Path(SCRIPT_DIR) / 'data'), f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}', '-P'])
 
 elif arg == 'note':
     # Notes: aio note [#|content] - number opens note, text creates note
