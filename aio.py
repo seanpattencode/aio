@@ -144,7 +144,9 @@ class TmuxManager(Multiplexer):
     def new_session(self, n, d, c, e=None): return sp.run(['tmux', 'new-session', '-d', '-s', n, '-c', d] + ([c] if c else []), capture_output=True, env=e)
     def send_keys(self, n, t): return sp.run(['tmux', 'send-keys', '-l', '-t', n, t])
     def attach(self, n): return ['tmux', 'attach', '-t', n]
-    def has_session(self, n): return sp.run(['tmux', 'has-session', '-t', n], capture_output=True).returncode == 0
+    def has_session(self, n):
+        try: return sp.run(['tmux', 'has-session', '-t', n], capture_output=True, timeout=2).returncode == 0
+        except sp.TimeoutExpired: return (sp.run(['pkill', '-9', 'tmux']), False)[1] if input("⚠ tmux hung. Kill? (y/n): ").lower() == 'y' else sys.exit(1)
     def list_sessions(self): return sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
     def capture(self, n): return sp.run(['tmux', 'capture-pane', '-p', '-t', n], capture_output=True, text=True)
     @property
