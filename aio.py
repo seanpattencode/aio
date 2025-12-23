@@ -957,7 +957,7 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     ensure_tmux_options()  # After session creation so tmux server is running
     # Auto-add bash pane for agent sessions (agent top, bash bottom)
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
-        sp.run(['tmux', 'split-window', '-v', '-t', session_name, '-c', work_dir], capture_output=True)
+        sp.run(['tmux', 'split-window', '-v', '-t', session_name, '-c', work_dir, 'bash -c "ls;exec bash"'], capture_output=True)
         sp.run(['tmux', 'select-pane', '-t', session_name, '-U'], capture_output=True)
         # Activity monitor: green on output, red after 5s silence, exit on EOF
         sn = shlex.quote(session_name)
