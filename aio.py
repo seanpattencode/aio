@@ -2719,6 +2719,13 @@ aio() {
             print(f"\nTo add manually, put this in {rc_file}:")
             print(shell_func)
 
+    # Login shells (tmux/SSH) source .bash_profile, not .bashrc - chain them
+    if 'bash' in shell:
+        bp = os.path.expanduser('~/.bash_profile')
+        if not os.path.exists(bp) or 'bashrc' not in open(bp).read():
+            open(bp, 'a').write('source ~/.bashrc\n')
+            print(f"✓ {bp} → .bashrc chain (aio now fast in tmux/SSH)")
+
     # Check if ~/.local/bin is in PATH
     user_path = os.environ.get('PATH', '')
     if bin_dir not in user_path:
