@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>AIO Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+        h1 { margin-bottom: 20px; color: #0f0; }
+        .container { display: flex; gap: 20px; flex-wrap: wrap; }
+        .panel { background: #16213e; border-radius: 8px; padding: 15px; flex: 1; min-width: 400px; }
+        .panel h2 { color: #0af; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
+        #terminal { height: 400px; }
+        .cmd-input { display: flex; gap: 10px; margin-bottom: 10px; }
+        .cmd-input input { flex: 1; padding: 10px; border: none; border-radius: 4px; background: #0d1b2a; color: #fff; font-family: monospace; }
+        .cmd-input button { padding: 10px 20px; border: none; border-radius: 4px; background: #0f0; color: #000; cursor: pointer; font-weight: bold; }
+        .cmd-input button:hover { background: #0c0; }
+        .quick-btns { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+        .quick-btns button { padding: 5px 15px; border: none; border-radius: 4px; background: #0a4; color: #fff; cursor: pointer; }
+        .quick-btns button:hover { background: #0c6; }
+        #output { background: #0d1b2a; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; height: 300px; overflow: auto; font-size: 13px; }
+        .status { font-size: 12px; color: #888; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>AIO Dashboard</h1>
+    <div class="container">
+        <div class="panel">
+            <h2>Quick Commands</h2>
+            <div class="cmd-input">
+                <input type="text" id="cmd" placeholder="Enter command..." value="aio">
+                <button onclick="runCmd()">Run</button>
+            </div>
+            <div class="quick-btns">
+                <button onclick="run('aio')">aio</button>
+                <button onclick="run('aio jobs')">jobs</button>
+                <button onclick="run('ls -la')">ls</button>
+                <button onclick="run('git status')">git status</button>
+                <button onclick="run('pwd')">pwd</button>
+            </div>
+            <div id="output">Click a button or enter a command...</div>
+            <div class="status" id="status"></div>
+        </div>
+        <div class="panel">
+            <h2>Terminal (PTY)</h2>
+            <div id="terminal"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script>
+        // Command execution
+        async function run(cmd) {
+            document.getElementById('cmd').value = cmd;
+            runCmd();
+        }
+        async function runCmd() {
+            const cmd = document.getElementById('cmd').value;
+            const out = document.getElementById('output');
+            const status = document.getElementById('status');
+            out.textContent = 'Running...';
+            const t0 = performance.now();
+            try {
+                const r = await fetch('/exec', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({cmd})
+                });
+                const data = await r.json();
+                out.textContent = data.out || '(no output)';
+                status.textContent = `Completed in ${(performance.now()-t0).toFixed(0)}ms`;
+            } catch(e) {
+                out.textContent = 'Error: ' + e.message;
+            }
+        }
+        document.getElementById('cmd').addEventListener('keydown', e => {
+            if (e.key === 'Enter') runCmd();
+        });
+
+        // Terminal
+        const term = new Terminal({ cursorBlink: true, fontSize: 14, theme: { background: '#0d1b2a' } });
+        const fit = new FitAddon.FitAddon();
+        term.loadAddon(fit);
+        term.open(document.getElementById('terminal'));
+        fit.fit();
+
+        const ws = new WebSocket('ws://' + location.host + '/ws');
+        ws.onmessage = e => term.write(e.data);
+        ws.onopen = () => term.write('\r\n\x1b[32mConnected to PTY\x1b[0m\r\n');
+        ws.onclose = () => term.write('\r\n\x1b[31mDisconnected\x1b[0m\r\n');
+        term.onData(d => ws.send(d));
+
+        window.addEventListener('resize', () => fit.fit());
+    </script>
+</body>
+</html>
