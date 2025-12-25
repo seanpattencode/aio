@@ -2,7 +2,21 @@
 
 Ultra-fast, event-driven task execution system with git-inspired design, strict performance enforcement, and automatic updates.
 
+
 This is a work in progress. The below may not be accurate.
+
+Recommended install on Android:
+Install termux (Fdroid recommended)
+pkg install git
+pkg install gh
+gh auth login
+gh repo clone seanpattencode/aio
+cd aio
+pkg install python
+(python aio.py install, fails if Claude tmux not installed)
+
+
+
 
 ## Features
 
