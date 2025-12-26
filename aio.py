@@ -2565,7 +2565,7 @@ DB: ~/.local/share/aios/aio.db  Worktrees: {WORKTREES_DIR}""")
     list_all_items(show_help=False)
 elif arg == 'dir' or (arg and os.path.isdir(os.path.expanduser(arg))) or (arg and arg.startswith('/projects/') and os.path.isdir(os.path.expanduser('~' + arg))):
     d = os.path.expanduser('~' + arg) if arg.startswith('/projects/') else (os.path.expanduser(arg) if arg != 'dir' else os.getcwd())
-    print(f"📂 {d}", flush=True); sp.run(['ls', d]); print(f"cd {d.replace(os.path.expanduser('~'), '~')}")
+    print(f"📂 {d}", flush=True); sp.run(['ls', d])
 elif arg == 'diff':
     import re; sp.run(['git', 'fetch', 'origin'], capture_output=True)
     cwd = os.getcwd()
@@ -2667,6 +2667,7 @@ aio() {
         local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null)
         [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; ( python3 ~/.local/bin/aio _ghost "$dir" & ) &>/dev/null; return; }
     fi
+    local d="${1/#~/$HOME}"; [[ "$1" == /projects/* ]] && d="$HOME$1"; [[ -d "$d" ]] && { echo "📂 $d"; cd "$d"; ls; return; }
     [[ -z "$1" || "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"; return; }
     command python3 ~/.local/bin/aio "$@"
 }'''
