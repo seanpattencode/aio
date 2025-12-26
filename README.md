@@ -14,6 +14,12 @@ the most complex command should be
 aio push "message"
 there should never be more parameters than 3 as above and one should be custom
 no main parameter should be more than 4 characters ex aio dash not aio dashboard
+3 stages:
+main command 0-1ms target
+preinstalled deps only (20ms target)
+longer loading items.
+This ensures that the most important commands work on most systems in least time while also allowing more complex behavior
+bug fixes and simply improvements should be shorter in total line count, readable, as fast or faster than previous code
 
 
 
