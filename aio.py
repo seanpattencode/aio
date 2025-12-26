@@ -1857,39 +1857,23 @@ def list_jobs(running_only=False):
             parent = os.path.join(os.path.expanduser('~/projects'), job_name)
             if os.path.isdir(parent): diff_path = parent
         diff_stat = sp.run(['git', '-C', diff_path, 'diff', 'origin/main', '--shortstat'], capture_output=True, text=True)
+        if diff_stat.returncode == 0 and not diff_stat.stdout.strip() and is_worktree and not sessions_in_job:
+            shutil.rmtree(job_path, ignore_errors=True)
+            print(f"🧹 Removed synced worktree: {job_name}")
+            continue
         diff_info = ""
-        if diff_stat.returncode == 0 and diff_stat.stdout.strip():
-            m = re.search(r'(\d+) insertion.*?(\d+) deletion|(\d+) insertion|(\d+) deletion', diff_stat.stdout)
-            if m: diff_info = f" ({'+' + (m.group(1) or m.group(3) or '0')}/{'-' + (m.group(2) or m.group(4) or '0')} vs origin)"
+        if diff_stat.returncode == 0:
+            if diff_stat.stdout.strip():
+                m = re.search(r'(\d+) insertion.*?(\d+) deletion|(\d+) insertion|(\d+) deletion', diff_stat.stdout)
+                if m: diff_info = f" ({'+' + (m.group(1) or m.group(3) or '0')}/{'-' + (m.group(2) or m.group(4) or '0')} vs origin)"
+            else:
+                diff_info = " (synced)"
 
         print(f"  {status_display}  {job_name}{type_indicator}{time_indicator}{diff_info}")
         print(f"           {session_info}")
-        print(f"           {job_path}")
-
-        # Add copy-pastable commands
-        print()
-
-        # Command to open directory in new window
-        if is_worktree:
-            # For worktrees, show the 'w' command if possible (using datetime sorted order)
-            worktrees_list = get_worktrees_sorted_by_datetime()
-            if job_name in worktrees_list:
-                worktree_index = worktrees_list.index(job_name)
-                print(f"           Open dir:  aio w{worktree_index}")
-            else:
-                print(f"           Open dir:  aio -w {job_path}")
-        else:
-            print(f"           Open dir:  aio -w {job_path}")
-
-        # Command to attach to session(s)
+        print(f"           cd {job_path.replace(os.path.expanduser('~'), '~')}")
         if sessions_in_job:
-            if len(sessions_in_job) == 1:
-                print(f"           Attach:    tmux attach -t {sessions_in_job[0]}")
-            else:
-                # Show all sessions
-                for session in sessions_in_job:
-                    print(f"           Attach:    tmux attach -t {session}")
-
+            for s in sessions_in_job: print(f"           tmux attach -t {s}")
         print()
 
 def get_worktrees_sorted_by_datetime():
