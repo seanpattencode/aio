@@ -1867,7 +1867,7 @@ def list_jobs(running_only=False):
                 m = re.search(r'(\d+) insertion.*?(\d+) deletion|(\d+) insertion|(\d+) deletion', diff_stat.stdout)
                 if m: diff_info = f" ({'+' + (m.group(1) or m.group(3) or '0')}/{'-' + (m.group(2) or m.group(4) or '0')} vs origin)"
             else:
-                diff_info = " (synced)"
+                diff_info = " (=origin)"
 
         print(f"  {status_display}  {job_name}{type_indicator}{time_indicator}{diff_info}")
         print(f"           cd {job_path.replace(os.path.expanduser('~'), '~')}")
