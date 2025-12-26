@@ -1870,10 +1870,8 @@ def list_jobs(running_only=False):
                 diff_info = " (synced)"
 
         print(f"  {status_display}  {job_name}{type_indicator}{time_indicator}{diff_info}")
-        print(f"           {session_info}")
         print(f"           cd {job_path.replace(os.path.expanduser('~'), '~')}")
-        if sessions_in_job:
-            for s in sessions_in_job: print(f"           tmux attach -t {s}")
+        for s in sessions_in_job: print(f"           tmux attach -t {s}")
         print()
 
 def get_worktrees_sorted_by_datetime():
