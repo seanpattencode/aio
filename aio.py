@@ -1850,9 +1850,13 @@ def list_jobs(running_only=False):
         # Add worktree indicator and creation time
         type_indicator = " [worktree]" if is_worktree else ""
         time_indicator = f" ({creation_display})" if creation_display else ""
-        # Get diff stats
+        # Get diff stats (for worktree containers, check parent project)
         import re
-        diff_stat = sp.run(['git', '-C', job_path, 'diff', 'origin/main', '--shortstat'], capture_output=True, text=True)
+        diff_path = job_path
+        if is_worktree:
+            parent = os.path.join(os.path.expanduser('~/projects'), job_name)
+            if os.path.isdir(parent): diff_path = parent
+        diff_stat = sp.run(['git', '-C', diff_path, 'diff', 'origin/main', '--shortstat'], capture_output=True, text=True)
         diff_info = ""
         if diff_stat.returncode == 0 and diff_stat.stdout.strip():
             m = re.search(r'(\d+) insertion.*?(\d+) deletion|(\d+) insertion|(\d+) deletion', diff_stat.stdout)
