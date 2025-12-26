@@ -705,7 +705,7 @@ def _regenerate_help_cache():
             "MANAGEMENT:",
             "  aio jobs            Show active jobs",
             "  aio attach          Reconnect to session",
-            "  aio killall         Kill all tmux sessions",
+            "  aio kill            Kill all tmux sessions",
             "  aio cleanup         Delete all worktrees",
             "  aio prompt [name]   Edit prompts (feat, fix, bug, auto, del)",
             "NOTES & BACKUP:",
@@ -2528,7 +2528,7 @@ GIT:
 MANAGEMENT:
   aio jobs            Show active jobs
   aio attach          Reconnect to session
-  aio killall         Kill all tmux sessions
+  aio kill            Kill all tmux sessions
   aio cleanup         Delete all worktrees
   aio prompt [name]   Edit prompts (feat, fix, bug, auto, del)
 NOTES & BACKUP:
@@ -2559,7 +2559,7 @@ ADD/REMOVE: aio add [path|name "cmd"]  aio remove <#|name>
   aio add           Add cwd as project  |  aio add mycmd "echo hi"  Add command
   aio remove 0      Remove by number    |  aio remove mycmd         By name
 
-MONITOR: jobs [-r] | review | cleanup | ls | attach | killall
+MONITOR: jobs [-r] | review | cleanup | ls | attach | kill
   multi <#> c:N l:N "task"  Parallel agents
   send <sess> "text"  |  watch <sess> [sec]
 
@@ -3998,8 +3998,9 @@ elif arg == 'attach':
                 os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
     print("No session found")
 
-elif arg == 'killall':
+elif arg in ['kill', 'killall']:
     if input("Kill all tmux sessions? (y/n): ").lower() in ['y', 'yes']:
+        if 'TMUX' in os.environ: sp.run(['tmux', 'detach-client'])
         sp.run(['pkill', '-9', 'tmux']); print("✓ Killed all tmux")
 
 elif arg == 'config':
