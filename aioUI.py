@@ -5,14 +5,14 @@ HTML = '''<!doctype html>
 <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.min.js"></script>
 <body style="margin:0;height:100vh;background:#000;overflow:hidden">
-<button onclick="ws.send('aio note\\n')" style="position:fixed;top:5px;right:5px;z-index:9">aio note</button>
+<div style="position:fixed;bottom:5px;left:50%;transform:translateX(-50%);z-index:9"><button onclick="ws.send('aio\\n')" style="padding:15px 30px;font-size:24px">aio</button><button onclick="ws.send('aio note\\n')" style="padding:15px 30px;font-size:24px">aio note</button><button onclick="location.href='/?'+Date.now()" style="padding:15px 30px;font-size:24px">restart</button></div>
 <script>
   const term = new Terminal(), fit = new (FitAddon.FitAddon||FitAddon)(), ws = new WebSocket("ws://"+location.host+"/ws");
   term.loadAddon(fit); term.open(document.body); fit.fit();
   term.onData(d => ws.send(d)); ws.onmessage = e => term.write(e.data); window.onresize = () => fit.fit();
 </script>'''
 
-async def page(r): return web.Response(text=HTML, content_type='text/html')
+async def page(r): return web.Response(text=HTML, content_type='text/html', headers={'Cache-Control':'no-store'})
 async def run(r): d=await r.json(); return web.json_response({'out': subprocess.getoutput(f"source ~/.bashrc 2>/dev/null && {d['cmd']}")})
 
 async def term(r):
