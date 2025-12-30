@@ -863,6 +863,8 @@ def cmd_install():
     if os.path.islink(aio_link): os.remove(aio_link)
     elif os.path.exists(aio_link): _die(f"✗ {aio_link} exists but is not a symlink")
     os.symlink(script_path, aio_link); print(f"✓ Symlink: {aio_link}")
+    nv = sp.run(['node', '--version'], capture_output=True, text=True); nv = int(nv.stdout.strip().lstrip('v').split('.')[0]) if nv.returncode == 0 else 0
+    if nv < 25: print(f"⚠️  Node.js v{nv} is old - known V8 crashes occur. Upgrade: sudo npm i -g n && sudo n 25")
     shell = os.environ.get('SHELL', '/bin/bash')
     rc = os.path.expanduser('~/.config/fish/config.fish' if 'fish' in shell else ('~/.zshrc' if 'zsh' in shell else '~/.bashrc'))
     func = '''# aio instant startup
