@@ -674,8 +674,7 @@ def format_app_command(app_cmd, max_length=60):
     return display_cmd[:max_length-3] + "..." if len(display_cmd) > max_length else display_cmd
 
 def list_all_items(show_help=True):
-    projects, apps = load_projects(), load_apps()
-    Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(projects) + '\n'); [os.remove(f) for f in [os.path.join(DATA_DIR, 'help_cache.txt')] if os.path.exists(f)]
+    projects, apps = load_projects(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(projects) + '\n'); [os.remove(f) for f in [os.path.join(DATA_DIR, 'help_cache.txt')] if os.path.exists(f)]
     if projects:
         print("📁 PROJECTS:")
         for i, p in enumerate(projects): print(f"  {i}. {'✓' if os.path.exists(p) else '✗'} {p}")
