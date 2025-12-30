@@ -371,16 +371,23 @@ def is_pane_receiving_output(session_name, threshold=10):
     try: return int(time.time()) - int(r.stdout.strip()) < threshold
     except: return False
 
-def get_session_for_worktree(worktree_path):
-    r = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
-    if r.returncode != 0: return None
-    for session in r.stdout.strip().split('\n'):
-        if not session: continue
-        path_r = sp.run(['tmux', 'display-message', '-p', '-t', session, '#{pane_current_path}'], capture_output=True, text=True)
-        if path_r.returncode == 0:
-            sp = path_r.stdout.strip()
-            if sp == worktree_path or sp.startswith(worktree_path + '/'): return session
-    return None
+# Worktrees (compact - 12 lines)
+def wt_list():
+    items = sorted([d for d in os.listdir(WORKTREES_DIR) if os.path.isdir(os.path.join(WORKTREES_DIR, d))]) if os.path.exists(WORKTREES_DIR) else []
+    print("Worktrees:") if items else print("No worktrees"); [print(f"  {i}. {d}") for i, d in enumerate(items)]; return items
+def wt_find(p):
+    items = sorted([d for d in os.listdir(WORKTREES_DIR) if os.path.isdir(os.path.join(WORKTREES_DIR, d))]) if os.path.exists(WORKTREES_DIR) else []
+    return os.path.join(WORKTREES_DIR, items[int(p)]) if p.isdigit() and 0 <= int(p) < len(items) else next((os.path.join(WORKTREES_DIR, i) for i in items if p in i), None)
+def wt_create(proj, name):
+    os.makedirs(WORKTREES_DIR, exist_ok=True); wt = os.path.join(WORKTREES_DIR, f"{os.path.basename(proj)}-{name}")
+    r = _git(proj, 'worktree', 'add', '-b', f"wt-{os.path.basename(proj)}-{name}", wt, 'HEAD')
+    return (print(f"✓ {wt}"), wt)[1] if r.returncode == 0 else (print(f"✗ {r.stderr.strip()}"), None)[1]
+def wt_remove(path, confirm=True):
+    if not os.path.exists(path): print(f"✗ Not found: {path}"); return False
+    proj = next((p for p in PROJECTS if os.path.basename(path).startswith(os.path.basename(p) + '-')), PROJECTS[0] if PROJECTS else None)
+    if confirm and input(f"Remove {os.path.basename(path)}? (y/n): ").lower() not in ['y', 'yes']: return False
+    _git(proj, 'worktree', 'remove', '--force', path); _git(proj, 'branch', '-D', f"wt-{os.path.basename(path)}")
+    os.path.exists(path) and shutil.rmtree(path); print(f"✓ Removed {os.path.basename(path)}"); return True
 
 def wait_for_agent_ready(session_name, timeout=5):
     ready_patterns = [re.compile(p, re.MULTILINE) for p in [r'›.*\n\n\s+\d+%\s+context left', r'>\s+Type your message', r'gemini-2\.5-pro.*\(\d+%\)', r'──+\s*\n>\s+\w+']]
@@ -437,121 +444,6 @@ def get_or_create_directory_session(session_key, target_dir):
     attempt, final = 0, session_name
     while sm.has_session(final): attempt += 1; final = f"{session_name}-{attempt}"
     return final
-
-# Worktree management
-def is_worktree_merged(path):
-    sp.run(['git', '-C', path, 'fetch', 'origin'], capture_output=True)
-    diff = sp.run(['git', '-C', path, 'diff', 'origin/main'], capture_output=True, text=True)
-    if diff.returncode != 0: return False
-    untracked = sp.run(['git', '-C', path, 'ls-files', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.strip()
-    return not diff.stdout and not untracked
-
-def list_worktrees():
-    if not os.path.exists(WORKTREES_DIR): print(f"No worktrees found in {WORKTREES_DIR}"); return []
-    items = sorted([d for d in os.listdir(WORKTREES_DIR) if os.path.isdir(os.path.join(WORKTREES_DIR, d)) and os.path.exists(os.path.join(WORKTREES_DIR, d, '.git'))], key=lambda x: (re.search(r'-(\d{8})-(\d{6})-', x) or [None, '0', '0']).group(1) + (re.search(r'-(\d{8})-(\d{6})-', x) or [None, '0', '0']).group(2))
-    if not items: print("No worktrees found"); return []
-    print(f"Worktrees in {WORKTREES_DIR}:\n")
-    for i, item in enumerate(items): print(f"  {i}. {item}")
-    print(f"\nTo open: aio w<#>  (e.g., aio w0)")
-    return items
-
-def find_worktree(pattern):
-    if not os.path.exists(WORKTREES_DIR): return None
-    items = sorted([d for d in os.listdir(WORKTREES_DIR) if os.path.isdir(os.path.join(WORKTREES_DIR, d))], key=lambda x: (re.search(r'-(\d{8})-(\d{6})-', x) or [None, '0', '0']).group(1) + (re.search(r'-(\d{8})-(\d{6})-', x) or [None, '0', '0']).group(2) if re.search(r'-(\d{8})-(\d{6})-', x) else '0')
-    if pattern.isdigit():
-        idx = int(pattern)
-        return os.path.join(WORKTREES_DIR, items[idx]) if 0 <= idx < len(items) else None
-    matches = [item for item in items if pattern in item]
-    if len(matches) == 1: return os.path.join(WORKTREES_DIR, matches[0])
-    if len(matches) > 1: print(f"✗ Multiple matches for '{pattern}':"); [print(f"  - {m}") for m in matches]
-    return None
-
-def get_project_for_worktree(worktree_path):
-    worktree_name = os.path.basename(worktree_path)
-    for proj in PROJECTS:
-        if worktree_name.startswith(os.path.basename(proj) + '-'): return proj
-    git_file = os.path.join(worktree_path, '.git')
-    if os.path.isfile(git_file):
-        try:
-            content = open(git_file).read().strip()
-            if content.startswith('gitdir: ') and '/.git/worktrees/' in content:
-                return content.replace('gitdir: ', '').split('/.git/worktrees/')[0]
-        except: pass
-    return None
-
-def remove_worktree(worktree_path, push=False, commit_msg=None, skip_confirm=False):
-    if not os.path.exists(worktree_path): print(f"✗ Worktree does not exist: {worktree_path}"); return False
-    worktree_name, project_path = os.path.basename(worktree_path), get_project_for_worktree(worktree_path)
-    if not project_path: print(f"✗ Could not determine project for worktree: {worktree_name}"); return False
-    try:
-        cwd = os.getcwd()
-        if os.path.abspath(cwd) == os.path.abspath(worktree_path) or os.path.abspath(cwd).startswith(os.path.abspath(worktree_path) + os.sep):
-            safe_dir = project_path if os.path.exists(project_path) else os.path.expanduser("~")
-            print(f"📂 Changing directory to: {safe_dir}"); os.chdir(safe_dir)
-    except FileNotFoundError: os.chdir(os.path.expanduser("~")); print(f"📂 Changed to home directory")
-    print(f"\nWorktree: {worktree_name}\nPath: {worktree_path}\nProject: {project_path}")
-    if push: print(f"⚠️  WARNING: This will PUSH changes to the main branch!")
-    if push:
-        if input("\n⚠️  CONFIRM PUSH TO MAIN? Type 'yes' to continue: ").strip().lower() != 'yes': print("✗ Cancelled"); return False
-    elif not skip_confirm:
-        if input("\nAre you sure? (y/n): ").strip().lower() not in ['y', 'yes']: print("✗ Cancelled"); return False
-    print(f"\nRemoving worktree: {worktree_name}")
-    r = sp.run(['git', '-C', project_path, 'worktree', 'remove', '--force', worktree_path], capture_output=True, text=True)
-    if r.returncode != 0:
-        if 'is a main working tree' in r.stderr and worktree_path.startswith(WORKTREES_DIR):
-            try:
-                if os.path.islink(worktree_path): os.unlink(worktree_path); print(f"✓ Removed symlink worktree")
-                else: shutil.rmtree(worktree_path); print(f"✓ Removed corrupted worktree directory")
-                sp.run(['git', '-C', project_path, 'worktree', 'prune'], capture_output=True)
-                return True
-            except Exception as e: print(f"✗ Failed to remove directory: {e}"); return False
-        print(f"✗ Failed to remove worktree: {r.stderr.strip()}"); return False
-    print(f"✓ Removed git worktree")
-    branch_name = f"wt-{worktree_name}"
-    r = sp.run(['git', '-C', project_path, 'branch', '-D', branch_name], capture_output=True, text=True)
-    if r.returncode == 0: print(f"✓ Deleted branch: {branch_name}")
-    if os.path.exists(worktree_path): shutil.rmtree(worktree_path); print(f"✓ Deleted directory: {worktree_path}")
-    if push:
-        main_branch = _git_main(project_path)
-        sp.run(['git', '-C', project_path, 'checkout', main_branch], capture_output=True)
-        r = sp.run(['git', '-C', project_path, 'status', '--porcelain'], capture_output=True, text=True)
-        if r.stdout.strip():
-            sp.run(['git', '-C', project_path, 'add', '-A'])
-            sp.run(['git', '-C', project_path, 'commit', '-m', commit_msg or f"Remove worktree {worktree_name}"])
-        env = get_noninteractive_git_env()
-        r = sp.run(['git', '-C', project_path, 'push', 'origin', main_branch], capture_output=True, text=True, env=env)
-        print(f"✓ Pushed to {main_branch}" if r.returncode == 0 else f"✗ Push failed: {r.stderr.strip()}")
-    return True
-
-def create_worktree(project_path, session_name, check_only=False):
-    check_only or os.makedirs(WORKTREES_DIR, exist_ok=True)
-    proj_name = os.path.basename(project_path)
-    branch = _git(project_path, 'branch', '--show-current').stdout.strip() or 'main'
-    print(f"{'   Checking auth...' if check_only else '⬇️  Fetching...'}", end='', flush=True)
-    env = get_noninteractive_git_env()
-    r = _git(project_path, 'fetch', 'origin', env=env)
-    if r.returncode == 0:
-        print(" ✓")
-        if check_only: return (True, None)
-        fetch_ok = True
-    else:
-        err = r.stderr.strip()
-        if any(x in err for x in ['Authentication', 'Username', 'Permission']):
-            print(" ❌")
-            url = _git(project_path, 'remote', 'get-url', 'origin').stdout.strip()
-            fix = f"cd {project_path} && git remote set-url origin {url.replace('https://github.com/', 'git@github.com:')}" if 'https://github.com/' in url else None
-            if check_only: return (False, fix)
-            print(f"⚠️ Using LOCAL (fix: switch to SSH)"); fetch_ok = False
-        else:
-            print(f" ⚠️")
-            if check_only: return (True, None)
-            fetch_ok = True
-    if check_only: return (True, None)
-    wt_name, wt_path = f"{proj_name}-{session_name}", os.path.join(WORKTREES_DIR, f"{proj_name}-{session_name}")
-    src = f"origin/{branch}" if fetch_ok else branch
-    r = _git(project_path, 'worktree', 'add', '-b', f"wt-{wt_name}", wt_path, src)
-    print("✓" if r.returncode == 0 else f"✗ {r.stderr.strip()}")
-    return (wt_path if r.returncode == 0 else None, not fetch_ok)
 
 # Ghost sessions
 def _ghost_spawn(dir_path, sessions_map):
@@ -635,9 +527,6 @@ def list_jobs(running_only=False):
         if not os.path.exists(jp):
             for s in jobs_by_path[jp]: sp.run(['tmux', 'kill-session', '-t', s], capture_output=True)
             continue
-        if jp.startswith(WORKTREES_DIR) and not jobs_by_path[jp] and is_worktree_merged(jp):
-            sp.run(['git', 'worktree', 'remove', '--force', jp], capture_output=True)
-            print(f"🧹 Auto-cleaned merged worktree: {os.path.basename(jp)}"); continue
         is_wt = jp.startswith(WORKTREES_DIR)
         is_active = any(is_pane_receiving_output(s) for s in jobs_by_path[jp]) if jobs_by_path[jp] else False
         if running_only and not is_active: continue
@@ -735,35 +624,13 @@ if arg and arg.isdigit() and not work_dir_arg:
         os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash'), '-c', app_command])
     else: print(f"✗ Invalid index: {idx}"); sys.exit(1)
 
-# Worktree commands
+# Worktree commands (compact - 5 lines)
 if arg and arg.startswith('w') and arg != 'watch' and not os.path.isfile(arg):
-    if arg == 'w': list_worktrees(); sys.exit(0)
-    elif len(arg) > 1:
-        if arg.endswith('--'):
-            pattern = arg[1:-2]
-            commit_msg = ' '.join([a for a in sys.argv[2:] if a not in ['--yes', '-y']]) or None
-            skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
-            if not pattern: print("✗ Usage: ./aio.py w<#/name>-- [commit message]"); sys.exit(1)
-            wp = find_worktree(pattern)
-            if wp: remove_worktree(wp, push=True, commit_msg=commit_msg, skip_confirm=skip_confirm)
-            else: print(f"✗ Worktree not found: {pattern}")
-            sys.exit(0)
-        elif arg.endswith('-'):
-            pattern = arg[1:-1]
-            skip_confirm = '--yes' in sys.argv or '-y' in sys.argv
-            if not pattern: print("✗ Usage: ./aio.py w<#/name>-"); sys.exit(1)
-            wp = find_worktree(pattern)
-            if wp: remove_worktree(wp, push=False, skip_confirm=skip_confirm)
-            else: print(f"✗ Worktree not found: {pattern}")
-            sys.exit(0)
-        else:
-            pattern = arg[1:]
-            wp = find_worktree(pattern)
-            if wp:
-                if new_window: launch_terminal_in_dir(wp)
-                else: os.chdir(wp); os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
-            else: print(f"✗ Worktree not found: {pattern}")
-            sys.exit(0)
+    if arg == 'w': wt_list(); sys.exit(0)
+    wp = wt_find(arg[1:].rstrip('-'))
+    if arg.endswith('-'): wt_remove(wp, confirm='--yes' not in sys.argv and '-y' not in sys.argv) if wp else print(f"✗ Not found"); sys.exit(0)
+    if wp: os.chdir(wp); os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
+    print(f"✗ Not found: {arg[1:]}"); sys.exit(1)
 
 if new_window and not arg: launch_terminal_in_dir(work_dir); sys.exit(0)
 if arg == '_ghost':
@@ -913,8 +780,8 @@ def cmd_push():
     msg = ' '.join(args) if args else (f"Update {target}" if target else f"Update {os.path.basename(cwd)}")
     env = get_noninteractive_git_env()
     if is_wt:
-        wt_name, proj = os.path.basename(cwd), get_project_for_worktree(cwd)
-        proj or _die(f"✗ Could not find project for {wt_name}")
+        wt_name = os.path.basename(cwd)
+        proj = next((p for p in PROJECTS if wt_name.startswith(os.path.basename(p) + '-')), None) or _die(f"✗ Could not find project for {wt_name}")
         wt_branch = _git(cwd, 'branch', '--show-current').stdout.strip()
         print(f"\n📍 Worktree: {wt_name} | Branch: {wt_branch} | Msg: {msg}")
         to_main = skip or input("Push to: 1=main 2=branch [1]: ").strip() != '2'
@@ -1224,21 +1091,17 @@ def cmd_p(): list_all_items(show_help=False)
 
 def cmd_worktree_plus():
     key = arg[:-2]
-    if key in sessions:
-        project_path = PROJECTS[int(work_dir_arg)] if work_dir_arg and work_dir_arg.isdigit() and int(work_dir_arg) < len(PROJECTS) else work_dir
-        base_name, cmd = sessions[key]
-        name = f"{base_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}-single"
-        wr = create_worktree(project_path, name)
-        if wr and wr[0]:
-            wp = wr[0]; print(f"✓ Created worktree: {wp}")
-            sn = os.path.basename(wp); env = get_noninteractive_git_env()
-            create_tmux_session(sn, wp, cmd, env=env, capture_output=False)
-            prefix = get_agent_prefix(base_name, wp)
-            if prefix: sp.Popen([sys.executable, __file__, 'send', sn, prefix, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-            if new_window: launch_in_new_window(sn)
-            elif "TMUX" in os.environ: print(f"✓ Session: {sn}")
-            else: os.execvp(sm.attach(sn)[0], sm.attach(sn))
-    else: print(f"✗ Unknown session key: {key}")
+    if key not in sessions: print(f"✗ Unknown session key: {key}"); return
+    proj = PROJECTS[int(work_dir_arg)] if work_dir_arg and work_dir_arg.isdigit() and int(work_dir_arg) < len(PROJECTS) else work_dir
+    base_name, cmd = sessions[key]
+    wp = wt_create(proj, f"{base_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    if not wp: return
+    sn = os.path.basename(wp); create_tmux_session(sn, wp, cmd, env=get_noninteractive_git_env(), capture_output=False)
+    prefix = get_agent_prefix(base_name, wp)
+    if prefix: sp.Popen([sys.executable, __file__, 'send', sn, prefix, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    if new_window: launch_in_new_window(sn)
+    elif "TMUX" in os.environ: print(f"✓ Session: {sn}")
+    else: os.execvp(sm.attach(sn)[0], sm.attach(sn))
 
 def cmd_dir_or_file():
     if os.path.isdir(os.path.expanduser(arg)):
