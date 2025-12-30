@@ -338,8 +338,7 @@ def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=Tr
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
         sp.run(['tmux', 'split-window', '-v', '-t', session_name, '-c', work_dir, 'bash -c "ls;exec bash"'], capture_output=True)
         sp.run(['tmux', 'select-pane', '-t', session_name, '-U'], capture_output=True)
-        sn = shlex.quote(session_name)
-        sp.run(['tmux', 'pipe-pane', '-t', session_name, '-o', f"bash -c 's={sn}; while :; do read -t5 && c=🟢 || (($?>128)) && c=🔴 || exit; tmux set -t $s set-titles-string \"$c #S:#W\"; done'"], capture_output=True)
+        sp.run(['tmux', 'pipe-pane', '-t', session_name, '-o', f"bash -c 'while read -t5 _; do tmux set -t {shlex.quote(session_name)} set-titles-string \"🟢 #S:#W\" 2>/dev/null || break; done'"], capture_output=True)
     return result
 
 # Terminal and session helpers
@@ -1039,21 +1038,15 @@ def cmd_multi():
         with WALManager(DB_PATH) as c: c.execute("INSERT OR REPLACE INTO config VALUES ('multi_default', ?)", (ns,)); c.commit()
         print(f"✓ Default: {ns}"); sys.exit(0)
     project_path, start = (PROJECTS[int(work_dir_arg)], 3) if work_dir_arg and work_dir_arg.isdigit() and int(work_dir_arg) < len(PROJECTS) else (os.getcwd(), 2)
-    agent_specs, task, used_default = parse_agent_specs_and_prompt(sys.argv, start)
+    agent_specs, _, _ = parse_agent_specs_and_prompt(sys.argv, start)
     if not agent_specs:
         ds = load_config().get('multi_default', 'l:3'); agent_specs, _, _ = parse_agent_specs_and_prompt([''] + ds.split(), 1)
         print(f"Using: {ds}")
-    feat_template = get_prompt('feat', show_location=True) or '{task}'
-    if used_default:
-        prompt = input_box(feat_template.format(task="<describe task>"), "Prompt")
-        if not (prompt := (prompt or '').strip()): sys.exit(0)
-        task = prompt
-    else: prompt = feat_template.format(task=task)
     total, repo_name, run_id = sum(c for _, c in agent_specs), os.path.basename(project_path), datetime.now().strftime('%Y%m%d-%H%M%S')
     session_name, run_dir = f"{repo_name}-{run_id}", os.path.join(WORKTREES_DIR, repo_name, run_id)
     candidates_dir = os.path.join(run_dir, "candidates"); os.makedirs(candidates_dir, exist_ok=True)
-    with open(os.path.join(run_dir, "run.json"), "w") as f: json.dump({"task": task, "prompt": prompt, "agents": [f"{k}:{c}" for k, c in agent_specs], "created": run_id, "repo": project_path}, f, indent=2)
-    with WALManager(DB_PATH) as c: c.execute("INSERT OR REPLACE INTO multi_runs VALUES (?, ?, ?, ?, 'running', CURRENT_TIMESTAMP, NULL)", (run_id, project_path, task, json.dumps([f"{k}:{c}" for k, c in agent_specs]))); c.commit()
+    with open(os.path.join(run_dir, "run.json"), "w") as f: json.dump({"agents": [f"{k}:{c}" for k, c in agent_specs], "created": run_id, "repo": project_path}, f)
+    with WALManager(DB_PATH) as c: c.execute("INSERT OR REPLACE INTO multi_runs VALUES (?, ?, '', ?, 'running', CURRENT_TIMESTAMP, NULL)", (run_id, project_path, json.dumps([f"{k}:{c}" for k, c in agent_specs]))); c.commit()
     print(f"🚀 {total} agents in {repo_name}/{run_id}..."); env, launched, agent_num, first = get_noninteractive_git_env(), [], {}, True
     for ak, cnt in agent_specs:
         bn, bc = sessions.get(ak, (None, None))
@@ -1062,19 +1055,19 @@ def cmd_multi():
             agent_num[bn] = agent_num.get(bn, 0) + 1; wn, an = f"{bn}-{agent_num[bn]}", f"{ak}{i}"
             wt = os.path.join(candidates_dir, an); sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f'wt-{repo_name}-{run_id}-{an}', wt], capture_output=True, env=env)
             if not os.path.exists(wt): continue
-            sig = f"{session_name}-{wn}"
-            full_cmd = f'{bc} {shlex.quote(enhance_prompt(prompt, bn, wt))}; tmux wait-for -S {sig}'
-            sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', wn, '-c', wt, full_cmd] if first else ['tmux', 'new-window', '-t', session_name, '-n', wn, '-c', wt, full_cmd], env=env); first = False
+            sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', wn, '-c', wt, bc] if first else ['tmux', 'new-window', '-t', session_name, '-n', wn, '-c', wt, bc], env=env); first = False
             sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{wn}', '-c', wt], env=env)
             launched.append((wn, bn, wt)); print(f"✓ {wn}")
     if not launched: print("✗ No agents created"); sys.exit(1)
-    prompt_template = get_prompt('reviewer', show_location=True) or "Review {DIRS} for: {TASK}"
-    REVIEWER_PROMPT = enhance_prompt(prompt_template.format(TASK=prompt, AGENTS=', '.join(f"{k}:{c}" for k, c in agent_specs), DIRS=', '.join(os.path.basename(p) for _, _, p in launched)), 'claude')
-    wait_cmds = '; '.join(f'tmux wait-for {session_name}-{w}' for w, _, _ in launched)
-    sp.run(['tmux', 'new-window', '-t', session_name, '-n', '📋review', '-c', candidates_dir, f'bash -c \'{wait_cmds}; claude --dangerously-skip-permissions {shlex.quote(REVIEWER_PROMPT)}\''], env=env)
-    sp.run(['tmux', 'select-window', '-t', f'{session_name}:{launched[0][0]}'], capture_output=True)
+    wins = ' '.join(w for w, _, _ in launched)
+    ctrl = f'''echo -e "\\n  🎮 AIO ALL - {session_name}\\n\\n  Agents: {wins}\\n\\n  Type below to send to ALL agents (Enter to send)\\n  Ctrl+C: exit broadcast | Ctrl+N: switch window\\n"
+s="{session_name}"; wins=({wins}); while read -ep "all> " cmd; do [ -n "$cmd" ] && for w in "${{wins[@]}}"; do tmux send-keys -t "$s:$w" "$cmd" Enter; done; done'''
+    sp.run(['tmux', 'new-window', '-t', session_name, '-n', '🎮', '-c', candidates_dir], env=env)
+    sp.run(['tmux', 'send-keys', '-t', f'{session_name}:🎮', ctrl, 'Enter'])
+    sp.run(['tmux', 'split-window', '-v', '-t', f'{session_name}:🎮', '-c', candidates_dir], env=env)
+    sp.run(['tmux', 'select-window', '-t', f'{session_name}:🎮'], capture_output=True)
     ensure_tmux_options()
-    print(f"\n✓ Session '{session_name}': {len(launched)} agents + 📋review")
+    print(f"\n✓ Session '{session_name}': {len(launched)} agents + 🎮 control\n   Type in 🎮 window to broadcast to all agents")
     if "TMUX" in os.environ: print(f"   tmux switch-client -t {session_name}")
     else: os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
 
