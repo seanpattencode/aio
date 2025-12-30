@@ -598,7 +598,7 @@ is_directory_only = new_window and arg and not arg.startswith('+') and not arg.e
 if is_directory_only: work_dir_arg, arg = arg, None
 
 is_work_dir_a_prompt = False
-_cmd_keywords = {'add', 'remove', 'rm', 'cmd', 'command', 'commands', 'app', 'apps', 'prompt', 'multi', 'review', 'w'}
+_cmd_keywords = {'add', 'remove', 'rm', 'cmd', 'command', 'commands', 'app', 'apps', 'prompt', 'a', 'all', 'review', 'w'}
 if work_dir_arg and work_dir_arg.isdigit() and arg not in _cmd_keywords:
     idx = int(work_dir_arg)
     if 0 <= idx < len(PROJECTS): work_dir = PROJECTS[idx]
@@ -645,10 +645,10 @@ QUICK START:
   aio fix             AI finds/fixes issues
   aio bug "task"      Fix a bug
   aio feat "task"     Add a feature
-MULTI-AGENT:
-  aio multi c:3             Launch 3 codex in parallel worktrees
-  aio multi c:3 "task"      Launch 3 codex with custom task
-  aio multi c:2 l:1         Mixed: 2 codex + 1 claude
+ALL (multi-agent):
+  aio a c:3               Launch 3 codex in parallel worktrees
+  aio a c:3 "task"        Launch with task
+  aio a c:2 l:1           Mixed: 2 codex + 1 claude
 GIT:
   aio push src/ msg   Push folder with message
   aio pull            Sync with server
@@ -1167,7 +1167,7 @@ COMMANDS = {
     'cleanup': cmd_cleanup, 'config': cmd_config, 'ls': cmd_ls, 'diff': cmd_diff, 'send': cmd_send,
     'watch': cmd_watch, 'push': cmd_push, 'pull': cmd_pull, 'revert': cmd_revert, 'setup': cmd_setup,
     'install': cmd_install, 'deps': cmd_deps, 'prompt': cmd_prompt, 'gdrive': cmd_gdrive, 'note': cmd_note,
-    'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'multi': cmd_multi,
+    'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'a': cmd_multi, 'all': cmd_multi,
     'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'dir': lambda: (print(f"📂 {os.getcwd()}"), sp.run(['ls'])),
     'fix': cmd_fix_bug_feat_auto_del, 'bug': cmd_fix_bug_feat_auto_del, 'feat': cmd_fix_bug_feat_auto_del,
     'auto': cmd_fix_bug_feat_auto_del, 'del': cmd_fix_bug_feat_auto_del,
