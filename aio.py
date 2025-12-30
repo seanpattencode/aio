@@ -2361,22 +2361,27 @@ aio() {
             if input(f"Add ~/.local/bin to PATH in {rc}? [Y/n]: ").strip().lower() != 'n':
                 Path(rc).open('a').write('\nexport PATH="$HOME/.local/bin:$PATH"\n'); print(f"✓ Added PATH")
         except: pass
-    ok = [p for p in ['pexpect', 'prompt_toolkit', 'tmux', 'npm', 'codex', 'claude', 'gemini'] if (shutil.which(p) if p in ['tmux', 'npm', 'codex', 'claude', 'gemini'] else __import__(p, globals(), locals(), [], 0) and True)]
-    print(f"✓ Have: {', '.join(ok)}")
-    missing = [p for p in ['pexpect', 'prompt_toolkit', 'tmux', 'npm', 'codex', 'claude', 'gemini'] if p not in ok]
-    if missing: print(f"⚠ Missing: {', '.join(missing)} - run 'aio deps'")
+    def _ok(p):
+        try: return bool(shutil.which(p)) if p in 'tmux npm codex claude gemini'.split() else (__import__(p), True)[1]
+        except: return False
+    _a, _n = {'pexpect': 'python3-pexpect', 'prompt_toolkit': 'python3-prompt-toolkit', 'tmux': 'tmux'}, {'codex': '@openai/codex', 'claude': '@anthropic-ai/claude-code', 'gemini': '@google/gemini-cli'}
+    ok, am, nm = [p for p in list(_a)+list(_n)+['npm'] if _ok(p)], ' '.join(_a[p] for p in _a if not _ok(p)), ' '.join(_n[p] for p in _n if not _ok(p))
+    ok and print(f"✓ Have: {', '.join(ok)}")
+    am and shutil.which('apt-get') and (print(f"\n📦 Run: sudo apt install {am}\n"), input("Press Enter when done..."))
+    nm and print(f"\n📦 Run: {'npm' if shutil.which('npm') else 'Install Node.js, then: npm'} install -g {nm}")
 elif arg == 'deps':
     import platform, urllib.request, tarfile, lzma
     _w, bin_dir = shutil.which, os.path.expanduser('~/.local/bin'); os.makedirs(bin_dir, exist_ok=True)
-    def _install(pkg, apt_pkg=None):
-        try: __import__(pkg); print(f"✓ {pkg}"); return True
+    def _i(p, a=None):  # Install pkg: try import -> apt -> pip -> pip+break -> pkg
+        try: __import__(p); print(f"✓ {p}"); return True
         except: pass
-        if sp.run([sys.executable, '-m', 'pip', 'install', '--user', pkg], capture_output=True).returncode == 0: print(f"✓ {pkg}"); return True
-        if apt_pkg and _w('apt-get') and sp.run(['sudo', 'apt-get', 'install', '-y', apt_pkg], capture_output=True).returncode == 0: print(f"✓ {pkg}"); return True
-        if _w('pkg') and sp.run(['pkg', 'install', '-y', pkg], capture_output=True).returncode == 0: print(f"✓ {pkg}"); return True
-        print(f"✗ {pkg}"); return False
+        if a and _w('apt-get') and sp.run(['sudo','apt-get','install','-y',a], capture_output=True).returncode == 0: print(f"✓ {p}"); return True
+        for brk in [[], ['--break-system-packages']]:
+            if sp.run([sys.executable,'-m','pip','install','--user']+brk+[p], capture_output=True).returncode == 0: print(f"✓ {p}"); return True
+        if _w('pkg') and sp.run(['pkg','install','-y',f'python-{p}'], capture_output=True).returncode == 0: print(f"✓ {p}"); return True
+        print(f"✗ {p}"); return False
     print("📦 Installing deps...\n")
-    _install('pexpect', 'python3-pexpect'); _install('prompt_toolkit', 'python3-prompt-toolkit')
+    _i('pexpect', 'python3-pexpect'); _i('prompt_toolkit', 'python3-prompt-toolkit')
     if not _w('tmux'):
         cmds = [['brew', 'install', 'tmux']] if sys.platform == 'darwin' else ([['sudo', 'apt-get', 'install', '-y', 'tmux']] if _w('apt-get') else [['pkg', 'install', '-y', 'tmux']])
         any(sp.run(c, capture_output=True).returncode == 0 for c in cmds) and print("✓ tmux") or print("✗ tmux")
