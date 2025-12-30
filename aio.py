@@ -3623,5 +3623,5 @@ else:
         print(f"   Reattach: aio attach")
     else:
         # Not in tmux - attach normally
-        sp.run(sm.attach(session_name))
-        print("Reattach: aio attach")
+        cmd = sm.attach(session_name)
+        os.execvp(cmd[0], cmd)
