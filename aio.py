@@ -675,6 +675,7 @@ def format_app_command(app_cmd, max_length=60):
 
 def list_all_items(show_help=True):
     projects, apps = load_projects(), load_apps()
+    Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(projects) + '\n'); [os.remove(f) for f in [os.path.join(DATA_DIR, 'help_cache.txt')] if os.path.exists(f)]
     if projects:
         print("📁 PROJECTS:")
         for i, p in enumerate(projects): print(f"  {i}. {'✓' if os.path.exists(p) else '✗'} {p}")
@@ -732,8 +733,8 @@ if arg and arg.isdigit() and not work_dir_arg:
     idx = int(arg)
     if 0 <= idx < len(PROJECTS):
         print(f"📂 Opening project {idx}: {PROJECTS[idx]}")
-        _ghost_spawn(PROJECTS[idx], sessions); os.chdir(PROJECTS[idx])
-        os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
+        sp.Popen([sys.executable, __file__, '_ghost', PROJECTS[idx]], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        os.chdir(PROJECTS[idx]); os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
     elif 0 <= idx - len(PROJECTS) < len(APPS):
         app_name, app_command = APPS[idx - len(PROJECTS)]
         print(f"▶️  Running: {app_name}\n   Command: {format_app_command(app_command)}")
@@ -1256,17 +1257,17 @@ def cmd_dir_or_file():
         elif ext == '.md': os.execvp(os.environ.get('EDITOR', 'nvim'), [os.environ.get('EDITOR', 'nvim'), arg])
 
 def cmd_session():
-    # Ghost claiming
+    # Ghost claiming - pre-warmed session for instant startup
     if arg in _GHOST_MAP and not work_dir_arg:
         ghost = _ghost_claim(arg, work_dir)
         if ghost:
-            print(f"⚡ Ghost claimed!")
             agent_name = sessions[arg][0] if arg in sessions else arg
             sn = f"{agent_name}-{os.path.basename(work_dir)}"
             sp.run(['tmux', 'rename-session', '-t', ghost, sn], capture_output=True)
-            if 'TMUX' in os.environ: launch_in_new_window(sn)
+            print(f"⚡ Ghost claimed: {sn}")
+            if 'TMUX' in os.environ: os.execvp('tmux', ['tmux', 'switch-client', '-t', sn])
             else: os.execvp(sm.attach(sn)[0], sm.attach(sn))
-            sys.exit(0)
+        # Ghost not available - fall through to create new session
     # Inside tmux - create pane
     if 'TMUX' in os.environ and arg in sessions and len(arg) == 1:
         agent_name, cmd = sessions[arg]
