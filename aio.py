@@ -333,12 +333,13 @@ def ensure_tmux_options():
     sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
 
 def create_tmux_session(session_name, work_dir, cmd, env=None, capture_output=True):
+    if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
+        cmd = f'while :; do {cmd}; e=$?; [ $e -eq 0 ] && break; echo -e "\\n⚠️  Crashed (exit $e). [R]estart / [Q]uit: "; read -n1 k; [[ $k =~ [Rr] ]] || break; done'
     result = sm.new_session(session_name, work_dir, cmd or '', env)
     ensure_tmux_options()
     if cmd and any(a in cmd for a in ['codex', 'claude', 'gemini']):
         sp.run(['tmux', 'split-window', '-v', '-t', session_name, '-c', work_dir, 'bash -c "ls;exec bash"'], capture_output=True)
         sp.run(['tmux', 'select-pane', '-t', session_name, '-U'], capture_output=True)
-        sp.run(['tmux', 'pipe-pane', '-t', session_name, '-o', f"bash -c 'while read -t5 _; do tmux set -t {shlex.quote(session_name)} set-titles-string \"🟢 #S:#W\" 2>/dev/null || break; done'"], capture_output=True)
     return result
 
 # Terminal and session helpers
