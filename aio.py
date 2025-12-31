@@ -828,7 +828,9 @@ def cmd_note():
     def _preview(p): return p.read_text().split('\n')[0][:60]
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
-    threading.Thread(target=aioCloud.pull_notes, daemon=True).start()
+    old = [n.name for n in notes]
+    def _sync(): aioCloud.pull_notes(); nn = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True); [n.name for n in nn] != old and print("\n📥 Synced:\n" + "\n".join(f"{i}. {_preview(n)}" for i, n in enumerate(nn)))
+    threading.Thread(target=_sync).start()
     if not raw or raw == 'ls':
         if not notes: print("No notes. Create: aio note <content>"); sys.exit(0)
         for i, n in enumerate(notes): print(f"{i}. {_preview(n)}")
