@@ -83,7 +83,6 @@ DATA_DIR = os.path.expanduser("~/.local/share/aios")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
 _GHOST_PREFIX, _GHOST_TIMEOUT = '_aio_ghost_', 300
 _GHOST_MAP = {'c': 'c', 'l': 'l', 'g': 'g', 'o': 'l', 'cp': 'c', 'lp': 'l', 'gp': 'g'}
-RCLONE_REMOTE, RCLONE_BACKUP_PATH = 'aio-gdrive', 'aio-backup'
 _AGENT_DIRS = {'claude': Path.home()/'.claude', 'codex': Path.home()/'.codex', 'gemini': Path.home()/'.gemini'}
 _TMUX_CONF, _AIO_MARKER = os.path.expanduser('~/.tmux.conf'), '# aio-managed-config'
 
@@ -476,36 +475,6 @@ def _ghost_claim(agent_key, target_dir):
     if r.returncode != 0 or r.stdout.strip() != target_dir:
         sp.run(['tmux', 'kill-session', '-t', ghost], capture_output=True); return None
     return ghost
-
-# Rclone/gdrive
-def _get_rclone(): return shutil.which('rclone') or next((p for p in ['/usr/bin/rclone', os.path.expanduser('~/.local/bin/rclone')] if os.path.isfile(p)), None)
-
-def _rclone_configured():
-    r = sp.run([_get_rclone(), 'listremotes'], capture_output=True, text=True) if _get_rclone() else None
-    return r and r.returncode == 0 and f'{RCLONE_REMOTE}:' in r.stdout
-
-def _rclone_account():
-    if not (rc := _get_rclone()): return None
-    try:
-        token = json.loads(json.loads(sp.run([rc, 'config', 'dump'], capture_output=True, text=True).stdout).get(RCLONE_REMOTE, {}).get('token', '{}')).get('access_token')
-        if not token: return None
-        import urllib.request
-        u = json.loads(urllib.request.urlopen(urllib.request.Request('https://www.googleapis.com/drive/v3/about?fields=user', headers={'Authorization': f'Bearer {token}'}), timeout=5).read()).get('user', {})
-        return f"{u.get('displayName', '')} <{u.get('emailAddress', 'unknown')}>"
-    except: return None
-
-_RCLONE_ERR_FILE = Path(DATA_DIR) / '.rclone_err'
-
-def _rclone_sync_data(wait=False):
-    if not (rc := _get_rclone()) or not _rclone_configured(): return False, None
-    def _sync():
-        r = sp.run([rc, 'sync', str(Path(SCRIPT_DIR) / 'data'), f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}', '-q'], capture_output=True, text=True)
-        _RCLONE_ERR_FILE.write_text(r.stderr) if r.returncode != 0 else _RCLONE_ERR_FILE.unlink(missing_ok=True); return r.returncode == 0
-    return (True, _sync()) if wait else (__import__('threading').Thread(target=_sync, daemon=True).start(), (True, None))[1]
-
-def _rclone_pull_notes():
-    if not (rc := _get_rclone()) or not _rclone_configured(): return False
-    sp.run([rc, 'copy', f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/notebook', str(Path(SCRIPT_DIR) / 'data' / 'notebook'), '-u', '-q'], capture_output=True); return True
 
 # Jobs listing
 def list_jobs(running_only=False):
@@ -917,33 +886,19 @@ def cmd_prompt():
     else: print("No changes")
 
 def cmd_gdrive():
-    rc = _get_rclone()
-    if not rc and work_dir_arg == 'login':
-        import platform; bd, arch = os.path.expanduser('~/.local/bin'), 'amd64' if platform.machine() in ('x86_64', 'AMD64') else 'arm64'
-        print(f"Installing rclone..."); os.makedirs(bd, exist_ok=True)
-        if sp.run(f'curl -sL https://downloads.rclone.org/rclone-current-linux-{arch}.zip -o /tmp/rclone.zip && unzip -qjo /tmp/rclone.zip "*/rclone" -d {bd} && chmod +x {bd}/rclone', shell=True).returncode == 0:
-            rc = f'{bd}/rclone'; print(f"✓ Installed")
-        else: _die("rclone install failed")
-    if work_dir_arg == 'login':
-        rc or _die("rclone not found")
-        if _rclone_configured() and not _confirm("Already logged in. Switch account?"): sys.exit(0)
-        sp.run([rc, 'config', 'create', RCLONE_REMOTE, 'drive'])
-        if _rclone_configured(): _ok(f"Logged in as {_rclone_account() or 'unknown'}"); _rclone_sync_data(wait=True)
-        else: _err("Login failed - try again")
-    elif work_dir_arg == 'logout':
-        if _rclone_configured(): sp.run([rc, 'config', 'delete', RCLONE_REMOTE]); _ok("Logged out")
-        else: print("Not logged in")
-    elif _rclone_configured(): _ok(f"Logged in: {_rclone_account() or RCLONE_REMOTE}")
-    else: _err("Not logged in. Run: aio gdrive login")
+    import cloud
+    if work_dir_arg == 'login': cloud.configured() and not _confirm("Already logged in. Switch?") or cloud.login()
+    elif work_dir_arg == 'logout': cloud.logout()
+    else: cloud.status()
 
 def cmd_note():
-    import threading
+    import threading, cloud
     NOTEBOOK_DIR = Path(SCRIPT_DIR) / 'data' / 'notebook'; NOTEBOOK_DIR.mkdir(parents=True, exist_ok=True)
     def _slug(s): return re.sub(r'[^\w\-]', '', s.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
     def _preview(p): return p.read_text().split('\n')[0][:60]
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
-    threading.Thread(target=_rclone_pull_notes, daemon=True).start()
+    threading.Thread(target=cloud.pull_notes, daemon=True).start()
     if not raw or raw == 'ls':
         if not notes: print("No notes. Create: aio note <content>"); sys.exit(0)
         for i, n in enumerate(notes): print(f"{i}. {_preview(n)}")
@@ -958,7 +913,7 @@ def cmd_note():
         if content:
             nf = NOTEBOOK_DIR / f"{_slug(content)}-{datetime.now().strftime('%m%d%H%M')}.md"
             nf.write_text(content); print(f"✓ {_preview(nf)}")
-            started, _ = _rclone_sync_data()
+            started, _ = cloud.sync_data()
             print("☁ Syncing..." if started else "💡 Run 'aio gdrive login' for cloud backup")
 
 def cmd_add():

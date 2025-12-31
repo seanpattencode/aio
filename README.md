@@ -1,4 +1,4 @@
-# AIOS - Task Manager
+# AIO - Task Manager
 
 Ultra-fast, event-driven task execution system with git-inspired design, strict performance enforcement, and automatic updates.
 
