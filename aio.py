@@ -981,18 +981,18 @@ def cmd_session():
         os.execvp('tmux', ['tmux', 'switch-client' if 'TMUX' in os.environ else 'attach', '-t', sn])
     # Inside tmux - create pane
     if 'TMUX' in os.environ and arg in sessions and len(arg) == 1:
-        an, cmd = sessions[arg]; sp.run(['tmux', 'split-window', '-bv', '-c', work_dir, cmd])
-        pre = get_agent_prefix(an, work_dir)
-        if pre: time.sleep(0.5); sp.run(['tmux', 'send-keys', '-t', '!', '-l', pre])
+        an, cmd = sessions[arg]; pre = get_agent_prefix(an, work_dir)
+        r = sp.run(['tmux', 'split-window', '-bvP', '-F', '#{pane_id}', '-c', work_dir, cmd], capture_output=True, text=True)
+        if pre and r.stdout.strip(): wait_for_agent_ready(r.stdout.strip()); sp.run(['tmux', 'send-keys', '-t', r.stdout.strip(), '-l', pre])
         sys.exit(0)
-    sn = get_or_create_directory_session(arg, work_dir); env = get_noninteractive_git_env()
-    if sn is None: n, c = sessions.get(arg, (arg, None)); create_tmux_session(n, work_dir, c or arg, env=env); sn = n
-    elif not sm.has_session(sn): create_tmux_session(sn, work_dir, sessions[arg][1], env=env)
+    sn = get_or_create_directory_session(arg, work_dir); env = get_noninteractive_git_env(); created = False
+    if sn is None: n, c = sessions.get(arg, (arg, None)); create_tmux_session(n, work_dir, c or arg, env=env); sn = n; created = True
+    elif not sm.has_session(sn): create_tmux_session(sn, work_dir, sessions[arg][1], env=env); created = True
     is_p = arg.endswith('p') and not arg.endswith('pp') and len(arg) == 2 and arg in sessions
     pp = [a for a in sys.argv[(2 if is_work_dir_a_prompt else (3 if work_dir_arg else 2)):] if a not in ['-w', '--new-window', '--yes', '-y', '-t', '--with-terminal']]
     if pp: print("📤 Prompt queued"); sp.Popen([sys.executable, __file__, 'send', sn, ' '.join(pp)] + (['--no-enter'] if is_p else []), stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     elif is_p and (pm := {'cp': CODEX_PROMPT, 'lp': CLAUDE_PROMPT, 'gp': GEMINI_PROMPT}.get(arg)): sp.Popen([sys.executable, __file__, 'send', sn, pm, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    elif arg in sessions and (pre := get_agent_prefix(sessions[arg][0], work_dir)): sp.Popen([sys.executable, __file__, 'send', sn, pre, '--no-enter'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    elif created and arg in sessions and (pre := get_agent_prefix(sessions[arg][0], work_dir)): wait_for_agent_ready(sn); sm.send_keys(sn, pre)
     if new_window: launch_in_new_window(sn); with_terminal and launch_terminal_in_dir(work_dir)
     elif "TMUX" in os.environ or not sys.stdout.isatty(): print(f"✓ Session: {sn}")
     else: os.execvp(sm.attach(sn)[0], sm.attach(sn))
