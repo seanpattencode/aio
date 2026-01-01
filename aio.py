@@ -762,6 +762,27 @@ def cmd_install():
     if os.path.islink(aio_link): os.remove(aio_link)
     elif os.path.exists(aio_link): _die(f"✗ {aio_link} exists but is not a symlink")
     os.symlink(script_path, aio_link); print(f"✓ Symlink: {aio_link}")
+    # Termux RunCommandService setup
+    if os.environ.get('TERMUX_VERSION') or os.path.exists('/data/data/com.termux'):
+        print("\n📱 Termux detected - configuring RunCommandService...")
+        termux_dir = os.path.expanduser("~/.termux")
+        termux_props = os.path.join(termux_dir, "termux.properties")
+        os.makedirs(termux_dir, exist_ok=True)
+        prop_content = Path(termux_props).read_text() if os.path.exists(termux_props) else ""
+        # Check for uncommented active setting (not just the commented template)
+        has_active = any(l.strip().startswith("allow-external-apps") and not l.strip().startswith("#") for l in prop_content.split('\n'))
+        if not has_active:
+            with open(termux_props, "a") as f: f.write("\nallow-external-apps = true\n")
+            print("✓ Added allow-external-apps = true")
+        else: print("✓ allow-external-apps already configured")
+        if shutil.which('termux-reload-settings'):
+            sp.run(['termux-reload-settings']); print("✓ Reloaded Termux settings")
+        else: print("⚠ Run: termux-reload-settings")
+        print("\n📋 Android app setup required:")
+        print("   1. Add to AndroidManifest.xml:")
+        print('      <uses-permission android:name="com.termux.permission.RUN_COMMAND" />')
+        print("   2. Grant permission in Android Settings:")
+        print("      Settings → Apps → Your App → Permissions → Run Termux commands")
     nv = int(sp.run(['node','-v'], capture_output=True, text=True).stdout.strip().lstrip('v').split('.')[0]) if shutil.which('node') else 0
     if nv < 25: print(f"⚠️  Node.js {'v'+str(nv) if nv else 'missing'} - run 'aio deps' (fixes Claude V8 crashes)")
     shell = os.environ.get('SHELL', '/bin/bash')
