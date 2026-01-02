@@ -843,11 +843,13 @@ def cmd_gdrive():
     else: aioCloud.status()
 
 def cmd_note():
-    import threading, aioCloud
     NOTEBOOK_DIR = Path(SCRIPT_DIR) / 'data' / 'notebook'; NOTEBOOK_DIR.mkdir(parents=True, exist_ok=True)
     def _slug(s): return re.sub(r'[^\w\-]', '', s.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
-    def _preview(p): return p.read_text().split('\n')[0][:60]
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
+    if raw and raw != 'ls' and not raw.isdigit():  # fast path: just save, daemon sync
+        (NOTEBOOK_DIR / f"{_slug(raw)}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓"); __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start(); return
+    import threading, aioCloud
+    def _preview(p): return p.read_text().split('\n')[0][:60]
     notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
     old = [n.name for n in notes]
     def _sync(): aioCloud.pull_notes(); nn = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True); [n.name for n in nn] != old and print("\n📥 Synced:\n" + "\n".join(f"{i}. {_preview(n)}" for i, n in enumerate(nn)))
