@@ -43,6 +43,10 @@ async def term(r):
         os.write(m, msg.data.encode())
     return ws
 
-app = web.Application(); app.add_routes([web.get('/', page), web.post('/exec', run), web.get('/ws', term), web.get('/restart', restart)])
+N='<meta name=viewport content="width=device-width"><form method=post style="height:100vh;display:flex;align-items:center;justify-content:center;background:#000"><input name=c autofocus style="width:95vw;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"></form>'
+async def note(r):
+    if r.method=='POST': c=(await r.post()).get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); raise web.HTTPFound('/n')
+    return web.Response(text=N,content_type='text/html')
+app = web.Application(); app.add_routes([web.get('/', page), web.post('/exec', run), web.get('/ws', term), web.get('/restart', restart), web.route('*','/n',note)])
 if '--install' in sys.argv: os.makedirs(os.path.expanduser('~/.config/autostart'), exist_ok=True); open(os.path.expanduser('~/.config/autostart/aioUI.desktop'),'w').write(f'[Desktop Entry]\nType=Application\nExec=python3 {os.path.abspath(__file__)}\nName=aioUI'); sys.exit()
-if __name__ == '__main__': p=int(sys.argv[1]) if len(sys.argv)>1 else 8080; (subprocess.run(['termux-open-url', f'http://localhost:{p}']) if os.environ.get('TERMUX_VERSION') else webbrowser.open(f'http://localhost:{p}')); web.run_app(app, port=p)
+if __name__ == '__main__': a=sys.argv[1:];p=int(a[0])if a and a[0].isdigit()else 8080;u=f'http://localhost:{p}/'+a[-1]if a and not a[-1].isdigit()else f'http://localhost:{p}';(subprocess.run(['termux-open-url',u])if os.environ.get('TERMUX_VERSION')else webbrowser.open(u));web.run_app(app,port=p)
