@@ -1029,15 +1029,15 @@ def cmd_settings():
 
 # Command dispatch
 COMMANDS = {
-    None: cmd_help, '': cmd_help, 'help': cmd_help_full, '--help': cmd_help_full, '-h': cmd_help_full,
-    'update': cmd_update, 'upd': cmd_update, 'jobs': cmd_jobs, 'kill': cmd_kill, 'killall': cmd_kill, 'attach': cmd_attach, 'att': cmd_attach,
-    'cleanup': cmd_cleanup, 'cle': cmd_cleanup, 'config': cmd_config, 'con': cmd_config, 'ls': cmd_ls, 'diff': cmd_diff, 'send': cmd_send,
-    'watch': cmd_watch, 'wat': cmd_watch, 'push': cmd_push, 'pull': cmd_pull, 'revert': cmd_revert, 'rev': cmd_revert, 'setup': cmd_setup, 'set': cmd_settings,
-    'install': cmd_install, 'ins': cmd_install, 'deps': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'settings': cmd_settings,
-    'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'a': cmd_multi, 'all': cmd_multi,
-    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'dir': lambda: (print(f"📂 {os.getcwd()}"), sp.run(['ls'])),
-    'fix': cmd_fix_bug_feat_auto_del, 'bug': cmd_fix_bug_feat_auto_del, 'feat': cmd_fix_bug_feat_auto_del,
-    'auto': cmd_fix_bug_feat_auto_del, 'del': cmd_fix_bug_feat_auto_del,
+    None: cmd_help, '': cmd_help, 'help': cmd_help_full, 'hel': cmd_help_full, '--help': cmd_help_full, '-h': cmd_help_full,
+    'update': cmd_update, 'upd': cmd_update, 'jobs': cmd_jobs, 'job': cmd_jobs, 'kill': cmd_kill, 'kil': cmd_kill, 'killall': cmd_kill, 'attach': cmd_attach, 'att': cmd_attach,
+    'cleanup': cmd_cleanup, 'cle': cmd_cleanup, 'config': cmd_config, 'con': cmd_config, 'ls': cmd_ls, 'diff': cmd_diff, 'dif': cmd_diff, 'send': cmd_send, 'sen': cmd_send,
+    'watch': cmd_watch, 'wat': cmd_watch, 'push': cmd_push, 'pus': cmd_push, 'pull': cmd_pull, 'pul': cmd_pull, 'revert': cmd_revert, 'rev': cmd_revert, 'setup': cmd_setup, 'set': cmd_settings,
+    'install': cmd_install, 'ins': cmd_install, 'deps': cmd_deps, 'dep': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'not': cmd_note, 'settings': cmd_settings,
+    'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'a': cmd_multi, 'all': cmd_multi,
+    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'dir': lambda: (print(f"📂 {os.getcwd()}"), sp.run(['ls'])),
+    'fix': cmd_fix_bug_feat_auto_del, 'bug': cmd_fix_bug_feat_auto_del, 'feat': cmd_fix_bug_feat_auto_del, 'fea': cmd_fix_bug_feat_auto_del,
+    'auto': cmd_fix_bug_feat_auto_del, 'aut': cmd_fix_bug_feat_auto_del, 'del': cmd_fix_bug_feat_auto_del,
 }
 
 if arg in COMMANDS: COMMANDS[arg]()
