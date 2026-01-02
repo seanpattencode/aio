@@ -1020,13 +1020,18 @@ def cmd_session():
     elif "TMUX" in os.environ or not sys.stdout.isatty(): print(f"✓ Session: {sn}")
     else: os.execvp(sm.attach(sn)[0], sm.attach(sn))
 
+def cmd_settings():
+    f=sys.argv[2]if len(sys.argv)>2 else None;p=Path(DATA_DIR)/f if f else None;v=sys.argv[3]if len(sys.argv)>3 else None
+    if not f:print("Settings: n (fast note)");return
+    (p.touch()if v=='on'else p.unlink(missing_ok=True)if v=='off'else None);print(f"✓ {f} {'on'if v=='on'else'off'} (restart shell)"if v else("on"if p.exists()else"off"))
+
 # Command dispatch
 COMMANDS = {
     None: cmd_help, '': cmd_help, 'help': cmd_help_full, '--help': cmd_help_full, '-h': cmd_help_full,
     'update': cmd_update, 'jobs': cmd_jobs, 'kill': cmd_kill, 'killall': cmd_kill, 'attach': cmd_attach,
     'cleanup': cmd_cleanup, 'config': cmd_config, 'ls': cmd_ls, 'diff': cmd_diff, 'send': cmd_send,
     'watch': cmd_watch, 'push': cmd_push, 'pull': cmd_pull, 'revert': cmd_revert, 'setup': cmd_setup,
-    'install': cmd_install, 'deps': cmd_deps, 'prompt': cmd_prompt, 'gdrive': cmd_gdrive, 'note': cmd_note,
+    'install': cmd_install, 'deps': cmd_deps, 'prompt': cmd_prompt, 'gdrive': cmd_gdrive, 'note': cmd_note, 'settings': cmd_settings,
     'add': cmd_add, 'remove': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'a': cmd_multi, 'all': cmd_multi,
     'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'dir': lambda: (print(f"📂 {os.getcwd()}"), sp.run(['ls'])),
     'fix': cmd_fix_bug_feat_auto_del, 'bug': cmd_fix_bug_feat_auto_del, 'feat': cmd_fix_bug_feat_auto_del,
