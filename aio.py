@@ -1022,8 +1022,10 @@ def cmd_session():
 
 def cmd_settings():
     f=sys.argv[2]if len(sys.argv)>2 else None;p=Path(DATA_DIR)/f if f else None;v=sys.argv[3]if len(sys.argv)>3 else None
-    if not f:print("Settings: n (fast note)");return
-    (p.touch()if v=='on'else p.unlink(missing_ok=True)if v=='off'else None);print(f"✓ {f} {'on'if v=='on'else'off'} (restart shell)"if v else("on"if p.exists()else"off"))
+    if not f:print("Settings:\n  n  standalone commands (n, push, pull, note, diff, jobs, kill, send)");return
+    if v=='on':p.touch();print(f"✓ {f} on\n\n  Enabled: n push pull note diff jobs kill send\n  Open new terminal tab to use")
+    elif v=='off':p.unlink(missing_ok=True);print(f"✓ {f} off\n\n  Open new terminal tab to apply")
+    else:print("on"if p.exists()else"off")
 
 # Command dispatch
 COMMANDS = {
