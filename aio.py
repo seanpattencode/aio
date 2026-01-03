@@ -310,7 +310,7 @@ def create_tmux_session(sn, wd, cmd, env=None, capture_output=True):
     is_ai = cmd and any(a in cmd for a in ['codex', 'claude', 'gemini'])
     if is_ai: cmd = f'while :; do {cmd}; e=$?; [ $e -eq 0 ] && break; echo -e "\\n⚠️  Crashed (exit $e). [R]estart / [Q]uit: "; read -n1 k; [[ $k =~ [Rr] ]] || break; done'
     r = sm.new_session(sn, wd, cmd or '', env); ensure_tmux_options()
-    if is_ai: sp.run(['tmux', 'split-window', '-v', '-t', sn, '-c', wd, 'bash -c "ls;exec bash"'], capture_output=True); sp.run(['tmux', 'select-pane', '-t', sn, '-U'], capture_output=True)
+    if is_ai: sp.run(['tmux', 'split-window', '-v', '-t', sn, '-c', wd, '$SHELL -c "ls;exec $SHELL"'], capture_output=True); sp.run(['tmux', 'select-pane', '-t', sn, '-U'], capture_output=True)
     return r
 
 # Terminal and session helpers
@@ -910,7 +910,7 @@ def cmd_remove():
     sys.exit(0 if ok else 1)
 
 def cmd_dash():
-    if not sm.has_session('dash'): sp.run(['tmux', 'new-session', '-d', '-s', 'dash', '-c', work_dir]); sp.run(['tmux', 'split-window', '-h', '-t', 'dash', '-c', work_dir, 'bash -c "aio jobs; exec bash"'])
+    if not sm.has_session('dash'): sp.run(['tmux', 'new-session', '-d', '-s', 'dash', '-c', work_dir]); sp.run(['tmux', 'split-window', '-h', '-t', 'dash', '-c', work_dir, '$SHELL -c "aio jobs; exec $SHELL"'])
     os.execvp('tmux', ['tmux', 'switch-client' if 'TMUX' in os.environ else 'attach', '-t', 'dash'])
 
 def cmd_fix_bug_feat_auto_del():
