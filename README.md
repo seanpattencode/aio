@@ -24,6 +24,7 @@ bug fixes and simply improvements should be shorter in total line count, readabl
 
 ## Warning:
 the aio command may not work properly if your directory has a . in the front of it.
+aio push may say failure on mac but work.
 
 ## Features
 
