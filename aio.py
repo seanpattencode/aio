@@ -589,8 +589,7 @@ def cmd_jobs(): list_jobs(running_only='--running' in sys.argv or '-r' in sys.ar
 
 def cmd_kill():
     if input("Kill all tmux sessions? (y/n): ").lower() in ['y', 'yes']:
-        if 'TMUX' in os.environ: sp.run(['tmux', 'detach-client'])
-        sp.run(['pkill', '-9', 'tmux']); print("✓ Killed all tmux")
+        print("✓ Killed all tmux"); sp.run(['tmux', 'kill-server'])
 
 def cmd_attach():
     cwd = os.getcwd()
