@@ -1,0 +1,19 @@
+# Secrets & credentials
+*.env
+.env*
+*credentials*
+*secret*
+*token*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local config
+.local/
