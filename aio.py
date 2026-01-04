@@ -156,7 +156,7 @@ class WALManager:
     def __exit__(self, *args): self.conn and self.conn.close(); return False
 
 def init_database():
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True); db_existed = os.path.exists(DB_PATH)
     with WALManager(DB_PATH) as conn:
         with conn:
             conn.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -169,6 +169,14 @@ def init_database():
                 for k, v in [('claude_prompt', default_prompt), ('codex_prompt', default_prompt), ('gemini_prompt', default_prompt), ('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees")), ('multi_default', 'l:3')]: conn.execute("INSERT INTO config VALUES (?, ?)", (k, v))
             conn.execute("INSERT OR IGNORE INTO config VALUES ('multi_default', 'l:3')")
             conn.execute("INSERT OR IGNORE INTO config VALUES ('claude_prefix', 'Ultrathink. ')")
+            # Auto-restore from backup if tables unexpectedly empty
+            if db_existed and conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
+                backups = sorted([f for f in os.listdir(DATA_DIR) if f.startswith('aio_auto_') and f.endswith('.db')], reverse=True)
+                if backups:
+                    with sqlite3.connect(os.path.join(DATA_DIR, backups[0])) as bak:
+                        for row in bak.execute("SELECT path, display_order FROM projects"): conn.execute("INSERT OR IGNORE INTO projects (path, display_order) VALUES (?, ?)", row)
+                        for row in bak.execute("SELECT name, command, display_order FROM apps"): conn.execute("INSERT OR IGNORE INTO apps (name, command, display_order) VALUES (?, ?, ?)", row)
+                    print(f"! Restored projects/apps from {backups[0]}")
             if conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
                 conn.execute("INSERT INTO projects (path, display_order) VALUES (?, ?)", (os.path.expanduser("~/projects/aio"), 0))
             if conn.execute("SELECT COUNT(*) FROM apps").fetchone()[0] == 0:
