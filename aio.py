@@ -1012,17 +1012,15 @@ def cmd_dir_or_file():
         elif ext == '.md': os.execvp(os.environ.get('EDITOR', 'nvim'), [os.environ.get('EDITOR', 'nvim'), arg])
 
 def cmd_session():
-    # Ghost claiming
-    if arg in _GHOST_MAP and not work_dir_arg and (g := _ghost_claim(arg, work_dir)):
-        sn = f"{sessions[arg][0] if arg in sessions else arg}-{os.path.basename(work_dir)}"
-        sp.run(['tmux', 'rename-session', '-t', g, sn], capture_output=True); print(f"⚡ Ghost: {sn}")
-        os.execvp('tmux', ['tmux', 'switch-client' if 'TMUX' in os.environ else 'attach', '-t', sn])
-    # Inside tmux - create pane with shell split
+    # Inside tmux - always create new pane (allows multiple agents in parallel)
     if 'TMUX' in os.environ and arg in sessions and len(arg) == 1:
         an, cmd = sessions[arg]; pre = get_agent_prefix(an, work_dir); pid = sp.run(['tmux', 'split-window', '-bvP', '-F', '#{pane_id}', '-c', work_dir, cmd], capture_output=True, text=True).stdout.strip()
         pid and (sp.run(['tmux', 'split-window', '-v', '-t', pid, '-c', work_dir, 'sh -c "ls;exec $SHELL"']), sp.run(['tmux', 'select-pane', '-t', pid]))
         pre and pid and (wait_for_agent_ready(pid), sp.run(['tmux', 'send-keys', '-t', pid, '-l', pre]))
         sys.exit(0)
+    # Ghost claiming (outside tmux only - claim pre-warmed session)
+    if arg in _GHOST_MAP and not work_dir_arg and (g := _ghost_claim(arg, work_dir)):
+        sn = f"{sessions[arg][0] if arg in sessions else arg}-{os.path.basename(work_dir)}"; sp.run(['tmux', 'rename-session', '-t', g, sn], capture_output=True); print(f"⚡ Ghost: {sn}"); os.execvp('tmux', ['tmux', 'attach', '-t', sn])
     sn = get_or_create_directory_session(arg, work_dir); env = get_noninteractive_git_env(); created = False
     if sn is None: n, c = sessions.get(arg, (arg, None)); create_tmux_session(n, work_dir, c or arg, env=env); sn = n; created = True
     elif not sm.has_session(sn): create_tmux_session(sn, work_dir, sessions[arg][1], env=env); created = True
