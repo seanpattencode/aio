@@ -854,32 +854,23 @@ def cmd_gdrive():
     else: aioCloud.status()
 
 def cmd_note():
-    NOTEBOOK_DIR = Path(SCRIPT_DIR) / 'data' / 'notebook'; NOTEBOOK_DIR.mkdir(parents=True, exist_ok=True)
-    def _slug(s): return re.sub(r'[^\w\-]', '', s.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
+    ND = Path(SCRIPT_DIR) / 'data' / 'notebook'; ND.mkdir(parents=True, exist_ok=True); AD = ND / 'archive'
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
-    if raw and raw != 'ls' and not raw.isdigit():  # fast path: just save, daemon sync
-        (NOTEBOOK_DIR / f"{_slug(raw)}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓"); __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start(); return
-    import threading, aioCloud
-    def _preview(p): return p.read_text().split('\n')[0][:60]
-    notes = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True)
-    old = [n.name for n in notes]
-    def _sync(): aioCloud.pull_notes(); nn = sorted(NOTEBOOK_DIR.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True); [n.name for n in nn] != old and print("\n📥 Synced:\n" + "\n".join(f"{i}. {_preview(n)}" for i, n in enumerate(nn)))
-    threading.Thread(target=_sync).start()
-    if not raw or raw == 'ls':
-        if not notes: print("No notes. Create: aio note <content>"); sys.exit(0)
-        for i, n in enumerate(notes): print(f"{i}. {_preview(n)}")
-        if raw == 'ls': sys.exit(0)
-        ch = input("View #: ").strip()
-        if ch.isdigit() and int(ch) < len(notes): print(f"\n{notes[int(ch)].read_text()}")
-    elif raw.isdigit():
-        if int(raw) < len(notes): print(notes[int(raw)].read_text())
-        else: print(f"No note #{raw}")
-    else:
-        content = raw if raw.strip() else input_box('', 'Note')
-        if content:
-            nf = NOTEBOOK_DIR / f"{_slug(content)}-{datetime.now().strftime('%m%d%H%M')}.md"
-            nf.write_text(content); print(f"✓ saved")
-            aioCloud.sync_data()
+    def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.stat().st_mtime, reverse=True)
+    def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name))
+    if raw and raw != 'ls' and not raw.isdigit():  # save note
+        slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
+        (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓"); __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start(); return
+    import threading, aioCloud; notes = _notes(); threading.Thread(target=aioCloud.pull_notes, daemon=True).start()
+    if not notes: print("No notes. Create: aio note <content>"); return
+    if raw == 'ls': [print(f"{i}. {n.read_text().split(chr(10))[0][:60]}") for i, n in enumerate(notes)]; return
+    if raw and raw.isdigit() and int(raw) < len(notes): print(notes[int(raw)].read_text()); return
+    print(f"─ {len(notes)} notes ─ [a]rchive [enter]next [q]uit")
+    for i, n in enumerate(notes):
+        print(f"\n[{i+1}/{len(notes)}] {n.read_text()[:500]}"); ch = input("> ").strip().lower()
+        if ch == 'a': _arch(n); print("✓ archived")
+        elif ch == 'q': break
+    __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start()
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
