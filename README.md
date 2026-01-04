@@ -26,3 +26,10 @@ Type aio
 ## Warnings:
 the aio command may not work properly if your directory has a . in the front of it.
 aio push may say failure on mac but work.
+
+## Suggested Docs:
+
+https://aider.chat/docs/llms/ollama.html
+
+
+
