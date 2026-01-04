@@ -856,13 +856,13 @@ def cmd_gdrive():
 def cmd_note():
     ND = Path(SCRIPT_DIR) / 'data' / 'notebook'; ND.mkdir(parents=True, exist_ok=True); AD = ND / 'archive'
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
-    def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.stat().st_mtime, reverse=True)
+    def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.name, reverse=True)
     def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name))
     if raw and raw != 'ls' and not raw.isdigit():  # save note
         slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
         (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓")
         sp.Popen([sys.executable, '-c', f'import aioCloud; aioCloud.sync_data(wait=True)'], cwd=SCRIPT_DIR, stdout=sp.DEVNULL, stderr=sp.DEVNULL, start_new_session=True); return
-    import aioCloud, concurrent.futures as cf; ex = cf.ThreadPoolExecutor(2); ex.submit(aioCloud.pull_notes)
+    import aioCloud, concurrent.futures as cf; ex = cf.ThreadPoolExecutor(2); aioCloud.pull_notes()
     notes, last = _notes(), [None]
     if not notes: print("No notes. Create: aio note <content>"); return
     if raw == 'ls': [print(f"{i}. {n.read_text().split(chr(10))[0][:60]}") for i, n in enumerate(notes)]; return
