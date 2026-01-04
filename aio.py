@@ -172,7 +172,7 @@ def init_database():
             if conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
                 conn.execute("INSERT INTO projects (path, display_order) VALUES (?, ?)", (os.path.expanduser("~/projects/aio"), 0))
             if conn.execute("SELECT COUNT(*) FROM apps").fetchone()[0] == 0:
-                conn.execute("INSERT INTO apps (name, command, display_order) VALUES (?, ?, ?)", ("testRepo", f"cd {os.path.expanduser('~/projects/testRepoPrivate')} && $SHELL", 0))
+                conn.execute("INSERT INTO apps (name, command, display_order) VALUES (?, ?, ?)", ("aioUI", f"python3 {os.path.expanduser('~/.local/bin/aioUI.py')}", 0))
             if conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0:
                 _cdx = 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox'
                 _cld = 'claude --dangerously-skip-permissions'
