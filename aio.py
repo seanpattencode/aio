@@ -176,9 +176,10 @@ def init_database():
             if conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0:
                 _cdx = 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox'
                 _cld = 'claude --dangerously-skip-permissions'
-                for k, n, c in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','codex',_cdx),('cp','codex-p',f'{_cdx} "{{CODEX_PROMPT}}"'),('l','claude',_cld),('lp','claude-p',f'{_cld} "{{CLAUDE_PROMPT}}"'),('o','claude',_cld)]:
+                for k, n, c in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','codex',_cdx),('cp','codex-p',f'{_cdx} "{{CODEX_PROMPT}}"'),('l','claude',_cld),('lp','claude-p',f'{_cld} "{{CLAUDE_PROMPT}}"'),('o','claude',_cld),('ai','aider','aider --model ollama_chat/qwen2.5-coder')]:
                     conn.execute("INSERT INTO sessions VALUES (?, ?, ?)", (k, n, c))
             conn.execute("INSERT OR IGNORE INTO sessions VALUES ('o', 'claude', 'claude --dangerously-skip-permissions')")
+            conn.execute("INSERT OR IGNORE INTO sessions VALUES ('ai', 'aider', 'aider --model ollama_chat/qwen2.5-coder')")
 
 def load_config():
     with WALManager(DB_PATH) as conn: return dict(conn.execute("SELECT key, value FROM config").fetchall())
@@ -834,6 +835,7 @@ def cmd_deps():
     for cmd, pkg in [('codex','@openai/codex'), ('claude','@anthropic-ai/claude-code'), ('gemini','@google/gemini-cli')]:
         shutil.which(cmd) or _run(f'{_sudo}npm i -g {pkg}')
         print(f"{'✓' if shutil.which(cmd) else '✗'} {cmd}")
+    shutil.which('aider') or _run(f'{sys.executable} -m pip install --user aider-chat'); print(f"{'✓' if shutil.which('aider') else '✗'} aider")
     print("\n✅ Done!")
 
 def cmd_prompt():
