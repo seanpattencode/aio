@@ -861,16 +861,17 @@ def cmd_note():
     if raw and raw != 'ls' and not raw.isdigit():  # save note
         slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
         (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓"); __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start(); return
-    import threading, aioCloud; notes = _notes(); threading.Thread(target=aioCloud.pull_notes, daemon=True).start()
+    import aioCloud, concurrent.futures as cf; notes, last, ex = _notes(), [None], cf.ThreadPoolExecutor(2)
     if not notes: print("No notes. Create: aio note <content>"); return
     if raw == 'ls': [print(f"{i}. {n.read_text().split(chr(10))[0][:60]}") for i, n in enumerate(notes)]; return
     if raw and raw.isdigit() and int(raw) < len(notes): print(notes[int(raw)].read_text()); return
-    print(f"─ {len(notes)} notes ─ [a]rchive [enter]next [q]uit")
-    for i, n in enumerate(notes):
-        print(f"\n[{i+1}/{len(notes)}] {n.read_text()[:500]}"); ch = input("> ").strip().lower()
-        if ch == 'a': _arch(n); print("✓ archived")
+    print(f"─ {len(notes)} notes ─ [a]rchive [u]ndo [enter]next [q]uit"); futs = []
+    for n in notes:
+        print(f"\n{n.read_text()[:500]}"); ch = input("> ").strip().lower()
+        if ch == 'a': _arch(n); last[0] = n.name; futs.append(ex.submit(aioCloud.sync_data, wait=True)); print("✓")
+        elif ch == 'u' and last[0]: shutil.move(str(AD/last[0]), str(ND/last[0])); futs.append(ex.submit(aioCloud.sync_data, wait=True)); print(f"↩ {last[0][:20]}"); last[0] = None
         elif ch == 'q': break
-    __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start()
+    print("synced" if all(f.result()[1] for f in futs) else "⚠ sync failed" if futs else "")
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
