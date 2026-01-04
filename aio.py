@@ -683,7 +683,7 @@ def cmd_push():
     cwd, skip = os.getcwd(), '--yes' in sys.argv or '-y' in sys.argv
     if _git(cwd, 'rev-parse', '--git-dir').returncode != 0:
         _git(cwd, 'init', '-b', 'main'); Path(os.path.join(cwd, '.gitignore')).touch(); _git(cwd, 'add', '-A'); _git(cwd, 'commit', '-m', 'Initial commit'); print("✓ Initialized")
-        u = sys.argv[2] if len(sys.argv) > 2 and '://' in sys.argv[2] else ('' if skip else (input("y/p[rivate]/URL/skip: ") if shutil.which('gh') else input("URL/skip: ")).strip())
+        u = sys.argv[2] if len(sys.argv) > 2 and '://' in sys.argv[2] else ('' if skip else (input(f"Create '{os.path.basename(cwd)}' on GitHub? y=public p=private URL: ") if shutil.which('gh') else input("Remote URL: ")).strip())
         if u in 'y p yes private'.split() and sp.run(['gh', 'repo', 'create', os.path.basename(cwd), '--private' if 'p' in u else '--public', '--source', '.', '--push'], timeout=60).returncode == 0: print("✓ Pushed"); return
         if u and '://' in u: _git(cwd, 'remote', 'add', 'origin', u)
     ensure_git_config(); r = _git(cwd, 'rev-parse', '--git-dir'); is_wt = '.git/worktrees/' in r.stdout.strip() or cwd.startswith(WORKTREES_DIR)
