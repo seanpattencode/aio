@@ -860,7 +860,8 @@ def cmd_note():
     def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name))
     if raw and raw != 'ls' and not raw.isdigit():  # save note
         slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
-        (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓"); __import__('threading').Thread(target=__import__('aioCloud').sync_data,daemon=True).start(); return
+        (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); print("✓")
+        sp.Popen([sys.executable, '-c', f'import aioCloud; aioCloud.sync_data(wait=True)'], cwd=SCRIPT_DIR, stdout=sp.DEVNULL, stderr=sp.DEVNULL, start_new_session=True); return
     import aioCloud, concurrent.futures as cf; ex = cf.ThreadPoolExecutor(2); ex.submit(aioCloud.pull_notes)
     notes, last = _notes(), [None]
     if not notes: print("No notes. Create: aio note <content>"); return
