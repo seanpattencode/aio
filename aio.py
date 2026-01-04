@@ -176,10 +176,10 @@ def init_database():
             if conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0:
                 _cdx = 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox'
                 _cld = 'claude --dangerously-skip-permissions'
-                for k, n, c in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','codex',_cdx),('cp','codex-p',f'{_cdx} "{{CODEX_PROMPT}}"'),('l','claude',_cld),('lp','claude-p',f'{_cld} "{{CLAUDE_PROMPT}}"'),('o','claude',_cld),('ai','aider','OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')]:
+                for k, n, c in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','codex',_cdx),('cp','codex-p',f'{_cdx} "{{CODEX_PROMPT}}"'),('l','claude',_cld),('lp','claude-p',f'{_cld} "{{CLAUDE_PROMPT}}"'),('o','claude',_cld),('a','aider','OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')]:
                     conn.execute("INSERT INTO sessions VALUES (?, ?, ?)", (k, n, c))
             conn.execute("INSERT OR IGNORE INTO sessions VALUES ('o', 'claude', 'claude --dangerously-skip-permissions')")
-            conn.execute("INSERT OR IGNORE INTO sessions VALUES ('ai', 'aider', 'OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')")
+            conn.execute("INSERT OR IGNORE INTO sessions VALUES ('a', 'aider', 'OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')")
 
 def load_config():
     with WALManager(DB_PATH) as conn: return dict(conn.execute("SELECT key, value FROM config").fetchall())
@@ -320,7 +320,7 @@ def ensure_tmux_options():
     sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
 
 def create_tmux_session(sn, wd, cmd, env=None, capture_output=True):
-    is_ai = cmd and any(a in cmd for a in ['codex', 'claude', 'gemini'])
+    is_ai = cmd and any(a in cmd for a in ['codex', 'claude', 'gemini', 'aider'])
     if is_ai: cmd = f'while :; do {cmd}; e=$?; [ $e -eq 0 ] && break; echo -e "\\n⚠️  Crashed (exit $e). [R]estart / [Q]uit: "; read -n1 k; [[ $k =~ [Rr] ]] || break; done'
     r = sm.new_session(sn, wd, cmd or '', env); ensure_tmux_options()
     if is_ai: sp.run(['tmux', 'split-window', '-v', '-t', sn, '-c', wd, 'sh -c "ls;exec $SHELL"'], capture_output=True); sp.run(['tmux', 'select-pane', '-t', sn, '-U'], capture_output=True)
@@ -553,15 +553,15 @@ if arg == '_ghost':
 # Command dispatch table
 HELP_SHORT = f"""aio - AI agent session manager
 QUICK START:
-  aio c               Start agent (c=codex l/o=claude g=gemini)
+  aio c               Start agent (c=codex l/o=claude g=gemini a=aider)
   aio dash            Dashboard with jobs monitor
   aio fix             AI finds/fixes issues
   aio bug "task"      Fix a bug
   aio feat "task"     Add a feature
 ALL (multi-agent):
-  aio a c:3               Launch 3 codex in parallel worktrees
-  aio a c:3 "task"        Launch with task
-  aio a c:2 l:1           Mixed: 2 codex + 1 claude
+  aio all c:3             Launch 3 codex in parallel worktrees
+  aio all c:3 "task"      Launch with task
+  aio all c:2 l:1         Mixed: 2 codex + 1 claude
 GIT:
   aio push src/ msg   Push folder with message
   aio pull            Sync with server
@@ -573,7 +573,7 @@ MANAGEMENT:
 Run 'aio help' for all commands"""
 
 HELP_FULL = f"""aio - AI agent session manager
-SESSIONS: c=codex l/o=claude g=gemini h=htop t=top
+SESSIONS: c=codex l/o=claude g=gemini a=aider h=htop t=top
   aio <key> [#|dir]      Start session (# = project index)
   aio <key>-- [#]        New worktree  |  aio +<key>  New timestamped
   aio cp/lp/gp           Insert prompt (edit first)
@@ -1046,7 +1046,7 @@ COMMANDS = {
     'cleanup': cmd_cleanup, 'cle': cmd_cleanup, 'config': cmd_config, 'con': cmd_config, 'ls': cmd_ls, 'diff': cmd_diff, 'dif': cmd_diff, 'send': cmd_send, 'sen': cmd_send,
     'watch': cmd_watch, 'wat': cmd_watch, 'push': cmd_push, 'pus': cmd_push, 'pull': cmd_pull, 'pul': cmd_pull, 'revert': cmd_revert, 'rev': cmd_revert, 'setup': cmd_setup, 'set': cmd_settings,
     'install': cmd_install, 'ins': cmd_install, 'deps': cmd_deps, 'dep': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'not': cmd_note, 'settings': cmd_settings,
-    'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'a': cmd_multi, 'all': cmd_multi,
+    'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'all': cmd_multi,
     'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"📂 {os.getcwd()}"), sp.run(['ls'])),
     'fix': cmd_fix_bug_feat_auto_del, 'bug': cmd_fix_bug_feat_auto_del, 'feat': cmd_fix_bug_feat_auto_del, 'fea': cmd_fix_bug_feat_auto_del,
     'auto': cmd_fix_bug_feat_auto_del, 'aut': cmd_fix_bug_feat_auto_del, 'del': cmd_fix_bug_feat_auto_del,
