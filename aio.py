@@ -701,16 +701,9 @@ def cmd_push():
             main = _git_main(proj); _git(proj, 'fetch', 'origin', env=env)
             ahead = _git(proj, 'rev-list', '--count', f'origin/{main}..{main}').stdout.strip()
             if ahead and int(ahead) > 0:
-                wt_files = set(_git(cwd, 'diff', '--name-only', f'origin/{main}...HEAD').stdout.strip().split('\n'))
-                ahead_files = set(_git(proj, 'diff', '--name-only', f'origin/{main}..{main}').stdout.strip().split('\n'))
-                overlap = wt_files & ahead_files - {''}
-                if not overlap:
-                    print(f"ℹ️  {main} is {ahead} commit(s) ahead (different files)")
-                    skip or input("Merge? (y/n): ").lower() in ['y', 'yes'] or _die("✗ Cancelled")
-                else:
-                    commits = _git(proj, 'log', f'origin/{main}..{main}', '--oneline').stdout.strip()
-                    print(f"⚠️  {main} is {ahead} commit(s) ahead, overlapping files: {', '.join(overlap)}\n{commits}")
-                    skip or input("Continue? (y/n): ").lower() in ['y', 'yes'] or _die("✗ Cancelled")
+                ol = set(_git(cwd, 'diff', '--name-only', f'origin/{main}...HEAD').stdout.split()) & set(_git(proj, 'diff', '--name-only', f'origin/{main}..{main}').stdout.split()) - {''}
+                msg = f"ℹ️  {main} {ahead} ahead (different files)\nMerge?" if not ol else f"⚠️  {main} {ahead} ahead, overlap: {', '.join(ol)}\n{_git(proj, 'log', f'origin/{main}..{main}', '--oneline').stdout.strip()}\nContinue?"
+                skip or input(f"{msg} (y/n): ").lower() in ['y', 'yes'] or _die("✗ Cancelled")
             _git(proj, 'checkout', main).returncode == 0 or _die(f"✗ Checkout {main} failed")
             _git(proj, 'merge', wt_branch, '--no-edit', '-X', 'theirs').returncode == 0 or _die("✗ Merge failed")
             print(f"✓ Merged {wt_branch} → {main}")
