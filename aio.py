@@ -914,41 +914,29 @@ def cmd_multi():
         ns = ' '.join(sys.argv[3:]) if len(sys.argv) > 3 else ''
         if not ns: print(f"Current: {load_config().get('multi_default', 'c:3')}"); sys.exit(0)
         if not parse_agent_specs_and_prompt([''] + ns.split(), 1)[0]: _die(f"Invalid: {ns}")
-        with WALManager(DB_PATH) as c: c.execute("INSERT OR REPLACE INTO config VALUES ('multi_default', ?)", (ns,)); c.commit()
-        print(f"✓ Default: {ns}"); sys.exit(0)
+        with WALManager(DB_PATH) as c: c.execute("INSERT OR REPLACE INTO config VALUES ('multi_default', ?)", (ns,)); c.commit(); print(f"✓ Default: {ns}"); sys.exit(0)
     project_path, start = (PROJECTS[int(work_dir_arg)], 3) if work_dir_arg and work_dir_arg.isdigit() and int(work_dir_arg) < len(PROJECTS) else (os.getcwd(), 2)
     agent_specs, _, _ = parse_agent_specs_and_prompt(sys.argv, start)
-    if not agent_specs:
-        ds = load_config().get('multi_default', 'l:3'); agent_specs, _, _ = parse_agent_specs_and_prompt([''] + ds.split(), 1)
-        print(f"Using: {ds}")
+    if not agent_specs: ds = load_config().get('multi_default', 'l:3'); agent_specs, _, _ = parse_agent_specs_and_prompt([''] + ds.split(), 1); print(f"Using: {ds}")
     total, repo_name, run_id = sum(c for _, c in agent_specs), os.path.basename(project_path), datetime.now().strftime('%Y%m%d-%H%M%S')
-    session_name, run_dir = f"{repo_name}-{run_id}", os.path.join(WORKTREES_DIR, repo_name, run_id)
-    candidates_dir = os.path.join(run_dir, "candidates"); os.makedirs(candidates_dir, exist_ok=True)
+    sn, run_dir = f"{repo_name}-{run_id}", os.path.join(WORKTREES_DIR, repo_name, run_id)
+    cd = os.path.join(run_dir, "candidates"); os.makedirs(cd, exist_ok=True)
     with open(os.path.join(run_dir, "run.json"), "w") as f: json.dump({"agents": [f"{k}:{c}" for k, c in agent_specs], "created": run_id, "repo": project_path}, f)
     with WALManager(DB_PATH) as c: c.execute("INSERT OR REPLACE INTO multi_runs VALUES (?, ?, '', ?, 'running', CURRENT_TIMESTAMP, NULL)", (run_id, project_path, json.dumps([f"{k}:{c}" for k, c in agent_specs]))); c.commit()
-    print(f"{total} agents in {repo_name}/{run_id}..."); env, launched, agent_num, first = get_noninteractive_git_env(), [], {}, True
+    print(f"{total} agents in {repo_name}/{run_id}..."); env, launched, an = get_noninteractive_git_env(), [], {}
     for ak, cnt in agent_specs:
         bn, bc = sessions.get(ak, (None, None))
         if not bn: continue
         for i in range(cnt):
-            agent_num[bn] = agent_num.get(bn, 0) + 1; wn, an = f"{bn}-{agent_num[bn]}", f"{ak}{i}"
-            wt = os.path.join(candidates_dir, an); sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f'wt-{repo_name}-{run_id}-{an}', wt], capture_output=True, env=env)
-            if not os.path.exists(wt): continue
-            sp.run(['tmux', 'new-session', '-d', '-s', session_name, '-n', wn, '-c', wt, bc] if first else ['tmux', 'new-window', '-t', session_name, '-n', wn, '-c', wt, bc], env=env); first = False
-            sp.run(['tmux', 'split-window', '-h', '-t', f'{session_name}:{wn}', '-c', wt], env=env)
-            launched.append((wn, bn, wt)); print(f"✓ {wn}")
+            an[bn] = an.get(bn, 0) + 1; aid = f"{ak}{i}"; wt = os.path.join(cd, aid)
+            sp.run(['git', '-C', project_path, 'worktree', 'add', '-b', f'wt-{repo_name}-{run_id}-{aid}', wt], capture_output=True, env=env)
+            if os.path.exists(wt): launched.append((wt, bc)); print(f"✓ {bn}-{an[bn]}")
     if not launched: print("x No agents created"); sys.exit(1)
-    wins = ' '.join(w for w, _, _ in launched)
-    ctrl = f'''echo -e "\\n  ctrl AIO ALL - {session_name}\\n\\n  Agents: {wins}\\n\\n  Type below to send to ALL agents (Enter to send)\\n  Ctrl+C: exit broadcast | Ctrl+N: switch window\\n"
-s="{session_name}"; wins=({wins}); while read -ep "all> " cmd; do [ -n "$cmd" ] && for w in "${{wins[@]}}"; do tmux send-keys -t "$s:$w" "$cmd" Enter; done; done'''
-    sp.run(['tmux', 'new-window', '-t', session_name, '-n', 'ctrl', '-c', candidates_dir], env=env)
-    sp.run(['tmux', 'send-keys', '-t', f'{session_name}:ctrl', ctrl, 'Enter'])
-    sp.run(['tmux', 'split-window', '-v', '-t', f'{session_name}:ctrl', '-c', candidates_dir], env=env)
-    sp.run(['tmux', 'select-window', '-t', f'{session_name}:ctrl'], capture_output=True)
-    ensure_tmux_options()
-    print(f"\n+ Session '{session_name}': {len(launched)} agents + ctrl control\n   Type in ctrl window to broadcast to all agents")
-    if "TMUX" in os.environ: print(f"   tmux switch-client -t {session_name}")
-    else: os.execvp('tmux', ['tmux', 'attach', '-t', session_name])
+    sp.run(['tmux', 'new-session', '-d', '-s', sn, '-c', launched[0][0], launched[0][1]], env=env)
+    for wt, bc in launched[1:]: sp.run(['tmux', 'split-window', '-h', '-t', sn, '-c', wt, bc], env=env)
+    sp.run(['tmux', 'split-window', '-h', '-t', sn, '-c', cd], env=env); sp.run(['tmux', 'send-keys', '-t', sn, f'n={len(launched)}; while read -ep "> " c; do [ -n "$c" ] && for i in $(seq 0 $((n-1))); do tmux send-keys -t ":.$i" "$c" Enter; done; done', 'Enter'])
+    sp.run(['tmux', 'select-layout', '-t', sn, 'even-horizontal'], env=env); ensure_tmux_options()
+    print(f"\n+ '{sn}': {len(launched)}+broadcast"); print(f"   tmux switch-client -t {sn}") if "TMUX" in os.environ else os.execvp('tmux', ['tmux', 'attach', '-t', sn])
 
 def cmd_tree():
     proj = PROJECTS[int(work_dir_arg)] if work_dir_arg and work_dir_arg.isdigit() and int(work_dir_arg) < len(PROJECTS) else os.getcwd()
