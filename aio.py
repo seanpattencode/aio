@@ -953,7 +953,7 @@ def cmd_e():
 def cmd_x(): sp.run(['tmux', 'kill-server']); print("✓ All sessions killed")
 def cmd_p(): list_all_items(show_help=False)
 def cmd_copy():
-    L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); c='\n'.join(L[p+1:u]).strip() if P else ''; t=c.replace('\n',' '); sp.run(_get_clipboard_cmd(),shell=True,input=c,text=True); print(f"✓ {t[:23]+'...'+t[-24:] if len(t)>50 else t}")
+    L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); full='\n'.join(L[p+1:u]).strip() if P else ''; sp.run(_get_clipboard_cmd(),shell=True,input=full,text=True); s=full.replace('\n',' '); print(f"✓ {s[:23]+'...'+s[-24:] if len(s)>50 else s}")
 
 def cmd_worktree_plus():
     key = arg[:-2]
