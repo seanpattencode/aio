@@ -837,10 +837,10 @@ def cmd_gdrive():
     else: aioCloud.status()
 
 def cmd_note():
-    ND = Path(DATA_DIR) / 'notebook'; ND.mkdir(parents=True, exist_ok=True); AD = ND / 'archive'
+    ND = Path(DATA_DIR) / 'notebook'; AD = ND / 'archive'
     def _sync(m='update'): _git(ND, 'add', '-A'); _git(ND, 'commit', '-m', m); _git(ND, 'push')
-    if _git(ND, 'rev-parse', '--git-dir').returncode != 0: _git(ND, 'init', '-b', 'main'); sp.run(['gh', 'repo', 'create', 'notebook', '--private', '--source', str(ND), '--push'], timeout=60)
-    _git(ND, 'pull', '--rebase')
+    if _git(ND, 'rev-parse', '--git-dir').returncode != 0: sp.run(['gh', 'repo', 'clone', 'notebook', str(ND)], capture_output=True).returncode == 0 or _confirm('Create GitHub notebook?') and (ND.mkdir(parents=True, exist_ok=True), _git(ND, 'init', '-b', 'main'), Path(ND/'.gitkeep').touch(), _git(ND, 'add', '.'), _git(ND, 'commit', '-m', 'init'), sp.run(['gh', 'repo', 'create', 'notebook', '--private', '--source', str(ND), '--push'], timeout=60)) or ND.mkdir(parents=True, exist_ok=True)
+    _git(ND, 'pull', '--rebase'); _git(ND, 'status', '--porcelain').stdout.strip() and _sync('migrate'); print(f"📓 {ND} [{'github' if _git(ND, 'remote', '-v').stdout.strip() else 'local'}]")
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.name, reverse=True)
     def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name)); _sync(f'archive {n.name}')
