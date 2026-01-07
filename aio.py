@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # aio - AI agent session manager (compact version)
-import os, sys, subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re
+import sys, os
+if len(sys.argv) > 2 and sys.argv[1] == 'note' and sys.argv[2] not in ('ls',) and not sys.argv[2].isdigit() and os.path.exists(ND := os.path.expanduser("~/.local/share/aios/notebook")):
+    import subprocess as sp, re; from datetime import datetime; raw = ' '.join(sys.argv[2:]); slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; open(f"{ND}/{slug}-{datetime.now().strftime('%m%d%H%M')}.md", 'w').write(raw); gc = f"{ND}/.git/config"; gh = os.path.exists(gc) and 'remote' in open(gc).read(); sp.Popen(f'git -C "{ND}" add -A && git -C "{ND}" commit -m "add {slug}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL); print("✓ github" if gh else "✓ local"); sys.exit(0)
+import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re
 from datetime import datetime
 from pathlib import Path
 
@@ -498,7 +501,6 @@ arg = sys.argv[1] if len(sys.argv) > 1 else None
 _STAGE2_MAX_MS = 50
 _stage2_ms = int((time.time() - _START) * 1000)
 if _stage2_ms > _STAGE2_MAX_MS: print(f"! PERFORMANCE ERROR: Stage 2 took {_stage2_ms}ms (max {_STAGE2_MAX_MS}ms)"); sys.exit(1)
-
 _init_stage3(skip_deps_check=(arg in ('install', 'deps')))
 show_update_warning()
 work_dir_arg = sys.argv[2] if len(sys.argv) > 2 else None
@@ -837,16 +839,14 @@ def cmd_gdrive():
     else: aioCloud.status()
 
 def cmd_note():
-    ND = Path(DATA_DIR) / 'notebook'; AD = ND / 'archive'
-    def _sync(m='update'): _git(ND, 'add', '-A'); _git(ND, 'commit', '-m', m); _git(ND, 'push')
+    ND = Path(DATA_DIR) / 'notebook'; AD = ND / 'archive'; raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
+    def _sync(m='update'): sp.Popen(f'git -C "{ND}" rev-parse --git-dir >/dev/null 2>&1 && git -C "{ND}" add -A && git -C "{ND}" commit -m "{m}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     if _git(ND, 'rev-parse', '--git-dir').returncode != 0: sp.run(['gh', 'repo', 'clone', 'notebook', str(ND)], capture_output=True).returncode == 0 or _confirm('Create GitHub notebook?') and (ND.mkdir(parents=True, exist_ok=True), _git(ND, 'init', '-b', 'main'), Path(ND/'.gitkeep').touch(), _git(ND, 'add', '.'), _git(ND, 'commit', '-m', 'init'), sp.run(['gh', 'repo', 'create', 'notebook', '--private', '--source', str(ND), '--push'], timeout=60)) or ND.mkdir(parents=True, exist_ok=True)
-    _git(ND, 'pull', '--rebase'); _git(ND, 'status', '--porcelain').stdout.strip() and _sync('migrate'); print(f"📓 {ND} [{'github' if _git(ND, 'remote', '-v').stdout.strip() else 'local'}]")
-    raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
+    gh = bool(_git(ND, 'remote', '-v').stdout.strip())
+    if raw and raw != 'ls' and not raw.isdigit(): slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); _sync(f'add {slug}'); print("✓ github" if gh else "✓ local"); return
+    _git(ND, 'pull', '--rebase'); _git(ND, 'status', '--porcelain').stdout.strip() and _sync('migrate'); print(f"📓 {ND} [{'github' if gh else 'local'}]")
     def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.name, reverse=True)
     def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name)); _sync(f'archive {n.name}')
-    if raw and raw != 'ls' and not raw.isdigit():
-        slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'
-        (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); _sync(f'add {slug}'); print("+"); return
     notes = _notes()
     if not notes: print("No notes. Create: aio note <content>"); return
     if raw == 'ls': [print(f"{i}. {n.read_text().split(chr(10))[0][:60]}") for i, n in enumerate(notes)]; return
@@ -854,7 +854,7 @@ def cmd_note():
     print(f"─ {len(notes)} notes ─ [a]rchive [enter]next [q]uit")
     for n in notes:
         print(f"\n{n.read_text()[:500]}"); ch = input("> ").strip().lower()
-        if ch == 'a': _arch(n); print("+")
+        if ch == 'a': _arch(n); print("✓ github" if gh else "✓ local")
         elif ch == 'q': break
 
 def cmd_add():
