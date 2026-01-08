@@ -2,7 +2,7 @@
 # aio - AI agent session manager (compact version)
 import sys, os
 if len(sys.argv) > 2 and sys.argv[1] == 'note' and sys.argv[2] not in ('ls',) and not sys.argv[2].isdigit() and os.path.exists(ND := os.path.expanduser("~/.local/share/aios/notebook")):
-    import subprocess as sp, re; from datetime import datetime; raw = ' '.join(sys.argv[2:]); slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; open(f"{ND}/{slug}-{datetime.now().strftime('%m%d%H%M')}.md", 'w').write(raw); gc = f"{ND}/.git/config"; gh = os.path.exists(gc) and 'remote' in open(gc).read(); sp.Popen(f'git -C "{ND}" add -A && git -C "{ND}" commit -m "add {slug}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL); print("✓ github" if gh else "✓ local"); sys.exit(0)
+    import subprocess as sp, re; from datetime import datetime; raw = ' '.join(sys.argv[2:]); slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; gc = f"{ND}/.git/config"; gh = os.path.exists(gc) and 'remote' in open(gc).read(); gh and sp.run(f'git -C "{ND}" pull --rebase -q', shell=True, capture_output=True, timeout=5); open(f"{ND}/{slug}-{datetime.now().strftime('%m%d%H%M')}.md", 'w').write(raw); sp.Popen(f'git -C "{ND}" add -A && git -C "{ND}" commit -m "add {slug}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL); print("✓ github" if gh else "✓ local"); sys.exit(0)
 import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re
 from datetime import datetime
 from pathlib import Path
@@ -843,7 +843,7 @@ def cmd_note():
     def _sync(m='update'): sp.Popen(f'git -C "{ND}" rev-parse --git-dir >/dev/null 2>&1 && git -C "{ND}" add -A && git -C "{ND}" commit -m "{m}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     if _git(ND, 'rev-parse', '--git-dir').returncode != 0: sp.run(['gh', 'repo', 'clone', 'notebook', str(ND)], capture_output=True).returncode == 0 or _confirm('Create GitHub notebook?') and (ND.mkdir(parents=True, exist_ok=True), _git(ND, 'init', '-b', 'main'), Path(ND/'.gitkeep').touch(), _git(ND, 'add', '.'), _git(ND, 'commit', '-m', 'init'), sp.run(['gh', 'repo', 'create', 'notebook', '--private', '--source', str(ND), '--push'], timeout=60)) or ND.mkdir(parents=True, exist_ok=True)
     gh = bool(_git(ND, 'remote', '-v').stdout.strip())
-    if raw and raw != 'ls' and not raw.isdigit(): slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); _sync(f'add {slug}'); print("✓ github" if gh else "✓ local"); return
+    if raw and raw != 'ls' and not raw.isdigit(): gh and _git(ND, 'pull', '--rebase', '-q'); slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); _sync(f'add {slug}'); print("✓ github" if gh else "✓ local"); return
     _git(ND, 'pull', '--rebase'); _git(ND, 'status', '--porcelain').stdout.strip() and _sync('migrate'); print(f"📓 {ND} [{'github' if gh else 'local'}]")
     def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.name, reverse=True)
     def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name)); _sync(f'archive {n.name}')
