@@ -855,7 +855,7 @@ def cmd_note():
     for n in notes:
         print(f"\n{n.read_text()[:500]}"); ch = input("> ").strip().lower()
         if ch == 'a': _arch(n); print("✓ github" if gh else "✓ local")
-        elif ch == 'm': mc=input(f"  {'[c]loud sync' if not gh else '[synced]'} [b]ack: ").lower(); mc=='c' and not gh and (_git(ND,'add','.'), _git(ND,'commit','-m','init'), print("✓ cloud" if sp.run(['gh','repo','create','notebook','--private','--source',str(ND),'--push'],capture_output=True,timeout=60).returncode==0 else "x failed"))
+        elif ch == 'm': mc=input(f"  {'[c]loud sync' if not gh else '[synced]'} [b]ack: ").lower(); mc=='c' and not gh and _confirm("Sync to GitHub?") and print("✓ cloud" if sp.run(['gh','repo','create','notebook','--private','--source',str(ND),'--push'],capture_output=True,timeout=60).returncode==0 or (_git(ND,'remote','add','origin',f"https://github.com/{sp.run(['gh','api','user','-q','.login'],capture_output=True,text=True).stdout.strip()}/notebook.git"), _git(ND,'fetch','origin'), _git(ND,'pull','--rebase','--allow-unrelated-histories','origin','main'), _git(ND,'push','-u','origin','main'))[-1].returncode==0 else "x failed")
         elif ch == 'q': break
 
 def cmd_add():
