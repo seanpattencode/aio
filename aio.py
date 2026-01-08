@@ -851,10 +851,11 @@ def cmd_note():
     if not notes: print("No notes. Create: aio note <content>"); return
     if raw == 'ls': [print(f"{i}. {n.read_text().split(chr(10))[0][:60]}") for i, n in enumerate(notes)]; return
     if raw and raw.isdigit() and int(raw) < len(notes): print(notes[int(raw)].read_text()); return
-    print(f"─ {len(notes)} notes ─ [a]rchive [enter]next [q]uit")
+    print(f"─ {len(notes)} notes ─ [a]rchive [m]ore [enter]next [q]uit")
     for n in notes:
         print(f"\n{n.read_text()[:500]}"); ch = input("> ").strip().lower()
         if ch == 'a': _arch(n); print("✓ github" if gh else "✓ local")
+        elif ch == 'm': mc=input(f"  {'[c]loud sync' if not gh else '[synced]'} [b]ack: ").lower(); mc=='c' and not gh and (_git(ND,'add','.'), _git(ND,'commit','-m','init'), print("✓ cloud" if sp.run(['gh','repo','create','notebook','--private','--source',str(ND),'--push'],capture_output=True,timeout=60).returncode==0 else "x failed"))
         elif ch == 'q': break
 
 def cmd_add():
