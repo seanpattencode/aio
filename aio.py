@@ -90,6 +90,9 @@ def _git_push(p, b, env, force=False):
     err = r.stderr.strip() or r.stdout.strip()
     if 'non-fast-forward' in err and input("! Force push? (y/n): ").lower() in ['y', 'yes']:
         _git(p, 'fetch', 'origin', env=env); return _git_push(p, b, env, True)
+    if 'Username' in err and shutil.which('gh'):
+        if sp.run(['gh', 'auth', 'setup-git'], capture_output=True).returncode == 0: print("✓ Configured gh auth"); return _git_push(p, b, env, force)
+        print("x Run: gh auth login"); return False
     print(f"x Push failed: {err}"); return False
 
 def _env():
