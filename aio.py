@@ -507,7 +507,7 @@ if arg and arg.isdigit() and not wda:
     else: print(f"x Invalid index: {idx}"); sys.exit(1)
 
 # Worktree commands
-if arg and arg.startswith('w') and arg != 'watch' and not os.path.isfile(arg):
+if arg and arg.startswith('w') and arg not in ('watch', 'web') and not os.path.isfile(arg):
     if arg == 'w': wt_list(); sys.exit(0)
     wp = wt_find(arg[1:].rstrip('-'))
     if arg.endswith('-'): wt_rm(wp, confirm='--yes' not in sys.argv and '-y' not in sys.argv) if wp else print(f"x Not found"); sys.exit(0)
@@ -905,6 +905,7 @@ def cmd_e():
 
 def cmd_x(): sp.run(['tmux', 'kill-server']); print("✓ All sessions killed")
 def cmd_p(): list_all(help=False)
+def cmd_web(): __import__('webbrowser').open('https://google.com/search?q='+'+'.join(sys.argv[2:]) if len(sys.argv)>2 else 'https://google.com')
 def cmd_copy():
     L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); full='\n'.join(L[p+1:u]).strip() if P else ''; sp.run(_clip(),shell=True,input=full,text=True); s=full.replace('\n',' '); print(f"✓ {s[:23]+'...'+s[-24:] if len(s)>50 else s}")
 
@@ -966,7 +967,7 @@ CMDS = {
     'watch': cmd_watch, 'wat': cmd_watch, 'push': cmd_push, 'pus': cmd_push, 'pull': cmd_pull, 'pul': cmd_pull, 'revert': cmd_revert, 'rev': cmd_revert, 'set': cmd_set,
     'install': cmd_install, 'ins': cmd_install, 'deps': cmd_deps, 'dep': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'n': cmd_note, 'settings': cmd_set,
     'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'all': cmd_multi,
-    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])),
+    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web,
     'fix': cmd_workflow, 'bug': cmd_workflow, 'feat': cmd_workflow, 'fea': cmd_workflow, 'auto': cmd_workflow, 'aut': cmd_workflow, 'del': cmd_workflow,
 }
 
