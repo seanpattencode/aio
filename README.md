@@ -18,10 +18,10 @@ https://learn.microsoft.com/en-us/windows/wsl/install
 
 then
 
-`git clone https://github.com/seanpattencode/aio && cd aio && python3 aio.py install`
+`git clone https://github.com/seanpattencode/aio && cd aio && python3 aio.py install && source ~/.bashrc`
 
 ## Run
-Type aio
+Type `aio` (after sourcing bashrc or opening a new terminal)
 
 ## Warnings:
 the aio command may not work properly if your directory has a . in the front of it.

@@ -123,16 +123,13 @@ def show_update():
 def ensure_git_cfg():
     n, e = sp.run(['git', 'config', 'user.name'], capture_output=True, text=True), sp.run(['git', 'config', 'user.email'], capture_output=True, text=True)
     if n.returncode == 0 and e.returncode == 0 and n.stdout.strip() and e.stdout.strip(): return True
-    if not shutil.which('gh'): return False
-    try:
-        r = sp.run(['gh', 'api', 'user'], capture_output=True, text=True)
-        if r.returncode != 0: return False
-        u = json.loads(r.stdout); gn, gl = u.get('name') or u.get('login', ''), u.get('login', '')
-        ge = u.get('email') or f"{gl}@users.noreply.github.com"
-        gn and not n.stdout.strip() and sp.run(['git', 'config', '--global', 'user.name', gn], capture_output=True)
-        ge and not e.stdout.strip() and sp.run(['git', 'config', '--global', 'user.email', ge], capture_output=True)
-        return True
-    except: return False
+    gn, ge = '', ''
+    if shutil.which('gh'):
+        try: r = sp.run(['gh', 'api', 'user'], capture_output=True, text=True); u = json.loads(r.stdout) if r.returncode == 0 else {}; gn, gl = u.get('name') or u.get('login', ''), u.get('login', ''); ge = u.get('email') or (f"{gl}@users.noreply.github.com" if gl else '')
+        except: pass
+    if not n.stdout.strip(): gn = gn or input("Git name: ").strip(); gn and sp.run(['git', 'config', '--global', 'user.name', gn], capture_output=True)
+    if not e.stdout.strip(): ge = ge or input("Git email: ").strip(); ge and sp.run(['git', 'config', '--global', 'user.email', ge], capture_output=True)
+    return bool(gn or n.stdout.strip()) and bool(ge or e.stdout.strip())
 
 # Database
 def db(): c = sqlite3.connect(DB_PATH); c.execute("PRAGMA journal_mode=WAL;"); return c
@@ -740,7 +737,7 @@ def cmd_install():
 aio() { local d="${1/#~/$HOME}"; [[ -d "$d" ]] && { cd "$d"; ls; return; }; command python3 ~/.local/bin/aio "$@"; }''' if 'fish' not in shell else '''function aio; command python3 ~/.local/bin/aio $argv; end'''
     if 'aio' not in (Path(rc).read_text() if os.path.exists(rc) else ''):
         try:
-            if input(f"Add to {rc}? [Y/n]: ").strip().lower() != 'n': Path(rc).open('a').write(func + '\n'); print(f"✓ Added")
+            if input(f"Add to {rc}? [Y/n]: ").strip().lower() != 'n': Path(rc).open('a').write(func + '\n'); print(f"✓ Added\n\n>>> Run: source {rc}\n    (or open a new terminal)\n")
         except: pass
     def _ok(p):
         try: return bool(shutil.which(p)) if p in 'tmux wl-copy npm codex claude gemini aider'.split() else (__import__(p), True)[1]
