@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # aio - AI agent session manager (compact version)
 import sys, os
-if len(sys.argv) > 2 and sys.argv[1] == 'note' and sys.argv[2] not in ('ls',) and not sys.argv[2].isdigit() and os.path.exists(ND := os.path.expanduser("~/.local/share/aios/notebook")):
-    import subprocess as sp, re; from datetime import datetime; raw = ' '.join(sys.argv[2:]); slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; gc = f"{ND}/.git/config"; gh = os.path.exists(gc) and 'remote' in open(gc).read(); gh and sp.run(f'git -C "{ND}" pull --rebase -q', shell=True, capture_output=True, timeout=5); open(f"{ND}/{slug}-{datetime.now().strftime('%m%d%H%M')}.md", 'w').write(raw); sp.Popen(f'git -C "{ND}" add -A && git -C "{ND}" commit -m "add {slug}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL); print("✓ github" if gh else "✓ local"); sys.exit(0)
+if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
+    import sqlite3, subprocess as sp; D = os.path.expanduser("~/.local/share/aios/notebook"); os.makedirs(D, exist_ok=True); db = sqlite3.connect(f"{D}/notes.db"); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP)"); db.execute("INSERT INTO n(t) VALUES(?)", (' '.join(sys.argv[2:]),)); db.commit(); sp.Popen(f'cd "{D}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL); print("✓"); sys.exit(0)
 import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re
 from datetime import datetime
 from pathlib import Path
@@ -792,25 +792,20 @@ def cmd_gdrive():
     elif wda == 'logout': aioCloud.logout()
     else: aioCloud.status()
 
-def cmd_note():
-    ND = Path(DATA_DIR) / 'notebook'; AD = ND / 'archive'; raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
-    def _sync(m='update'): sp.Popen(f'git -C "{ND}" rev-parse --git-dir >/dev/null 2>&1 && git -C "{ND}" add -A && git -C "{ND}" commit -m "{m}" && git -C "{ND}" push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    if _git(ND, 'rev-parse', '--git-dir').returncode != 0: sp.run(['gh', 'repo', 'clone', 'notebook', str(ND)], capture_output=True).returncode == 0 or _confirm('Create GitHub notebook?') and (ND.mkdir(parents=True, exist_ok=True), _git(ND, 'init', '-b', 'main'), Path(ND/'.gitkeep').touch(), _git(ND, 'add', '.'), _git(ND, 'commit', '-m', 'init'), sp.run(['gh', 'repo', 'create', 'notebook', '--private', '--source', str(ND), '--push'], timeout=60)) or ND.mkdir(parents=True, exist_ok=True)
-    gh = bool(_git(ND, 'remote', '-v').stdout.strip())
-    if raw and raw != 'ls' and not raw.isdigit(): gh and _git(ND, 'pull', '--rebase', '-q'); slug = re.sub(r'[^\w\-]', '', raw.split('\n')[0][:40].lower().replace(' ', '-'))[:30] or 'note'; (ND / f"{slug}-{datetime.now().strftime('%m%d%H%M')}.md").write_text(raw); _sync(f'add {slug}'); print("✓ github" if gh else "✓ local"); return
-    _git(ND, 'pull', '--rebase'); _git(ND, 'status', '--porcelain').stdout.strip() and _sync('migrate'); print(f"📓 {ND} [{'github' if gh else 'local'}]")
-    def _notes(): return sorted([n for n in ND.glob('*.md')], key=lambda p: p.name, reverse=True)
-    def _arch(n): AD.mkdir(exist_ok=True); shutil.move(str(n), str(AD / n.name)); _sync(f'archive {n.name}')
-    notes = _notes()
-    if not notes: print("No notes. Create: aio note <content>"); return
-    if raw == 'ls': [print(f"{i}. {n.read_text().split(chr(10))[0][:60]}") for i, n in enumerate(notes)]; return
-    if raw and raw.isdigit() and int(raw) < len(notes): print(notes[int(raw)].read_text()); return
-    print(f"─ {len(notes)} notes ─ [a]rchive [m]ore [enter]next [q]uit")
-    for n in notes:
-        print(f"\n{n.read_text()[:500]}"); ch = input("> ").strip().lower()
-        if ch == 'a': _arch(n); print("✓ github" if gh else "✓ local")
-        elif ch == 'm': mc=input(f"  {'[c]loud sync' if not gh else '[synced]'} [b]ack: ").lower(); mc=='c' and not gh and _confirm("Sync to GitHub?") and print("✓ cloud" if sp.run(['gh','repo','create','notebook','--private','--source',str(ND),'--push'],capture_output=True,timeout=60).returncode==0 or (_git(ND,'remote','add','origin',f"https://github.com/{sp.run(['gh','api','user','-q','.login'],capture_output=True,text=True).stdout.strip()}/notebook.git"), _git(ND,'fetch','origin'), _git(ND,'pull','--rebase','--allow-unrelated-histories','origin','main'), _git(ND,'push','-u','origin','main'))[-1].returncode==0 else "x failed")
-        elif ch == 'q': break
+def cmd_note():  # git=backup/versioning only, non-blocking
+    ND = os.path.join(DATA_DIR, "notebook"); os.makedirs(ND, exist_ok=True); DB = os.path.join(ND, "notes.db")
+    db = sqlite3.connect(DB); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,c DEFAULT CURRENT_TIMESTAMP)")
+    _sync = lambda: sp.Popen(f'cd "{ND}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
+    if raw: db.execute("INSERT INTO n(t) VALUES(?)", (raw,)); db.commit(); _sync(); print("✓"); return
+    notes = db.execute("SELECT id,t,d FROM n WHERE s=0 ORDER BY c DESC").fetchall()
+    print(f"sqlite {DB.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]rchive [d]one [e]dit [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
+    for nid,txt,due in notes:
+        print(f"\n{txt}" + (f" [{due}]" if due else "")); ch = input("> ").strip()
+        if ch.lower() in 'ad': db.execute("UPDATE n SET s=? WHERE id=?", (3 if ch.lower()=='a' else 2, nid)); db.commit(); _sync(); print("✓")
+        elif ch.lower() == 'e': nv = input("new: "); nv and (db.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), db.commit(), _sync(), print("✓"))
+        elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); db.execute("UPDATE n SET d=? WHERE id=?", (d, nid)); db.commit(); _sync(); print(f"✓ {d}")
+        elif ch.lower() == 'q': break
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
