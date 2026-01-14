@@ -802,12 +802,12 @@ def cmd_note():  # git=backup/versioning only, non-blocking
     if raw: db.execute("INSERT INTO n(t) VALUES(?)", (raw,)); db.commit(); _sync(); print("✓"); return
     notes = db.execute("SELECT id,t,d FROM n WHERE s=0 ORDER BY c DESC").fetchall()
     print(f"sqlite {DB.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]rchive [d]one [e]dit [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
-    for nid,txt,due in notes:
-        print(f"\n{txt}" + (f" [{due}]" if due else "")); ch = input("> ").strip()
-        if ch.lower() in 'ad': db.execute("UPDATE n SET s=? WHERE id=?", (3 if ch.lower()=='a' else 2, nid)); db.commit(); _sync(); print("✓")
-        elif ch.lower() == 'e': nv = input("new: "); nv and (db.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), db.commit(), _sync(), print("✓"))
+    for i,(nid,txt,due) in enumerate(notes):  # progress helps clear backlog
+        print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
+        if ch in 'ad' and ch: db.execute("UPDATE n SET s=? WHERE id=?", (3 if ch=='a' else 2, nid)); db.commit(); _sync(); print("✓")
+        elif ch == 'e': nv = input("new: "); nv and (db.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), db.commit(), _sync(), print("✓"))
         elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); db.execute("UPDATE n SET d=? WHERE id=?", (d, nid)); db.commit(); _sync(); print(f"✓ {d}")
-        elif ch.lower() == 'q': break
+        else: ch == 'q' and sys.exit() or (ch and print("?"))
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
