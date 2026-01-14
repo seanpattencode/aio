@@ -794,8 +794,8 @@ def cmd_gdrive():
 
 def cmd_note():  # git=backup/versioning only, non-blocking
     ND = os.path.join(DATA_DIR, "notebook"); DB = os.path.join(ND, "notes.db")
-    os.path.isdir(f"{ND}/.git") and sp.Popen(f'cd "{ND}" && git pull -q', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL) or sp.run(['gh', 'repo', 'clone', 'notebook', ND], capture_output=True)
-    os.makedirs(ND, exist_ok=True)
+    os.path.isdir(f"{ND}/.git") or (shutil.rmtree(ND, True), sp.run(['gh', 'repo', 'clone', 'notebook', ND], capture_output=True, timeout=30))
+    sp.run(f'cd "{ND}" && git pull -q', shell=True, capture_output=True, timeout=5); os.makedirs(ND, exist_ok=True)
     db = sqlite3.connect(DB); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP)"); 'd' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN d")
     _sync = lambda: sp.Popen(f'cd "{ND}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
