@@ -759,13 +759,14 @@ def cmd_note():  # git=backup/versioning only, non-blocking
     sp.run(f'cd "{ND}" && git fetch -q && git reset --hard @{{u}}', shell=True, capture_output=True, timeout=15); os.makedirs(ND, exist_ok=True)
     db = sqlite3.connect(DB); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP)"); 'd' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN d")
     db.execute("CREATE TABLE IF NOT EXISTS p(id INTEGER PRIMARY KEY,name UNIQUE,c DEFAULT CURRENT_TIMESTAMP)"); projs = [r[0] for r in db.execute("SELECT name FROM p ORDER BY c")]
+    'proj' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN proj")
     _sync = lambda: sp.Popen(f'cd "{ND}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     if raw: db.execute("INSERT INTO n(t) VALUES(?)", (raw,)); db.commit(); _sync(); print("✓"); return
-    notes = db.execute("SELECT id,t,d FROM n WHERE s=0 ORDER BY c DESC").fetchall()
+    notes = db.execute("SELECT id,t,d,proj FROM n WHERE s=0 ORDER BY c DESC").fetchall()
     print(f"sqlite {DB.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]ck [e]dit [p]rojects [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
-    for i,(nid,txt,due) in enumerate(notes):  # idea-to-execution pipeline: attention queue, notes=todos
-        print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
+    for i,(nid,txt,due,proj) in enumerate(notes):  # idea-to-execution pipeline: attention queue, notes=todos
+        print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" @{proj}" if proj else "") + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
         if ch == 'a': db.execute("UPDATE n SET s=1 WHERE id=?", (nid,)); db.commit(); _sync(); print("✓")
         elif ch == 'e': nv = input("new: "); nv and (db.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), db.commit(), _sync(), print("✓"))
         elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); db.execute("UPDATE n SET d=? WHERE id=?", (d, nid)); db.commit(); _sync(); print(f"✓ {d}")
@@ -775,7 +776,17 @@ def cmd_note():  # git=backup/versioning only, non-blocking
                 print("[#] open  [name] new project  [enter] back")
                 pc = input("p> ").strip()
                 if not pc: break
-                if pc.isdigit() and int(pc) < len(projs): print(f"[TODO: open {projs[int(pc)]}]"); break
+                if pc.isdigit() and int(pc) < len(projs):
+                    pname = projs[int(pc)]
+                    while True:
+                        pnotes = db.execute("SELECT id,t,d FROM n WHERE s=0 AND proj=? ORDER BY c DESC", (pname,)).fetchall()
+                        print(f"\n=== {pname} === {len(pnotes)} notes")
+                        for j,(pid,pt,pd) in enumerate(pnotes): print(f"  {j}. {pt}" + (f" [{pd}]" if pd else ""))
+                        print("[text] add note  [enter] back")
+                        pn = input(f"{pname}> ").strip()
+                        if not pn: break
+                        db.execute("INSERT INTO n(t,proj) VALUES(?,?)", (pn,pname)); db.commit(); _sync(); print("✓")
+                    break
                 db.execute("INSERT OR IGNORE INTO p(name) VALUES(?)", (pc,)); db.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
         else: ch == 'q' and sys.exit() or (ch and print("?"))
 
