@@ -2,23 +2,17 @@
 
 ## Install
 
-**Termux (Android):** 
+**One-liner (Linux/macOS/WSL):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/seanpattencode/aio/main/install.sh | bash
+```
 
-`pkg install git python && git clone https://github.com/seanpattencode/aio && cd aio && python aio.py install`
+**Termux (Android):**
+```bash
+pkg install git python && git clone https://github.com/seanpattencode/aio && cd aio && bash install.sh
+```
 
-**Windows/Linux/Mac**
-
-If windows:
-
-Install WSL and a distro (ubuntu recommended):
-
-https://learn.microsoft.com/en-us/windows/wsl/install
-
-`sudo apt update && sudo apt install git python3 -y`
-
-then
-
-`git clone https://github.com/seanpattencode/aio && cd aio && python3 aio.py install`
+**Windows:** Install [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) first, then use the one-liner above.
 
 ## Run
 Type aio

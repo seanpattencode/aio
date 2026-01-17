@@ -714,46 +714,12 @@ def cmd_revert():
     print(f"✓ Reverted {n} commit(s)") if r.returncode == 0 else _die(f"x Revert failed: {r.stderr.strip()}")
 
 def cmd_install():
-    bd, sp_path = os.path.expanduser("~/.local/bin"), os.path.realpath(__file__)
-    os.makedirs(bd, exist_ok=True)
-    al = os.path.join(bd, "aio")
-    if os.path.islink(al): os.remove(al)
-    elif os.path.exists(al): _die(f"x {al} exists but is not a symlink")
-    os.symlink(sp_path, al); print(f"✓ Symlink: {al}")
-    if os.environ.get('TERMUX_VERSION') or os.path.exists('/data/data/com.termux'):
-        print("\nTermux detected - configuring RunCommandService...")
-        td, tp = os.path.expanduser("~/.termux"), os.path.expanduser("~/.termux/termux.properties")
-        os.makedirs(td, exist_ok=True)
-        pc = Path(tp).read_text() if os.path.exists(tp) else ""
-        ha = any(l.strip().startswith("allow-external-apps") and not l.strip().startswith("#") for l in pc.split('\n'))
-        if not ha: open(tp, "a").write("\nallow-external-apps = true\n"); print("✓ Added allow-external-apps = true")
-        else: print("✓ allow-external-apps already configured")
-        shutil.which('termux-reload-settings') and (sp.run(['termux-reload-settings']), print("✓ Reloaded Termux settings"))
-        print("\nAndroid app setup required:")
-        print('   1. Add to AndroidManifest.xml:\n      <uses-permission android:name="com.termux.permission.RUN_COMMAND" />')
-        print("   2. Grant permission in Android Settings:\n      Settings -> Apps -> Your App -> Permissions -> Run Termux commands")
-    nv = int(sp.run(['node','-v'], capture_output=True, text=True).stdout.strip().lstrip('v').split('.')[0]) if shutil.which('node') else 0
-    if nv < 25: print(f"! Node.js {'v'+str(nv) if nv else 'missing'} - run 'aio deps' (fixes Claude V8 crashes)")
-    shell = os.environ.get('SHELL', '/bin/bash')
-    rc = os.path.expanduser('~/.config/fish/config.fish' if 'fish' in shell else ('~/.zshrc' if 'zsh' in shell else '~/.bashrc'))
-    func = '''# aio instant startup
-aio() { local d="${1/#~/$HOME}"; [[ -d "$d" ]] && { cd "$d"; ls; return; }; command python3 ~/.local/bin/aio "$@"; }''' if 'fish' not in shell else '''function aio; command python3 ~/.local/bin/aio $argv; end'''
-    if 'aio' not in (Path(rc).read_text() if os.path.exists(rc) else ''):
-        try:
-            if input(f"Add to {rc}? [Y/n]: ").strip().lower() != 'n': Path(rc).open('a').write(func + '\n'); print(f"✓ Added")
-        except: pass
-    def _ok(p):
-        try: return bool(shutil.which(p)) if p in 'tmux wl-copy npm codex claude gemini aider'.split() else (__import__(p), True)[1]
-        except: return False
-    _ap, _np, _pp = {'pexpect': 'python3-pexpect', 'prompt_toolkit': 'python3-prompt-toolkit', 'tmux': 'tmux', 'wl-copy': 'wl-clipboard'}, {'codex': '@openai/codex', 'claude': '@anthropic-ai/claude-code', 'gemini': '@google/gemini-cli'}, {'aider': 'aider-chat'}
-    ok, am, nm, pm = [p for p in list(_ap)+list(_np)+list(_pp)+['npm'] if _ok(p)], ' '.join(_ap[p] for p in _ap if not _ok(p)), ' '.join(_np[p] for p in _np if not _ok(p)), ' '.join(_pp[p] for p in _pp if not _ok(p))
-    ok and print(f"✓ Have: {', '.join(ok)}")
-    cmds = [f"sudo apt install {am}" for _ in [1] if am and shutil.which('apt-get')] + [f"sudo npm install -g {nm}" for _ in [1] if nm] + [f"pip install {pm}" for _ in [1] if pm]
-    cmds and print(f"\nRun:\n  {' && '.join(cmds)}")
-    with db() as c:
-        v = (c.execute("SELECT value FROM config WHERE key='tmux_conf'").fetchone() or [''])[0]
-        if v == 'y' or (v != 'n' and input("Enable aio tmux config? (appends to ~/.tmux.conf) [Y/n]: ").strip().lower() != 'n'): _write_conf(); c.execute("INSERT OR REPLACE INTO config VALUES ('tmux_conf', 'y')"); c.commit(); print("✓ ~/.aios/tmux.conf")
-        elif v == '': c.execute("INSERT OR REPLACE INTO config VALUES ('tmux_conf', 'n')"); c.commit()
+    script = os.path.join(SCRIPT_DIR, "install.sh")
+    if os.path.exists(script):
+        os.execvp("bash", ["bash", script])
+    else:
+        url = "https://raw.githubusercontent.com/seanpatten/aio/main/install.sh"
+        os.execvp("bash", ["bash", "-c", f"curl -fsSL {url} | bash"])
 
 def cmd_deps():
     _run = lambda c: sp.run(c, shell=True).returncode == 0
@@ -792,16 +758,25 @@ def cmd_note():  # git=backup/versioning only, non-blocking
     os.path.isdir(f"{ND}/.git") or (shutil.rmtree(ND, True), sp.run(['gh', 'repo', 'clone', 'notebook', ND], capture_output=True, timeout=30))
     sp.run(f'cd "{ND}" && git fetch -q && git reset --hard @{{u}}', shell=True, capture_output=True, timeout=15); os.makedirs(ND, exist_ok=True)
     db = sqlite3.connect(DB); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP)"); 'd' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN d")
+    db.execute("CREATE TABLE IF NOT EXISTS p(id INTEGER PRIMARY KEY,name UNIQUE,c DEFAULT CURRENT_TIMESTAMP)"); projs = [r[0] for r in db.execute("SELECT name FROM p ORDER BY c")]
     _sync = lambda: sp.Popen(f'cd "{ND}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     if raw: db.execute("INSERT INTO n(t) VALUES(?)", (raw,)); db.commit(); _sync(); print("✓"); return
     notes = db.execute("SELECT id,t,d FROM n WHERE s=0 ORDER BY c DESC").fetchall()
-    print(f"sqlite {DB.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]ck [e]dit [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
+    print(f"sqlite {DB.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]ck [e]dit [p]rojects [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
     for i,(nid,txt,due) in enumerate(notes):  # idea-to-execution pipeline: attention queue, notes=todos
         print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
         if ch == 'a': db.execute("UPDATE n SET s=1 WHERE id=?", (nid,)); db.commit(); _sync(); print("✓")
         elif ch == 'e': nv = input("new: "); nv and (db.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), db.commit(), _sync(), print("✓"))
         elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); db.execute("UPDATE n SET d=? WHERE id=?", (d, nid)); db.commit(); _sync(); print(f"✓ {d}")
+        elif ch == 'p':
+            while True:
+                print("\n" + "\n".join(f"  {i}. {p}" for i,p in enumerate(projs)) if projs else "\n  (no projects)")
+                print("[#] open  [name] new project  [enter] back")
+                pc = input("p> ").strip()
+                if not pc: break
+                if pc.isdigit() and int(pc) < len(projs): print(f"[TODO: open {projs[int(pc)]}]"); break
+                db.execute("INSERT OR IGNORE INTO p(name) VALUES(?)", (pc,)); db.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
         else: ch == 'q' and sys.exit() or (ch and print("?"))
 
 def cmd_add():
