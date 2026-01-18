@@ -1044,24 +1044,21 @@ def cmd_set():
     elif v=='off':p.unlink(missing_ok=True);print(f"✓ off - open new terminal tab")
     else:print("on"if p.exists()else"off")
 
-# SSH: aio ssh [name] [user@host] - list/add/connect
 def cmd_ssh():
+    try: import keyring as kr
+    except: kr = None
+    _pw = lambda n,v=None: (kr.set_password('aio-ssh',n,v),v)[1] if v and kr else kr.get_password('aio-ssh',n) if kr else None
     with db() as c:
-        c.execute("CREATE TABLE IF NOT EXISTS ssh(name TEXT PRIMARY KEY, host TEXT, pw TEXT)")
-        try: c.execute("ALTER TABLE ssh ADD COLUMN pw TEXT")
-        except: pass
-        hosts = {r[0]: (r[1], r[2] if len(r)>2 else None) for r in c.execute("SELECT name,host,pw FROM ssh").fetchall()}
-    if not wda or wda == 'start': wda == 'start' and os.execvp('sshd', ['sshd']); shutil.which('ssh') or print("! ssh not installed: pkg install openssh"); print("SSH Manager\n  aio ssh key           Show/generate public key\n  aio ssh auth          Add key to this device\n  aio ssh start         Start sshd (Termux)\n  aio ssh <name>        Connect to saved host\n  aio ssh <n> u@h:port [pw]  Save host (pw stored plain!)\n  aio ssh rm <name>     Remove host\nSaved:"); [print(f"  {n}: {h[0]}{' [pw]' if h[1] else ''}") for n,h in hosts.items()] or print("  (none)"); return
+        c.execute("CREATE TABLE IF NOT EXISTS ssh(name TEXT PRIMARY KEY, host TEXT, pw TEXT)"); hosts = {r[0]: r[1] for r in c.execute("SELECT name,host FROM ssh")}
+        [(c.execute("UPDATE ssh SET pw=NULL WHERE name=?",(n,)), _pw(n,p)) for n,_,p in c.execute("SELECT * FROM ssh WHERE pw IS NOT NULL")]; c.commit()
+    if not wda or wda == 'start': wda == 'start' and os.execvp('sshd', ['sshd']); shutil.which('ssh') or print("! ssh not installed: pkg install openssh"); print("SSH Manager\n  aio ssh key           Show/generate public key\n  aio ssh auth          Add key to this device\n  aio ssh start         Start sshd (Termux)\n  aio ssh <name>        Connect to saved host\n  aio ssh <n> u@h:port [pw]  Save host\n  aio ssh rm <name>     Remove host\nSaved:"); [print(f"  {n}: {h}{' [pw]' if _pw(n) else ''}") for n,h in hosts.items()] or print("  (none)"); return
     if wda == 'key': kf = Path.home()/'.ssh/id_ed25519'; kf.exists() or sp.run(['ssh-keygen','-t','ed25519','-N','','-f',str(kf)]); print(f"Public key (copy to remote):\n{(kf.with_suffix('.pub')).read_text().strip()}"); return
     if wda == 'auth': d = Path.home()/'.ssh'; d.mkdir(exist_ok=True); af = d/'authorized_keys'; k = input("Paste public key: ").strip(); af.open('a').write(f"\n{k}\n"); af.chmod(0o600); print("✓ Key added"); return
-    if wda == 'rm' and len(sys.argv) > 3:
-        with db() as c: c.execute("DELETE FROM ssh WHERE name=?", (sys.argv[3],)); c.commit(); print(f"✓ removed {sys.argv[3]}"); return
-    if len(sys.argv) > 3:
-        pw = sys.argv[4] if len(sys.argv) > 4 else None; pw and print("! Password stored in plain text")
-        with db() as c: c.execute("INSERT OR REPLACE INTO ssh VALUES(?,?,?)", (wda, sys.argv[3], pw)); c.commit(); print(f"✓ {wda}={sys.argv[3]}"); return
-    shutil.which('ssh') or _die("x ssh not installed: pkg install openssh"); hpw = hosts.get(wda,(wda,None)); h,pw = hpw; hp = h.rsplit(':',1); cmd = ['ssh']+(['-p',hp[1]] if len(hp)>1 else [])+[hp[0]]
-    if not pw and wda in hosts: pw = input("Save password? (enter to skip): ").strip(); pw and [(c.execute("UPDATE ssh SET pw=? WHERE name=?", (pw,wda)), c.commit(), print("! Saved")) for c in [db()]]
-    (pw and not shutil.which('sshpass')) and _die("x sshpass not installed: apt install sshpass"); os.execvp('sshpass',['sshpass','-p',pw]+cmd) if pw else os.execvp('ssh',cmd)
+    if wda == 'rm' and len(sys.argv) > 3: n=sys.argv[3]; _pw(n) and kr and kr.delete_password('aio-ssh',n); (c:=db()).execute("DELETE FROM ssh WHERE name=?",(n,)); c.commit(); print(f"✓ rm {n}"); return
+    if len(sys.argv) > 3: pw=sys.argv[4] if len(sys.argv)>4 else None; pw and _pw(wda,pw); (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host) VALUES(?,?)",(wda,sys.argv[3])); c.commit(); print(f"✓ {wda}={sys.argv[3]}{' [pw]' if pw else ''}"); return
+    shutil.which('ssh') or _die("x ssh not installed"); h=hosts.get(wda,wda); pw=_pw(wda); hp=h.rsplit(':',1); cmd=['ssh']+(['-p',hp[1]] if len(hp)>1 else [])+[hp[0]]
+    if not pw and wda in hosts: pw=input("Save password? ").strip(); pw and _pw(wda,pw) and print("✓ Saved")
+    (pw and not shutil.which('sshpass')) and _die("x need sshpass"); print("'exit' to disconnect",flush=1); os.execvp('sshpass',['sshpass','-p',pw]+cmd) if pw else os.execvp('ssh',cmd)
 
 # Dispatch
 CMDS = {
