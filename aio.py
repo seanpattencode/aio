@@ -2,7 +2,7 @@
 # aio - AI agent session manager (merged with cloud sync)
 import sys, os
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
-    import sqlite3, subprocess as sp; dd = os.path.expanduser("~/.local/share/aios"); db = f"{dd}/aio.db"; os.makedirs(dd, exist_ok=True); c = sqlite3.connect(db); c.execute("CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("INSERT INTO notes(t) VALUES(?)", (' '.join(sys.argv[2:]),)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close(); r = sp.run(f'cd "{dd}" && git add -A && git diff --cached --quiet || git commit -m n && git push -q 2>&1', shell=True, capture_output=True, text=True) if os.path.isdir(f"{dd}/.git") else type('R',(),{'returncode':0})(); print("✓" if r.returncode == 0 else f"! {r.stderr.strip()[:40] or 'sync failed'}"); sys.exit(0)
+    import sqlite3, subprocess as sp; dd = os.path.expanduser("~/.local/share/aios"); db = f"{dd}/aio.db"; os.makedirs(dd, exist_ok=True); os.path.exists(db) and sqlite3.connect(db).execute("PRAGMA wal_checkpoint(TRUNCATE)").connection.close(); os.path.isdir(f"{dd}/.git") and sp.run(f'cd "{dd}" && git fetch -q 2>/dev/null && git reset --hard @{{u}} 2>/dev/null', shell=True, capture_output=True); c = sqlite3.connect(db); c.execute("CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("INSERT INTO notes(t) VALUES(?)", (' '.join(sys.argv[2:]),)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close(); r = sp.run(f'cd "{dd}" && git add -A && git diff --cached --quiet || git commit -m n && git push -q 2>&1', shell=True, capture_output=True, text=True) if os.path.isdir(f"{dd}/.git") else type('R',(),{'returncode':0})(); print("✓" if r.returncode == 0 else f"! {r.stderr.strip()[:40] or 'sync failed'}"); sys.exit(0)
 import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re, socket
 from datetime import datetime
 from pathlib import Path
@@ -557,8 +557,8 @@ def list_all(help=True, cache=True):
 
 def db_sync():
     if not os.path.isdir(f"{DATA_DIR}/.git"): return True
-    sqlite3.connect(DB_PATH).execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
-    r = sp.run(f'cd "{DATA_DIR}" && git stash -q 2>/dev/null; git pull --rebase -q; git stash pop -q 2>/dev/null; git add -A && git diff --cached --quiet || git commit -m "sync" && git push -q 2>&1', shell=True, capture_output=True, text=True)
+    sqlite3.connect(DB_PATH).execute("PRAGMA wal_checkpoint(TRUNCATE)").close(); sp.run(f'cd "{DATA_DIR}" && git fetch -q 2>/dev/null && git reset --hard @{{u}} 2>/dev/null', shell=True, capture_output=True)
+    r = sp.run(f'cd "{DATA_DIR}" && git add -A && git diff --cached --quiet || git commit -m "sync" && git push -q 2>&1', shell=True, capture_output=True, text=True)
     r.returncode != 0 and r.stderr and print(f"! sync: {r.stderr.strip()[:50]}"); (rc := get_rclone()) and cloud_configured() and sp.Popen([rc, 'copy', DB_PATH, f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/db/', '-q'], stdout=sp.DEVNULL, stderr=sp.DEVNULL); return r.returncode == 0
 
 def cmd_backup():
@@ -873,7 +873,7 @@ def cmd_gdrive():
     else: cloud_status()
 
 def cmd_note():
-    os.path.isdir(f"{DATA_DIR}/.git") and sp.run(f'cd "{DATA_DIR}" && git stash -q 2>/dev/null; git pull --rebase -q; git stash pop -q 2>/dev/null', shell=True, capture_output=True)
+    os.path.exists(DB_PATH) and sqlite3.connect(DB_PATH).execute("PRAGMA wal_checkpoint(TRUNCATE)").connection.close(); os.path.isdir(f"{DATA_DIR}/.git") and sp.run(f'cd "{DATA_DIR}" && git fetch -q 2>/dev/null && git reset --hard @{{u}} 2>/dev/null', shell=True, capture_output=True)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     with db() as c:
         if raw: c.execute("INSERT INTO notes(t) VALUES(?)", (raw,)); c.commit(); db_sync(); print("✓"); sys.exit()
