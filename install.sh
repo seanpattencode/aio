@@ -29,7 +29,7 @@ case $OS in
     debian)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        apt-get install -y -qq tmux git curl ca-certificates unzip 2>/dev/null || true
+        apt-get install -y -qq tmux git curl ca-certificates unzip python3-pip 2>/dev/null || true
         # Install nodejs+npm from repos
         if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
             apt-get install -y -qq nodejs npm 2>/dev/null || true
@@ -86,7 +86,7 @@ install_cli "@google/gemini-cli" "gemini"
 
 # Python extras (optional, non-fatal)
 if command -v python3 &>/dev/null; then
-    python3 -m pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras" || true
+    python3 -m pip install --user -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python extras" || true
 fi
 
 # aio itself
