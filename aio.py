@@ -893,7 +893,7 @@ def cmd_note():
                             c.execute("INSERT INTO notes(t,proj) VALUES(?,?)", (pn,pname)); c.commit(); _sync(); print("✓")
                         break
                     c.execute("INSERT OR IGNORE INTO note_projects(name) VALUES(?)", (pc,)); c.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
-            else: ch == 'q' and sys.exit() or (ch and print("?"))
+            else: sys.exit() if ch == 'q' else (c.execute("INSERT INTO notes(t) VALUES(?)", (ch,)), c.commit(), _sync(), print("✓")) if ch else None
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
