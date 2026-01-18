@@ -86,7 +86,7 @@ install_cli "@google/gemini-cli" "gemini"
 
 # Python extras (optional, non-fatal)
 if command -v python3 &>/dev/null; then
-    python3 -m pip install --user -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python extras" || true
+    python3 -m pip install -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python extras" || true
 fi
 
 # aio itself
