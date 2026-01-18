@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# aio - AI agent session manager (compact version)
+# aio - AI agent session manager (merged with cloud sync)
 import sys, os
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
-    import sqlite3, subprocess as sp; D = os.path.expanduser("~/.local/share/aios/notebook"); os.makedirs(D, exist_ok=True); db = sqlite3.connect(f"{D}/notes.db"); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP)"); 'd' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN d"); db.execute("INSERT INTO n(t) VALUES(?)", (' '.join(sys.argv[2:]),)); db.commit(); sp.Popen(f'cd "{D}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL); print("✓"); sys.exit(0)
+    import sqlite3, subprocess as sp; D = os.path.expanduser("~/.local/share/aios"); os.makedirs(D, exist_ok=True); db = sqlite3.connect(f"{D}/aio.db"); db.execute("CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); db.execute("INSERT INTO notes(t) VALUES(?)", (' '.join(sys.argv[2:]),)); db.commit(); nd = f"{D}/notebook"; os.makedirs(nd, exist_ok=True); sp.Popen(f'cd "{nd}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL) if os.path.isdir(f"{nd}/.git") else None; print("✓"); sys.exit(0)
 import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re
 from datetime import datetime
 from pathlib import Path
@@ -72,12 +72,14 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
+NOTE_DIR = os.path.join(DATA_DIR, "notebook")
 _GP, _GT = '_aio_ghost_', 300
 _GM = {'c': 'c', 'l': 'l', 'g': 'g', 'o': 'l', 'cp': 'c', 'lp': 'l', 'gp': 'g'}
 _AIO_DIR = os.path.expanduser('~/.aios')
 _AIO_CONF = os.path.join(_AIO_DIR, 'tmux.conf')
 _USER_CONF = os.path.expanduser('~/.tmux.conf')
 _SRC_LINE = 'source-file ~/.aios/tmux.conf  # aio'
+RCLONE_REMOTE, RCLONE_BACKUP_PATH = 'aio-gdrive', 'aio-backup'
 
 # Git helpers
 def _git_main(p):
@@ -134,17 +136,25 @@ def ensure_git_cfg():
         return True
     except: return False
 
-# Database
+# Database - unified single DB
 def db(): c = sqlite3.connect(DB_PATH); c.execute("PRAGMA journal_mode=WAL;"); return c
 
 def init_db():
     os.makedirs(DATA_DIR, exist_ok=True)
     with db() as c:
+        # Core tables
         c.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         c.execute("CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, display_order INTEGER NOT NULL UNIQUE)")
         c.execute("CREATE TABLE IF NOT EXISTS apps (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, command TEXT NOT NULL, display_order INTEGER NOT NULL UNIQUE)")
         c.execute("CREATE TABLE IF NOT EXISTS sessions (key TEXT PRIMARY KEY, name TEXT NOT NULL, command_template TEXT NOT NULL)")
         c.execute("CREATE TABLE IF NOT EXISTS multi_runs (id TEXT PRIMARY KEY, repo TEXT NOT NULL, prompt TEXT NOT NULL, agents TEXT NOT NULL, status TEXT DEFAULT 'running', created_at TEXT DEFAULT CURRENT_TIMESTAMP, review_rank TEXT)")
+        # Notes (merged from notebook/notes.db)
+        c.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, t TEXT, s INTEGER DEFAULT 0, d TEXT, c TEXT DEFAULT CURRENT_TIMESTAMP, proj TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS note_projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE, c TEXT DEFAULT CURRENT_TIMESTAMP)")
+        # Todos/Jobs (merged from data/aios.db)
+        c.execute("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, real_deadline INTEGER NOT NULL, virtual_deadline INTEGER, created_at INTEGER NOT NULL, completed_at INTEGER)")
+        c.execute("CREATE TABLE IF NOT EXISTS jobs (name TEXT PRIMARY KEY, step TEXT NOT NULL, status TEXT NOT NULL, path TEXT, session TEXT, updated_at INTEGER NOT NULL)")
+        # Defaults
         if c.execute("SELECT COUNT(*) FROM config").fetchone()[0] == 0:
             dp = get_prompt('default') or ''
             for k, v in [('claude_prompt', dp), ('codex_prompt', dp), ('gemini_prompt', dp), ('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees")), ('multi_default', 'l:3')]: c.execute("INSERT INTO config VALUES (?, ?)", (k, v))
@@ -161,6 +171,37 @@ def init_db():
         c.execute("INSERT OR IGNORE INTO sessions VALUES ('o', 'claude', 'claude --dangerously-skip-permissions')")
         c.execute("INSERT OR IGNORE INTO sessions VALUES ('a', 'aider', 'OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')")
         c.commit()
+    # Migrate old DBs if they exist
+    _migrate_old_dbs()
+
+def _migrate_old_dbs():
+    # Migrate notes from old notebook/notes.db
+    old_notes = os.path.join(NOTE_DIR, "notes.db")
+    if os.path.exists(old_notes):
+        try:
+            with sqlite3.connect(old_notes) as old, db() as c:
+                if c.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0:
+                    for r in old.execute("SELECT id,t,s,d,c,proj FROM n").fetchall():
+                        c.execute("INSERT OR IGNORE INTO notes VALUES(?,?,?,?,?,?)", r)
+                    for r in old.execute("SELECT id,name,c FROM p").fetchall():
+                        c.execute("INSERT OR IGNORE INTO note_projects VALUES(?,?,?)", r)
+                    c.commit()
+            os.rename(old_notes, old_notes + ".migrated")
+        except: pass
+    # Migrate todos/jobs from old data/aios.db
+    old_data = os.path.join(SCRIPT_DIR, "data", "aios.db")
+    if os.path.exists(old_data):
+        try:
+            with sqlite3.connect(old_data) as old, db() as c:
+                if c.execute("SELECT COUNT(*) FROM todos").fetchone()[0] == 0:
+                    for r in old.execute("SELECT id,title,real_deadline,virtual_deadline,created_at,completed_at FROM todos").fetchall():
+                        c.execute("INSERT OR IGNORE INTO todos VALUES(?,?,?,?,?,?)", r)
+                if c.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0:
+                    for r in old.execute("SELECT name,step,status,path,session,updated_at FROM jobs").fetchall():
+                        c.execute("INSERT OR IGNORE INTO jobs VALUES(?,?,?,?,?,?)", r)
+                c.commit()
+            os.rename(old_data, old_data + ".migrated")
+        except: pass
 
 def load_cfg():
     with db() as c: return dict(c.execute("SELECT key, value FROM config").fetchall())
@@ -220,6 +261,59 @@ def load_sess(cfg):
     for k, n, t in data:
         s[k] = (n, t.replace(' "{CLAUDE_PROMPT}"', '').replace(' "{CODEX_PROMPT}"', '').replace(' "{GEMINI_PROMPT}"', '') if k in ['cp','lp','gp'] else t.format(CLAUDE_PROMPT=esc('claude_prompt'), CODEX_PROMPT=esc('codex_prompt'), GEMINI_PROMPT=esc('gemini_prompt')))
     return s
+
+# Cloud sync (merged from aioCloud.py)
+def get_rclone(): return shutil.which('rclone') or next((p for p in ['/usr/bin/rclone', os.path.expanduser('~/.local/bin/rclone')] if os.path.isfile(p)), None)
+
+def cloud_configured():
+    r = sp.run([get_rclone(), 'listremotes'], capture_output=True, text=True) if get_rclone() else None
+    return r and r.returncode == 0 and f'{RCLONE_REMOTE}:' in r.stdout
+
+def cloud_account():
+    if not (rc := get_rclone()): return None
+    try:
+        token = json.loads(json.loads(sp.run([rc, 'config', 'dump'], capture_output=True, text=True).stdout).get(RCLONE_REMOTE, {}).get('token', '{}')).get('access_token')
+        if not token: return None
+        import urllib.request
+        u = json.loads(urllib.request.urlopen(urllib.request.Request('https://www.googleapis.com/drive/v3/about?fields=user', headers={'Authorization': f'Bearer {token}'}), timeout=5).read()).get('user', {})
+        return f"{u.get('displayName', '')} <{u.get('emailAddress', 'unknown')}>"
+    except: return None
+
+def cloud_sync(wait=False):
+    if not (rc := get_rclone()) or not cloud_configured(): return False, None
+    local, remote = str(Path(SCRIPT_DIR) / 'data'), f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}'
+    def _sync():
+        r = sp.run([rc, 'sync', local, remote, '-q'], capture_output=True, text=True)
+        ef = Path(DATA_DIR) / '.rclone_err'; ef.write_text(r.stderr) if r.returncode != 0 else ef.unlink(missing_ok=True); return r.returncode == 0
+    return (True, _sync()) if wait else (__import__('threading').Thread(target=_sync, daemon=True).start(), (True, None))[1]
+
+def cloud_pull_notes():
+    if not (rc := get_rclone()) or not cloud_configured(): return False
+    sp.run([rc, 'sync', f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/notebook', NOTE_DIR, '-q'], capture_output=True)
+    return True
+
+def cloud_install():
+    import platform
+    bd, arch = os.path.expanduser('~/.local/bin'), 'amd64' if platform.machine() in ('x86_64', 'AMD64') else 'arm64'
+    print(f"Installing rclone..."); os.makedirs(bd, exist_ok=True)
+    if sp.run(f'curl -sL https://downloads.rclone.org/rclone-current-linux-{arch}.zip -o /tmp/rclone.zip && unzip -qjo /tmp/rclone.zip "*/rclone" -d {bd} && chmod +x {bd}/rclone', shell=True).returncode == 0:
+        print(f"✓ Installed"); return f'{bd}/rclone'
+    return None
+
+def cloud_login():
+    rc = get_rclone() or cloud_install()
+    if not rc: print("✗ rclone install failed"); return False
+    sp.run([rc, 'config', 'create', RCLONE_REMOTE, 'drive'])
+    if cloud_configured(): print(f"✓ Logged in as {cloud_account() or 'unknown'}"); cloud_sync(wait=True); return True
+    print("✗ Login failed - try again"); return False
+
+def cloud_logout():
+    if cloud_configured(): sp.run([get_rclone(), 'config', 'delete', RCLONE_REMOTE]); print("✓ Logged out"); return True
+    print("Not logged in"); return False
+
+def cloud_status():
+    if cloud_configured(): print(f"✓ Logged in: {cloud_account() or RCLONE_REMOTE}"); return True
+    print("✗ Not logged in. Run: aio gdrive login"); return False
 
 # Stage 3 init
 _s3 = False
@@ -552,12 +646,13 @@ WORKTREES: aio w  list | w<#>  open | w<#>-  delete | w<#>--  push+delete
 ADD/REMOVE: aio add [path|name "cmd"]  aio remove <#|name>
 MONITOR: jobs [-r] | review | cleanup | ls | attach | kill
 GIT: push [file] [msg] | pull [-y] | revert [N]
+CLOUD: gdrive [login|logout|status|sync]
 CONFIG: install | deps | update | font [+|-|N] | config [key] [val]
-DB: ~/.local/share/aios/aio.db  Worktrees: {WT_DIR}"""
+DB: {DB_PATH}  Worktrees: {{WT_DIR}}"""
 
 # Commands
 def cmd_help(): print(HELP_SHORT); list_all(help=False)
-def cmd_help_full(): print(HELP_FULL); list_all(help=False)
+def cmd_help_full(): print(HELP_FULL.format(WT_DIR=WT_DIR)); list_all(help=False)
 def cmd_update(): manual_update()
 def cmd_jobs(): list_jobs(running='--running' in sys.argv or '-r' in sys.argv)
 def cmd_kill(): input("Kill all tmux sessions? (y/n): ").lower() in ['y', 'yes'] and (print("✓ Killed all tmux"), sp.run(['tmux', 'kill-server']))
@@ -748,56 +843,57 @@ def cmd_prompt():
     else: print("No changes")
 
 def cmd_gdrive():
-    import aioCloud
-    if wda == 'login': aioCloud.configured() and not _confirm("Already logged in. Switch?") or aioCloud.login()
-    elif wda == 'logout': aioCloud.logout()
-    else: aioCloud.status()
+    if wda == 'login': cloud_configured() and not _confirm("Already logged in. Switch?") or cloud_login()
+    elif wda == 'logout': cloud_logout()
+    elif wda == 'sync': cloud_sync(wait=True)
+    elif wda == 'pull': cloud_pull_notes()
+    else: cloud_status()
 
-def cmd_note():  # git=backup/versioning only, non-blocking
-    ND = os.path.join(DATA_DIR, "notebook"); DB = os.path.join(ND, "notes.db")
-    os.path.isdir(f"{ND}/.git") or (shutil.rmtree(ND, True), sp.run(['gh', 'repo', 'clone', 'notebook', ND], capture_output=True, timeout=30))
-    sp.run(f'cd "{ND}" && git fetch -q && git reset --hard @{{u}}', shell=True, capture_output=True, timeout=15); os.makedirs(ND, exist_ok=True)
-    db = sqlite3.connect(DB); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP)"); 'd' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN d")
-    db.execute("CREATE TABLE IF NOT EXISTS p(id INTEGER PRIMARY KEY,name UNIQUE,c DEFAULT CURRENT_TIMESTAMP)"); projs = [r[0] for r in db.execute("SELECT name FROM p ORDER BY c")]
-    'proj' in {r[1] for r in db.execute("PRAGMA table_info(n)")} or db.execute("ALTER TABLE n ADD COLUMN proj")
-    _sync = lambda: sp.Popen(f'cd "{ND}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+def cmd_note():
+    os.makedirs(NOTE_DIR, exist_ok=True)
+    os.path.isdir(f"{NOTE_DIR}/.git") or (shutil.rmtree(NOTE_DIR, True), sp.run(['gh', 'repo', 'clone', 'notebook', NOTE_DIR], capture_output=True, timeout=30))
+    sp.run(f'cd "{NOTE_DIR}" && git fetch -q && git reset --hard @{{u}}', shell=True, capture_output=True, timeout=15)
+    _sync = lambda: sp.Popen(f'cd "{NOTE_DIR}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
-    if raw: db.execute("INSERT INTO n(t) VALUES(?)", (raw,)); db.commit(); _sync(); print("✓"); return
-    notes = db.execute("SELECT id,t,d,proj FROM n WHERE s=0 ORDER BY c DESC").fetchall()
-    print(f"sqlite {DB.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
-    for i,(nid,txt,due,proj) in enumerate(notes):  # idea-to-execution pipeline: attention queue, notes=todos
+    with db() as c:
+        projs = [r[0] for r in c.execute("SELECT name FROM note_projects ORDER BY c")]
+        if raw: c.execute("INSERT INTO notes(t) VALUES(?)", (raw,)); c.commit(); _sync(); print("✓"); return
+        notes = c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 ORDER BY c DESC").fetchall()
+    print(f"sqlite {DB_PATH.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
+    for i,(nid,txt,due,proj) in enumerate(notes):
         print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" @{proj}" if proj else "") + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
-        if ch == 'a': db.execute("UPDATE n SET s=1 WHERE id=?", (nid,)); db.commit(); _sync(); print("✓")
-        elif ch == 'e': nv = input("new: "); nv and (db.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), db.commit(), _sync(), print("✓"))
-        elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); db.execute("UPDATE n SET d=? WHERE id=?", (d, nid)); db.commit(); _sync(); print(f"✓ {d}")
-        elif ch == 'm':
-            print("\n[a] archive")
-            mc = input("m> ").strip().lower()
-            if mc == 'a':
-                arch = db.execute("SELECT t,proj,c FROM n WHERE s=1 ORDER BY c DESC LIMIT 20").fetchall()
-                print("\n=== Archive (last 20) ===")
-                for t,p,c in arch: print(f"  [{c[:16]}] {t}" + (f" @{p}" if p else ""))
-                input("[enter] back")
-        elif ch == 'p':
-            while True:
-                print("\n" + "\n".join(f"  {i}. {p}" for i,p in enumerate(projs)) if projs else "\n  (no projects)")
-                print("[#] open  [name] new  [rm #] del  [enter] back")
-                pc = input("p> ").strip()
-                if not pc: break
-                if pc[:3]=='rm ' and pc[3:].isdigit() and int(pc[3:])<len(projs): n=projs.pop(int(pc[3:])); db.execute("DELETE FROM p WHERE name=?",(n,)); db.commit(); _sync(); print(f"✓ {n}"); continue
-                if pc.isdigit() and int(pc) < len(projs):
-                    pname = projs[int(pc)]
-                    while True:
-                        pnotes = db.execute("SELECT id,t,d FROM n WHERE s=0 AND proj=? ORDER BY c DESC", (pname,)).fetchall()
-                        print(f"\n=== {pname} === {len(pnotes)} notes")
-                        for j,(pid,pt,pd) in enumerate(pnotes): print(f"  {j}. {pt}" + (f" [{pd}]" if pd else ""))
-                        print("[text] add note  [enter] back")
-                        pn = input(f"{pname}> ").strip()
-                        if not pn: break
-                        db.execute("INSERT INTO n(t,proj) VALUES(?,?)", (pn,pname)); db.commit(); _sync(); print("✓")
-                    break
-                db.execute("INSERT OR IGNORE INTO p(name) VALUES(?)", (pc,)); db.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
-        else: ch == 'q' and sys.exit() or (ch and print("?"))
+        with db() as c:
+            if ch == 'a': c.execute("UPDATE notes SET s=1 WHERE id=?", (nid,)); c.commit(); _sync(); print("✓")
+            elif ch == 'e': nv = input("new: "); nv and (c.execute("UPDATE notes SET t=? WHERE id=?", (nv, nid)), c.commit(), _sync(), print("✓"))
+            elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); c.execute("UPDATE notes SET d=? WHERE id=?", (d, nid)); c.commit(); _sync(); print(f"✓ {d}")
+            elif ch == 'm':
+                print("\n[a] archive")
+                mc = input("m> ").strip().lower()
+                if mc == 'a':
+                    arch = c.execute("SELECT t,proj,c FROM notes WHERE s=1 ORDER BY c DESC LIMIT 20").fetchall()
+                    print("\n=== Archive (last 20) ===")
+                    for t,p,ct in arch: print(f"  [{ct[:16]}] {t}" + (f" @{p}" if p else ""))
+                    input("[enter] back")
+            elif ch == 'p':
+                while True:
+                    print("\n" + "\n".join(f"  {j}. {p}" for j,p in enumerate(projs)) if projs else "\n  (no projects)")
+                    print("[#] open  [name] new  [rm #] del  [enter] back")
+                    pc = input("p> ").strip()
+                    if not pc: break
+                    if pc[:3]=='rm ' and pc[3:].isdigit() and int(pc[3:])<len(projs): n=projs.pop(int(pc[3:])); c.execute("DELETE FROM note_projects WHERE name=?",(n,)); c.commit(); _sync(); print(f"✓ {n}"); continue
+                    if pc.isdigit() and int(pc) < len(projs):
+                        pname = projs[int(pc)]
+                        while True:
+                            pnotes = c.execute("SELECT id,t,d FROM notes WHERE s=0 AND proj=? ORDER BY c DESC", (pname,)).fetchall()
+                            print(f"\n=== {pname} === {len(pnotes)} notes")
+                            for j,(pid,pt,pd) in enumerate(pnotes): print(f"  {j}. {pt}" + (f" [{pd}]" if pd else ""))
+                            print("[text] add note  [enter] back")
+                            pn = input(f"{pname}> ").strip()
+                            if not pn: break
+                            c.execute("INSERT INTO notes(t,proj) VALUES(?,?)", (pn,pname)); c.commit(); _sync(); print("✓")
+                        break
+                    c.execute("INSERT OR IGNORE INTO note_projects(name) VALUES(?)", (pc,)); c.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
+            else: ch == 'q' and sys.exit() or (ch and print("?"))
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
