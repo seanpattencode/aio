@@ -1042,6 +1042,16 @@ def cmd_set():
     elif v=='off':p.unlink(missing_ok=True);print(f"✓ off - open new terminal tab")
     else:print("on"if p.exists()else"off")
 
+# SSH: aio ssh [name] [user@host] - list/add/connect
+def cmd_ssh():
+    with db() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS ssh(name TEXT PRIMARY KEY, host TEXT)")
+        hosts = dict(c.execute("SELECT name,host FROM ssh").fetchall())
+    if not wda: [print(f"  {n}: {h}") for n,h in hosts.items()] or print("aio ssh <name> [user@host]"); return
+    if len(sys.argv) > 3:
+        with db() as c: c.execute("INSERT OR REPLACE INTO ssh VALUES(?,?)", (wda, sys.argv[3])); c.commit(); print(f"✓ {wda}={sys.argv[3]}"); return
+    host = hosts.get(wda) or wda; os.execvp('ssh', ['ssh', host])
+
 # Dispatch
 CMDS = {
     None: cmd_help, '': cmd_help, 'help': cmd_help_full, 'hel': cmd_help_full, '--help': cmd_help_full, '-h': cmd_help_full,
@@ -1050,7 +1060,7 @@ CMDS = {
     'watch': cmd_watch, 'wat': cmd_watch, 'push': cmd_push, 'pus': cmd_push, 'pull': cmd_pull, 'pul': cmd_pull, 'revert': cmd_revert, 'rev': cmd_revert, 'set': cmd_set,
     'install': cmd_install, 'ins': cmd_install, 'deps': cmd_deps, 'dep': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'n': cmd_note, 'settings': cmd_set,
     'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'all': cmd_multi,
-    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web,
+    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web, 'ssh': cmd_ssh,
     'fix': cmd_workflow, 'bug': cmd_workflow, 'feat': cmd_workflow, 'fea': cmd_workflow, 'auto': cmd_workflow, 'aut': cmd_workflow, 'del': cmd_workflow,
 }
 
