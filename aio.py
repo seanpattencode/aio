@@ -870,6 +870,7 @@ def cmd_note():
         projs = [r[0] for r in c.execute("SELECT name FROM note_projects ORDER BY c")]
         notes = c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 ORDER BY c DESC").fetchall()
         if not notes: print("aio n <text>"); sys.exit()
+        if not sys.stdin.isatty(): [print(f"{t}" + (f" @{p}" if p else "")) for _,t,_,p in notes[:10]]; sys.exit()
         print(f"{len(notes)} notes | [a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due")
         for i,(nid,txt,due,proj) in enumerate(notes):
             print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" @{proj}" if proj else "") + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
