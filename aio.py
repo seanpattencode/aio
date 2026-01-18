@@ -2,7 +2,7 @@
 # aio - AI agent session manager (merged with cloud sync)
 import sys, os
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
-    import sqlite3, subprocess as sp; D = os.path.expanduser("~/.local/share/aios"); os.makedirs(D, exist_ok=True); db = sqlite3.connect(f"{D}/aio.db"); db.execute("CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); db.execute("INSERT INTO notes(t) VALUES(?)", (' '.join(sys.argv[2:]),)); db.commit(); nd = f"{D}/notebook"; os.makedirs(nd, exist_ok=True); sp.Popen(f'cd "{nd}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL) if os.path.isdir(f"{nd}/.git") else None; print("✓"); sys.exit(0)
+    import sqlite3, subprocess as sp; nd = os.path.expanduser("~/.local/share/aios/notebook"); os.makedirs(nd, exist_ok=True); db = sqlite3.connect(f"{nd}/n.db"); db.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); db.execute("INSERT INTO n(t) VALUES(?)", (' '.join(sys.argv[2:]),)); db.commit(); sp.Popen(f'cd "{nd}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL) if os.path.isdir(f"{nd}/.git") else None; print("✓"); sys.exit(0)
 import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re
 from datetime import datetime
 from pathlib import Path
@@ -858,50 +858,31 @@ def cmd_gdrive():
     else: cloud_status()
 
 def cmd_note():
-    os.makedirs(NOTE_DIR, exist_ok=True)
-    os.path.isdir(f"{NOTE_DIR}/.git") or (shutil.rmtree(NOTE_DIR, True), sp.run(['gh', 'repo', 'clone', 'notebook', NOTE_DIR], capture_output=True, timeout=30))
-    sp.run(f'cd "{NOTE_DIR}" && git fetch -q && git reset --hard @{{u}}', shell=True, capture_output=True, timeout=15)
-    _sync = lambda: sp.Popen(f'cd "{NOTE_DIR}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
-    with db() as c:
-        projs = [r[0] for r in c.execute("SELECT name FROM note_projects ORDER BY c")]
-        if raw: c.execute("INSERT INTO notes(t) VALUES(?)", (raw,)); c.commit(); _sync(); print("✓"); return
-        notes = c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 ORDER BY c DESC").fetchall()
-    print(f"sqlite {DB_PATH.replace(os.path.expanduser('~'), '~')} | {len(notes)} notes\n[a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due") if notes else print("aio n <text>"); notes or sys.exit()
+    os.makedirs(NOTE_DIR, exist_ok=True); os.path.isdir(f"{NOTE_DIR}/.git") or (shutil.rmtree(NOTE_DIR, True), sp.run(['gh', 'repo', 'clone', 'notebook', NOTE_DIR], capture_output=True, timeout=30))
+    sp.run(f'cd "{NOTE_DIR}" && git fetch -q && git reset --hard @{{u}}', shell=True, capture_output=True, timeout=15); _sync = lambda: sp.Popen(f'cd "{NOTE_DIR}" && git add -A && git commit -m n && git push', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None; c = sqlite3.connect(f"{NOTE_DIR}/n.db"); c.execute("CREATE TABLE IF NOT EXISTS n(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("CREATE TABLE IF NOT EXISTS p(id INTEGER PRIMARY KEY,name TEXT UNIQUE,c DEFAULT CURRENT_TIMESTAMP)")
+    projs = [r[0] for r in c.execute("SELECT name FROM p ORDER BY c")]; (c.execute("INSERT INTO n(t) VALUES(?)", (raw,)), c.commit(), _sync(), print("✓"), sys.exit()) if raw else None
+    notes = c.execute("SELECT id,t,d,proj FROM n WHERE s=0 ORDER BY c DESC").fetchall(); print(f"{NOTE_DIR.replace(os.path.expanduser('~'),'~')}/n.db | {len(notes)} notes\n[a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due") if notes else (print("aio n <text>"), sys.exit())
     for i,(nid,txt,due,proj) in enumerate(notes):
         print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" @{proj}" if proj else "") + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
-        with db() as c:
-            if ch == 'a': c.execute("UPDATE notes SET s=1 WHERE id=?", (nid,)); c.commit(); _sync(); print("✓")
-            elif ch == 'e': nv = input("new: "); nv and (c.execute("UPDATE notes SET t=? WHERE id=?", (nv, nid)), c.commit(), _sync(), print("✓"))
-            elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); c.execute("UPDATE notes SET d=? WHERE id=?", (d, nid)); c.commit(); _sync(); print(f"✓ {d}")
-            elif ch == 'm':
-                print("\n[a] archive")
-                mc = input("m> ").strip().lower()
-                if mc == 'a':
-                    arch = c.execute("SELECT t,proj,c FROM notes WHERE s=1 ORDER BY c DESC LIMIT 20").fetchall()
-                    print("\n=== Archive (last 20) ===")
-                    for t,p,ct in arch: print(f"  [{ct[:16]}] {t}" + (f" @{p}" if p else ""))
-                    input("[enter] back")
-            elif ch == 'p':
-                while True:
-                    print("\n" + "\n".join(f"  {j}. {p}" for j,p in enumerate(projs)) if projs else "\n  (no projects)")
-                    print("[#] open  [name] new  [rm #] del  [enter] back")
-                    pc = input("p> ").strip()
-                    if not pc: break
-                    if pc[:3]=='rm ' and pc[3:].isdigit() and int(pc[3:])<len(projs): n=projs.pop(int(pc[3:])); c.execute("DELETE FROM note_projects WHERE name=?",(n,)); c.commit(); _sync(); print(f"✓ {n}"); continue
-                    if pc.isdigit() and int(pc) < len(projs):
-                        pname = projs[int(pc)]
-                        while True:
-                            pnotes = c.execute("SELECT id,t,d FROM notes WHERE s=0 AND proj=? ORDER BY c DESC", (pname,)).fetchall()
-                            print(f"\n=== {pname} === {len(pnotes)} notes")
-                            for j,(pid,pt,pd) in enumerate(pnotes): print(f"  {j}. {pt}" + (f" [{pd}]" if pd else ""))
-                            print("[text] add note  [enter] back")
-                            pn = input(f"{pname}> ").strip()
-                            if not pn: break
-                            c.execute("INSERT INTO notes(t,proj) VALUES(?,?)", (pn,pname)); c.commit(); _sync(); print("✓")
-                        break
-                    c.execute("INSERT OR IGNORE INTO note_projects(name) VALUES(?)", (pc,)); c.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
-            else: sys.exit() if ch == 'q' else (c.execute("INSERT INTO notes(t) VALUES(?)", (ch,)), c.commit(), _sync(), print("✓")) if ch else None
+        if ch == 'a': c.execute("UPDATE n SET s=1 WHERE id=?", (nid,)); c.commit(); _sync(); print("✓")
+        elif ch == 'e': nv = input("new: "); nv and (c.execute("UPDATE n SET t=? WHERE id=?", (nv, nid)), c.commit(), _sync(), print("✓"))
+        elif '/' in ch: from dateutil.parser import parse; d=str(parse(ch,dayfirst=False))[:19].replace(' 00:00:00',''); c.execute("UPDATE n SET d=? WHERE id=?", (d, nid)); c.commit(); _sync(); print(f"✓ {d}")
+        elif ch == 'm': print("\n[a] archive"); mc = input("m> ").strip().lower(); mc == 'a' and (print("\n=== Archive ==="), [print(f"  [{ct[:16]}] {t}" + (f" @{p}" if p else "")) for t,p,ct in c.execute("SELECT t,proj,c FROM n WHERE s=1 ORDER BY c DESC LIMIT 20")], input("[enter]"))
+        elif ch == 'p':
+            while True:
+                print(("\n" + "\n".join(f"  {j}. {x}" for j,x in enumerate(projs))) if projs else "\n  (no projects)"); print("[#] open  [name] new  [rm #] del  [enter] back"); pc = input("p> ").strip()
+                if not pc: break
+                if pc[:3]=='rm ' and pc[3:].isdigit() and int(pc[3:])<len(projs): n=projs.pop(int(pc[3:])); c.execute("DELETE FROM p WHERE name=?",(n,)); c.commit(); _sync(); print(f"✓ {n}"); continue
+                if pc.isdigit() and int(pc) < len(projs):
+                    pname = projs[int(pc)]
+                    while True:
+                        pnotes = c.execute("SELECT id,t,d FROM n WHERE s=0 AND proj=? ORDER BY c DESC", (pname,)).fetchall(); print(f"\n=== {pname} === {len(pnotes)} notes"); [print(f"  {j}. {pt}" + (f" [{pd}]" if pd else "")) for j,(pid,pt,pd) in enumerate(pnotes)]; print("[text] add note  [enter] back"); pn = input(f"{pname}> ").strip()
+                        if not pn: break
+                        c.execute("INSERT INTO n(t,proj) VALUES(?,?)", (pn,pname)); c.commit(); _sync(); print("✓")
+                    break
+                c.execute("INSERT OR IGNORE INTO p(name) VALUES(?)", (pc,)); c.commit(); projs.append(pc) if pc not in projs else None; _sync(); print(f"✓ {pc}")
+        else: sys.exit() if ch == 'q' else (c.execute("INSERT INTO n(t) VALUES(?)", (ch,)), c.commit(), _sync(), print("✓")) if ch else None
 
 def cmd_add():
     args = [a for a in sys.argv[2:] if a != '--global']
