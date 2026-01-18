@@ -637,37 +637,36 @@ if arg == '_ghost':
 HELP_SHORT = f"""aio - AI agent session manager
 QUICK START:
   aio c               Start agent (c=codex l/o=claude g=gemini a=aider)
-  aio dash            Dashboard with jobs monitor
+  aio run "task"      Run task on remote SSH host
   aio fix             AI finds/fixes issues
   aio bug "task"      Fix a bug
   aio feat "task"     Add a feature
-ALL (multi-agent):
-  aio all c:3             Launch 3 codex in parallel worktrees
-  aio all c:3 "task"      Launch with task
-  aio all c:2 l:1         Mixed: 2 codex + 1 claude
+REMOTE:
+  aio ssh             List SSH hosts (✓/x = online)
+  aio ssh 2           Connect to host 2
+  aio run 2 "task"    Run on host 2 | aio run 2 c "task" (codex)
 GIT:
-  aio push src/ msg   Push folder with message
+  aio push msg        Push with message
   aio pull            Sync with server
 MANAGEMENT:
   aio jobs            Show active jobs
   aio attach          Reconnect to session
-  aio kill            Kill all tmux sessions
-  aio cleanup         Delete all worktrees
+  aio n               Notes (aio n "text" to add)
 Run 'aio help' for all commands"""
 
 HELP_FULL = f"""aio - AI agent session manager
 SESSIONS: c=codex l/o=claude g=gemini a=aider h=htop t=top
   aio <key> [#|dir]      Start session (# = project index)
-  aio <key>-- [#]        New worktree  |  aio +<key>  New timestamped
-  aio cp/lp/gp           Insert prompt (edit first)
-  aio <key> "prompt"     Send custom prompt  |  -w new window  -t +terminal
+  aio <key>++ [#]        New worktree  |  aio <key> "prompt"  Send prompt
 WORKFLOWS: aio fix|bug|feat|auto|del [agent] ["task"]
-WORKTREES: aio w  list | w<#>  open | w<#>-  delete | w<#>--  push+delete
+WORKTREES: aio w  list | w<#>  open | w<#>-  delete
+REMOTE: ssh  list hosts | ssh <#>  connect | run [#] [agent] "task"
 ADD/REMOVE: aio add [path|name "cmd"]  aio remove <#|name>
-MONITOR: jobs [-r] | review | cleanup | ls | attach | kill
+MONITOR: jobs [-r] | cleanup | ls | attach | kill
 GIT: push [file] [msg] | pull [-y] | revert [N]
+NOTES: n  review | n "text"  add | n sync
 CLOUD: gdrive [login|logout|status|sync]
-CONFIG: install | deps | update | font [+|-|N] | config [key] [val]
+CONFIG: install | deps | update | config [key] [val]
 DB: {DB_PATH}  Worktrees: {{WT_DIR}}"""
 
 # Commands
