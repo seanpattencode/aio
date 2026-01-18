@@ -29,7 +29,7 @@ case $OS in
     debian)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        apt-get install -y -qq tmux git curl ca-certificates unzip python3-aiohttp python3-pexpect python3-prompt-toolkit 2>/dev/null || true
+        apt-get install -y -qq tmux git curl ca-certificates unzip python3-aiohttp python3-pexpect python3-prompt-toolkit || true
         # Install nodejs+npm from repos
         if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
             apt-get install -y -qq nodejs npm 2>/dev/null || true
