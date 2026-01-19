@@ -158,6 +158,7 @@ def init_db():
         # Todos/Jobs (merged from data/aios.db)
         c.execute("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, real_deadline INTEGER NOT NULL, virtual_deadline INTEGER, created_at INTEGER NOT NULL, completed_at INTEGER)")
         c.execute("CREATE TABLE IF NOT EXISTS jobs (name TEXT PRIMARY KEY, step TEXT NOT NULL, status TEXT NOT NULL, path TEXT, session TEXT, updated_at INTEGER NOT NULL)")
+        c.execute("CREATE TABLE IF NOT EXISTS hub_jobs (id INTEGER PRIMARY KEY, name TEXT, schedule TEXT, prompt TEXT, agent TEXT DEFAULT 'l', project TEXT, device TEXT, enabled INTEGER DEFAULT 1, last_run TEXT, parallel INTEGER DEFAULT 1)")
         # Defaults
         if c.execute("SELECT COUNT(*) FROM config").fetchone()[0] == 0:
             dp = get_prompt('default') or ''
@@ -1077,6 +1078,24 @@ def cmd_ssh():
     if not pw and nm in hmap: pw=input("Password? ").strip()
     pw and not shutil.which('sshpass') and _die("x need sshpass"); print(f"Connecting to {nm}...\n[AI: use 'timeout N aio ssh X' - interactive session needs TTY]", file=sys.stderr, flush=True); os.execvp('sshpass',['sshpass','-p',pw]+cmd) if pw else os.execvp('ssh',cmd)
 
+def cmd_hub():
+    jobs = list(db().execute("SELECT name, schedule, prompt, agent, project, device, enabled, last_run, COALESCE(parallel,1) FROM hub_jobs"))
+    if wda == 'add':
+        n=input("Name: ").strip().replace(' ','-'); projs=load_proj(); [print(f"  {i}. {os.path.basename(x)}") for i,x in enumerate(projs)]; p=None
+        while not p: pi=input("Project (#/path): ").strip(); p=projs[int(pi)] if pi.isdigit() and int(pi)<len(projs) else os.path.expanduser(pi) if os.path.isdir(os.path.expanduser(pi)) else (print("x invalid"),None)[1]
+        pr=input("Prompt: ").strip()
+        a=input("Agent (c/l/g) [l]: ").strip() or 'l'; pa=input("Parallel [1]: ").strip() or '1'; si=input("Schedule (e.g. '6:00' or '6:00 mon'): ").strip(); t,dow=((si.split()+['*'])[:2]); s=f"{t.split(':')[1] if ':' in t else '0'} {t.split(':')[0]} * * {dow}"; d=DEVICE_ID
+        with db() as c: c.execute("INSERT INTO hub_jobs(name,schedule,prompt,agent,project,device,parallel) VALUES(?,?,?,?,?,?,?)",(n,s,pr,a,p,d,int(pa))); c.commit()
+        svc=f"[Unit]\nDescription=aio hub {n}\n[Service]\nType=oneshot\nExecStart={shutil.which('aio')} hub run {n}\n[Install]\nWantedBy=multi-user.target"
+        tmr=f"[Unit]\nDescription=aio hub {n} timer\n[Timer]\nOnCalendar={dow.title()+' ' if dow!='*' else ''}*-*-* {t}\nPersistent=true\n[Install]\nWantedBy=timers.target"
+        sd=Path.home()/'.config/systemd/user'; sd.mkdir(parents=True,exist_ok=True); (sd/f'aio-{n}.service').write_text(svc); (sd/f'aio-{n}.timer').write_text(tmr)
+        sp.run(['systemctl','--user','daemon-reload']); sp.run(['systemctl','--user','enable','--now',f'aio-{n}.timer']); print(f"✓ Added {n} @{d}"); return
+    if wda == 'rm' and len(sys.argv)>3: n=sys.argv[3]; c=db(); c.execute("DELETE FROM hub_jobs WHERE name=?",(n,)); c.commit(); sp.run(['systemctl','--user','disable','--now',f'aio-{n}.timer'],capture_output=True); print(f"✓ Removed {n}"); return
+    if wda == 'run' and len(sys.argv)>3: n=sys.argv[3]; c=db(); j=c.execute("SELECT prompt,agent,project FROM hub_jobs WHERE name=?",(n,)).fetchone(); j and (print(f"→ {n}"),os.system(f"cd ~/projects/{j[2]} && aio {j[1]}++ && tmux send-keys -t {j[2]} {shlex.quote(j[0])} Enter")); c.execute("UPDATE hub_jobs SET last_run=? WHERE name=?",(datetime.now().isoformat()[:16],n)); c.commit(); return
+    def _ht(s): p=s.split(); return f"{p[1]}:{p[0].zfill(2)}{'' if p[4]=='*' else ' '+p[4]}" if len(p)>=5 else s
+    def _ta(n): return sp.run(['systemctl','--user','is-active',f'aio-{n}.timer'],capture_output=True).returncode==0
+    print("HUB - Scheduled Jobs\n" + ("\n".join(f"  {i}. {'✓' if _ta(n) else 'x'} {n} @{_ht(s)} {a}x{pa}:{os.path.basename(p)}{' (last:'+l+')' if l else ''}" for i,(n,s,pr,a,p,d,e,l,pa) in enumerate(jobs)) or "  (none)") + "\n  add/rm <name>/run <name>")
+
 def cmd_run():
     args = sys.argv[2:]; hosts = list(db().execute("SELECT name,host FROM ssh")); [print(f"  {i}. {n}") for i,(n,h) in enumerate(hosts)] if args and not args[0].isdigit() else None
     hi = int(args.pop(0)) if args and args[0].isdigit() else int(input("Host #: ").strip()); agent = args.pop(0) if args and args[0] in 'clg' else 'l'
@@ -1094,6 +1113,7 @@ CMDS = {
     'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'all': cmd_multi, 'backup': cmd_backup, 'bak': cmd_backup,
     'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web, 'ssh': cmd_ssh,
     'fix': cmd_workflow, 'bug': cmd_workflow, 'feat': cmd_workflow, 'fea': cmd_workflow, 'auto': cmd_workflow, 'aut': cmd_workflow, 'del': cmd_workflow, 'run': cmd_run,
+    'hub': cmd_hub,
 }
 
 if arg in CMDS: CMDS[arg]()
