@@ -559,7 +559,7 @@ def list_all(help=True, cache=True):
 def db_sync():
     if not os.path.isdir(f"{DATA_DIR}/.git"): return True
     sqlite3.connect(DB_PATH).execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
-    r = sp.run(f'cd "{DATA_DIR}" && git add -A && git diff --cached --quiet || git commit -m "sync" && (git push -q 2>&1 || git pull --rebase -q && git push -q 2>&1)', shell=True, capture_output=True, text=True)
+    r = sp.run(f'cd "{DATA_DIR}" && git rebase --abort 2>/dev/null; git add -A && git diff --cached --quiet || git commit -m "sync" && (git push -q 2>&1 || git reset --hard @{{u}} && git push -q 2>&1)', shell=True, capture_output=True, text=True)
     r.returncode != 0 and r.stderr and print(f"! sync: {r.stderr.strip()[:50]}"); (rc := get_rclone()) and cloud_configured() and sp.Popen([rc, 'copy', DB_PATH, f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/db/', '-q'], stdout=sp.DEVNULL, stderr=sp.DEVNULL); return r.returncode == 0
 
 def cmd_backup():
