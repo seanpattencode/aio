@@ -43,7 +43,9 @@ case $OS in
         ok "tmux + node $(node -v 2>/dev/null || echo 'missing') + npm $(npm -v 2>/dev/null || echo 'missing')"
         ;;
     arch)
-        pacman -Sy --noconfirm tmux nodejs npm git
+        if [[ $EUID -eq 0 ]]; then pacman -Sy --noconfirm tmux nodejs npm git
+        elif command -v sudo &>/dev/null; then sudo pacman -Sy --noconfirm tmux nodejs npm git
+        else warn "No root - install tmux nodejs npm git manually"; fi
         ok "tmux + node"
         ;;
     fedora)
