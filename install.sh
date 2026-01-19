@@ -9,15 +9,31 @@ die() { echo "✗ $1"; exit 1; }
 
 BIN="$HOME/.local/bin"
 mkdir -p "$BIN"
+export PATH="$BIN:$PATH"
 
-# Detect OS
+# Detect OS and root access
 if [[ "$OSTYPE" == darwin* ]]; then OS=mac
 elif [[ -f /data/data/com.termux/files/usr/bin/bash ]]; then OS=termux
 elif [[ -f /etc/debian_version ]]; then OS=debian
 elif [[ -f /etc/arch-release ]]; then OS=arch
 elif [[ -f /etc/fedora-release ]]; then OS=fedora
 else OS=unknown; fi
-info "Detected: $OS"
+
+# Check root/sudo access
+if [[ $EUID -eq 0 ]]; then SUDO=""
+elif sudo -n true 2>/dev/null; then SUDO="sudo"
+else SUDO=""; fi
+info "Detected: $OS ${SUDO:+(sudo)}${SUDO:-"(no root)"}"
+
+# Install node via fnm if no npm
+install_fnm() {
+    command -v npm &>/dev/null && return 0
+    info "Installing fnm + node (user-level)..."
+    curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell --install-dir "$BIN"
+    export PATH="$BIN:$PATH"
+    eval "$("$BIN/fnm" env --shell bash 2>/dev/null)" || true
+    "$BIN/fnm" install --lts && ok "node $(node -v)" || warn "fnm install failed"
+}
 
 # Install system packages
 case $OS in
@@ -27,45 +43,27 @@ case $OS in
         ok "tmux + node"
         ;;
     debian)
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq
-        apt-get install -y -qq tmux git curl ca-certificates unzip python3-aiohttp python3-pexpect python3-prompt-toolkit || true
-        # Install nodejs+npm from repos
-        if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
-            apt-get install -y -qq nodejs npm 2>/dev/null || true
-        fi
-        # Fallback: download node binary directly
-        if ! command -v npm &>/dev/null; then
-            info "Downloading node directly..."
-            NODE_VER="v22.12.0"
-            curl -fsSL "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-linux-x64.tar.xz" | tar -xJf - -C /usr/local --strip-components=1
-        fi
-        ok "tmux + node $(node -v 2>/dev/null || echo 'missing') + npm $(npm -v 2>/dev/null || echo 'missing')"
+        if [[ -n "$SUDO" ]]; then
+            export DEBIAN_FRONTEND=noninteractive
+            $SUDO apt-get update -qq
+            $SUDO apt-get install -y -qq tmux git curl nodejs npm python3-pip 2>/dev/null || true
+            ok "system packages"
+        else install_fnm; command -v tmux &>/dev/null || warn "tmux needs: sudo apt install tmux"; fi
         ;;
     arch)
-        if [[ $EUID -eq 0 ]]; then pacman -Sy --noconfirm tmux nodejs npm git
-        elif command -v sudo &>/dev/null; then sudo pacman -Sy --noconfirm tmux nodejs npm git
-        else warn "No root - install tmux nodejs npm git manually"; fi
-        ok "tmux + node"
+        if [[ -n "$SUDO" ]]; then $SUDO pacman -Sy --noconfirm tmux nodejs npm git python-pip 2>/dev/null && ok "system packages"
+        else install_fnm; command -v tmux &>/dev/null || warn "tmux needs: sudo pacman -S tmux"; fi
         ;;
     fedora)
-        dnf install -y tmux nodejs npm git
-        ok "tmux + node"
+        if [[ -n "$SUDO" ]]; then $SUDO dnf install -y tmux nodejs npm git python3-pip 2>/dev/null && ok "system packages"
+        else install_fnm; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi
         ;;
-    termux)
-        pkg update -y && pkg install -y tmux nodejs git python
-        ok "tmux + node"
-        ;;
-    *)
-        warn "Unknown OS - install tmux and node manually"
-        ;;
+    termux) pkg update -y && pkg install -y tmux nodejs git python && ok "system packages" ;;
+    *) install_fnm; warn "Unknown OS - install tmux manually" ;;
 esac
 
-# Ensure node/npm in PATH (for fnm)
-if [[ -d "$HOME/.local/share/fnm" ]]; then
-    export PATH="$HOME/.local/share/fnm:$PATH"
-    eval "$(fnm env --shell bash 2>/dev/null)" || true
-fi
+# Ensure fnm node in PATH
+if [[ -f "$BIN/fnm" ]]; then eval "$("$BIN/fnm" env --shell bash 2>/dev/null)" || true; fi
 
 # Node CLIs
 install_cli() {
@@ -86,10 +84,10 @@ install_cli "@anthropic-ai/claude-code" "claude"
 install_cli "@openai/codex" "codex"
 install_cli "@google/gemini-cli" "gemini"
 
-# Python extras (optional, non-fatal) - skip on debian (uses apt above)
-if [[ "$OS" != "debian" ]] && command -v python3 &>/dev/null; then
-    python3 -m pip install --user -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python extras" || true
-fi
+# Python extras (optional)
+if command -v pip3 &>/dev/null; then pip3 install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras"
+elif command -v pip &>/dev/null; then pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras"
+elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/null; python3 -m pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras" || warn "pip not available"; fi
 
 # aio itself
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -100,9 +98,9 @@ else
     curl -fsSL "$AIO_URL" -o "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (remote)"
 fi
 
-# PATH check
-if [[ ":$PATH:" != *":$BIN:"* ]]; then
-    warn "Add to PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
-fi
+# PATH setup in shell rc
+RC="$HOME/.bashrc"; [[ -f "$HOME/.zshrc" ]] && RC="$HOME/.zshrc"
+grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
+[[ -f "$BIN/fnm" ]] && grep -q 'fnm env' "$RC" 2>/dev/null || echo 'eval "$(~/.local/bin/fnm env 2>/dev/null)"' >> "$RC"
 
-echo -e "\n${G}Done!${R} Run: aio help"
+echo -e "\n${G}Done!${R} Run: source $RC && aio"
