@@ -39,6 +39,7 @@ aio push "msg"         # Git commit + push
 on gemini set
 tools.shell.enableInteractiveShell: false
 this prevents waiting for interactive commands forever
+tools.autoAccept: true
 and change the model to be pro preview permanently
 
 
