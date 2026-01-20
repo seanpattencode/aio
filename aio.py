@@ -361,6 +361,7 @@ def _write_conf():
     l2 = '#[align=left]#[range=user|esc]Esc#[norange]#[align=centre]#[range=user|kbd]Keyboard#[norange]'
     cc = _clip()
     conf = f'''# aio-managed-config
+set -ga update-environment "WAYLAND_DISPLAY"
 set -g mouse on
 set -g focus-events on
 set -g set-titles on
