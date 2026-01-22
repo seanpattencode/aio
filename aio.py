@@ -1018,7 +1018,7 @@ def cmd_agent():
                 if stable >= 2: break
             last_out = out
     timeout, done_file = 300, Path(f"{DATA_DIR}/.done"); done_file.unlink(missing_ok=True)
-    prompt = f'{task}. When fully complete, run the command: aio done'
+    prompt = f'{task}\n\nCommands: "aio agent g <task>" spawns gemini subagent, "aio agent l <task>" spawns claude subagent. Subagents auto-signal when done. When YOUR task is fully complete, run: aio done'
     print(f"Sending to {sn}..."); tm.send(sn, prompt); time.sleep(0.3); sp.run(['tmux', 'send-keys', '-t', sn, 'Enter'])
     print("Waiting for completion..."); start = time.time()
     while not done_file.exists():
