@@ -160,6 +160,7 @@ def init_db():
         c.execute("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, real_deadline INTEGER NOT NULL, virtual_deadline INTEGER, created_at INTEGER NOT NULL, completed_at INTEGER)")
         c.execute("CREATE TABLE IF NOT EXISTS jobs (name TEXT PRIMARY KEY, step TEXT NOT NULL, status TEXT NOT NULL, path TEXT, session TEXT, updated_at INTEGER NOT NULL)")
         c.execute("CREATE TABLE IF NOT EXISTS hub_jobs (id INTEGER PRIMARY KEY, name TEXT, schedule TEXT, prompt TEXT, agent TEXT DEFAULT 'l', project TEXT, device TEXT, enabled INTEGER DEFAULT 1, last_run TEXT, parallel INTEGER DEFAULT 1)")
+        c.execute("CREATE TABLE IF NOT EXISTS agent_logs (session TEXT PRIMARY KEY, parent TEXT, started REAL)")
         # Defaults
         if c.execute("SELECT COUNT(*) FROM config").fetchone()[0] == 0:
             dp = get_prompt('default') or ''
@@ -367,9 +368,10 @@ def ensure_tmux():
     r.returncode != 0 and print(f"! tmux config error: {r.stderr.strip()}")
     sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
 
-def _start_log(sn):
-    os.makedirs(LOG_DIR, exist_ok=True); lf = os.path.join(LOG_DIR, f"{sn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+def _start_log(sn, parent=None):
+    os.makedirs(LOG_DIR, exist_ok=True); lf = os.path.join(LOG_DIR, f"{sn}.log")
     sp.run(['tmux', 'pipe-pane', '-t', sn, f"cat >> {lf}"], capture_output=True)
+    with db() as c: c.execute("INSERT OR REPLACE INTO agent_logs VALUES (?,?,?)", (sn, parent, time.time()))
 
 def create_sess(sn, wd, cmd, env=None):
     ai = cmd and any(a in cmd for a in ['codex', 'claude', 'gemini', 'aider'])
@@ -978,11 +980,15 @@ def cmd_copy():
 
 def cmd_log():
     os.makedirs(LOG_DIR, exist_ok=True); logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
-    total = sum(f.stat().st_size for f in logs); print(f"Logs: {len(logs)} files, {total/1024/1024:.1f}MB in {LOG_DIR}")
+    with db() as c: meta = {r[0]: (r[1], r[2]) for r in c.execute("SELECT session, parent, started FROM agent_logs")}
+    total = sum(f.stat().st_size for f in logs); print(f"Logs: {len(logs)} files, {total/1024/1024:.1f}MB")
     if not logs: return
     if wda == 'clean': days = int(sys.argv[3]) if len(sys.argv) > 3 else 7; old = [f for f in logs if (time.time() - f.stat().st_mtime) > days*86400]; [f.unlink() for f in old]; print(f"✓ Deleted {len(old)} logs older than {days}d"); return
     if wda == 'tail': f = logs[int(sys.argv[3])] if len(sys.argv) > 3 and sys.argv[3].isdigit() else logs[0]; os.execvp('tail', ['tail', '-f', str(f)])
-    for i, f in enumerate(logs[:20]): sz = f.stat().st_size/1024; m = (time.time()-f.stat().st_mtime)/60; age = f"{m:.0f}m" if m < 60 else f"{m/60:.0f}h"; print(f"  {i}. {f.stem:<40} {sz:>6.0f}KB  {age} ago")
+    for i, f in enumerate(logs[:20]):
+        sz = f.stat().st_size/1024; sn = f.stem; parent, started = meta.get(sn, (None, f.stat().st_mtime))
+        m = (time.time() - started)/60; age = f"{m:.0f}m" if m < 60 else f"{m/60:.0f}h"
+        sub = " (subagent)" if parent else ""; print(f"  {i}. {sn:<35} {sz:>5.0f}KB {age:>4} ago{sub}")
     print(f"\nCommands: aio log tail [#] | aio log clean [days]")
     if (c := input("> ").strip()).isdigit() and int(c) < len(logs): sp.run(['tmux', 'new-window', f'cat "{logs[int(c)]}"; read'])
 
@@ -1001,7 +1007,8 @@ def cmd_agent():
             if existing: print("Active agents:"); [print(f"  {i}. {s}") for i,s in enumerate(existing)]
             _die("Usage: aio agent [g|c|l|#|name] <task>")
         sn = f"agent-{agent}-{int(time.time())}"; _, cmd = sess[agent]
-        print(f"Agent: {agent} | Task: {task[:50]}..."); tm.new(sn, os.getcwd(), cmd); _start_log(sn)
+        parent = sp.run(['tmux', 'display-message', '-p', '#S'], capture_output=True, text=True).stdout.strip(); parent = parent if parent.startswith('agent-') else None
+        print(f"Agent: {agent} | Task: {task[:50]}..."); tm.new(sn, os.getcwd(), cmd); _start_log(sn, parent)
         print("Waiting for agent to start..."); last_out, stable = '', 0
         for _ in range(60):
             time.sleep(1); out = sp.run(['tmux', 'capture-pane', '-t', sn, '-p'], capture_output=True, text=True).stdout
