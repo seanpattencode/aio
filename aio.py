@@ -984,7 +984,7 @@ def cmd_log():
     if wda == 'tail': f = logs[int(sys.argv[3])] if len(sys.argv) > 3 and sys.argv[3].isdigit() else logs[0]; os.execvp('tail', ['tail', '-f', str(f)])
     for i, f in enumerate(logs[:20]): sz = f.stat().st_size/1024; age = (time.time()-f.stat().st_mtime)/3600; print(f"  {i}. {f.stem:<40} {sz:>6.0f}KB  {age:.0f}h ago")
     print(f"\nCommands: aio log tail [#] | aio log clean [days]")
-    if (c := input("> ").strip()).isdigit() and int(c) < len(logs): os.execvp('less', ['less', '-R', str(logs[int(c)])])
+    if (c := input("> ").strip()).isdigit() and int(c) < len(logs): sp.run(['tmux', 'new-window', f'cat "{logs[int(c)]}"; read'])
 
 def cmd_done():
     Path(f"{DATA_DIR}/.done").touch(); print("✓ done")
