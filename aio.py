@@ -178,39 +178,6 @@ def init_db():
         c.execute("INSERT OR IGNORE INTO sessions VALUES ('o', 'claude', 'claude --dangerously-skip-permissions')")
         c.execute("INSERT OR IGNORE INTO sessions VALUES ('a', 'aider', 'OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')")
         c.commit()
-    # Migrate old DBs if they exist
-    _migrate_old_dbs()
-
-def _migrate_old_dbs():
-    # Migrate notes from old notebook/notes.db
-    old_notes = os.path.join(NOTE_DIR, "notes.db")
-    if not os.path.exists(old_notes) and os.path.exists(old_notes + ".migrated"): old_notes += ".migrated"
-    if os.path.exists(old_notes):
-        try:
-            with sqlite3.connect(old_notes) as old, db() as c:
-                if c.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0:
-                    for r in old.execute("SELECT id,t,s,d,c,proj FROM n").fetchall():
-                        c.execute("INSERT OR IGNORE INTO notes VALUES(?,?,?,?,?,?)", r)
-                    for r in old.execute("SELECT id,name,c FROM p").fetchall():
-                        c.execute("INSERT OR IGNORE INTO note_projects VALUES(?,?,?)", r)
-                    c.commit()
-            os.rename(old_notes, old_notes + ".migrated")
-        except: pass
-    # Migrate todos/jobs from old data/aios.db
-    old_data = os.path.join(SCRIPT_DIR, "data", "aios.db")
-    if not os.path.exists(old_data) and os.path.exists(old_data + ".migrated"): old_data += ".migrated"
-    if os.path.exists(old_data):
-        try:
-            with sqlite3.connect(old_data) as old, db() as c:
-                if c.execute("SELECT COUNT(*) FROM todos").fetchone()[0] == 0:
-                    for r in old.execute("SELECT id,title,real_deadline,virtual_deadline,created_at,completed_at FROM todos").fetchall():
-                        c.execute("INSERT OR IGNORE INTO todos VALUES(?,?,?,?,?,?)", r)
-                if c.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0:
-                    for r in old.execute("SELECT name,step,status,path,session,updated_at FROM jobs").fetchall():
-                        c.execute("INSERT OR IGNORE INTO jobs VALUES(?,?,?,?,?,?)", r)
-                c.commit()
-            os.rename(old_data, old_data + ".migrated")
-        except: pass
 
 def load_cfg():
     with db() as c: return dict(c.execute("SELECT key, value FROM config").fetchall())
