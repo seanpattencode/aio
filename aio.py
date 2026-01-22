@@ -75,6 +75,7 @@ PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
 NOTE_DIR = os.path.join(DATA_DIR, "notebook")
+LOG_DIR = os.path.join(DATA_DIR, "logs")
 _GP, _GT = '_aio_ghost_', 300
 _GM = {'c': 'c', 'l': 'l', 'g': 'g', 'o': 'l', 'cp': 'c', 'lp': 'l', 'gp': 'g'}
 _AIO_DIR = os.path.expanduser('~/.aios')
@@ -366,11 +367,16 @@ def ensure_tmux():
     r.returncode != 0 and print(f"! tmux config error: {r.stderr.strip()}")
     sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
 
+def _start_log(sn):
+    os.makedirs(LOG_DIR, exist_ok=True); lf = os.path.join(LOG_DIR, f"{sn}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    sp.run(['tmux', 'pipe-pane', '-t', sn, f"cat >> {lf}"], capture_output=True)
+
 def create_sess(sn, wd, cmd, env=None):
     ai = cmd and any(a in cmd for a in ['codex', 'claude', 'gemini', 'aider'])
     if ai: cmd = f'while :; do {cmd}; e=$?; [ $e -eq 0 ] && break; echo -e "\\n! Crashed (exit $e). [R]estart / [Q]uit: "; read -n1 k; [[ $k =~ [Rr] ]] || break; done'
     r = tm.new(sn, wd, cmd or '', env); ensure_tmux()
     if ai: sp.run(['tmux', 'split-window', '-v', '-t', sn, '-c', wd, 'sh -c "ls;exec $SHELL"'], capture_output=True); sp.run(['tmux', 'select-pane', '-t', sn, '-U'], capture_output=True)
+    _start_log(sn)
     return r
 
 # Terminal helpers
@@ -970,6 +976,40 @@ def cmd_web(): sp.Popen(['xdg-open', 'https://google.com/search?q='+'+'.join(sys
 def cmd_copy():
     L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); full='\n'.join(L[p+1:u]).strip() if P else ''; sp.run(_clip(),shell=True,input=full,text=True); s=full.replace('\n',' '); print(f"✓ {s[:23]+'...'+s[-24:] if len(s)>50 else s}")
 
+def cmd_log():
+    os.makedirs(LOG_DIR, exist_ok=True); logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
+    total = sum(f.stat().st_size for f in logs); print(f"Logs: {len(logs)} files, {total/1024/1024:.1f}MB in {LOG_DIR}")
+    if not logs: return
+    if wda == 'clean': days = int(sys.argv[3]) if len(sys.argv) > 3 else 7; old = [f for f in logs if (time.time() - f.stat().st_mtime) > days*86400]; [f.unlink() for f in old]; print(f"✓ Deleted {len(old)} logs older than {days}d"); return
+    if wda == 'tail': f = logs[int(sys.argv[3])] if len(sys.argv) > 3 and sys.argv[3].isdigit() else logs[0]; os.execvp('tail', ['tail', '-f', str(f)])
+    for i, f in enumerate(logs[:20]): sz = f.stat().st_size/1024; age = (time.time()-f.stat().st_mtime)/3600; print(f"  {i}. {f.stem:<40} {sz:>6.0f}KB  {age:.0f}h ago")
+    print(f"\nCommands: aio log tail [#] | aio log clean [days]")
+    if (c := input("> ").strip()).isdigit() and int(c) < len(logs): os.execvp('less', ['less', '-R', str(logs[int(c)])])
+
+def cmd_done():
+    Path(f"{DATA_DIR}/.done").touch(); print("✓ done")
+
+def cmd_agent():
+    agent = wda if wda in sess else 'g'
+    task = ' '.join(sys.argv[3:]) if wda in sess else ' '.join(sys.argv[2:])
+    if not task: _die("Usage: aio agent [g|c|l] <task>")
+    timeout = 300
+    done_file = Path(f"{DATA_DIR}/.done"); done_file.unlink(missing_ok=True)
+    sn = f"agent-{agent}-{int(time.time())}"
+    _, cmd = sess[agent]
+    prompt = f'{task}. When fully complete, run the command: aio done'
+    print(f"Agent: {agent} | Task: {task[:50]}...")
+    tm.new(sn, os.getcwd(), cmd); _start_log(sn)
+    time.sleep(5)  # wait for agent to start
+    tm.send(sn, prompt); time.sleep(0.1); sp.run(['tmux', 'send-keys', '-t', sn, 'Enter'])
+    print("Waiting for completion...")
+    start = time.time()
+    while not done_file.exists():
+        if time.time() - start > timeout: print(f"x Timeout after {timeout}s"); break
+        time.sleep(1)
+    output = sp.run(['tmux', 'capture-pane', '-t', sn, '-p', '-S', '-100'], capture_output=True, text=True).stdout
+    print(f"--- Output ---\n{output}\n--- End ---")
+
 def cmd_wt_plus():
     key = arg[:-2]
     if key not in sess: print(f"x Unknown session key: {key}"); return
@@ -1004,6 +1044,7 @@ def cmd_sess():
     sn = get_dir_sess(arg, wd); env = _env(); created = False
     if sn is None: n, c = sess.get(arg, (arg, None)); create_sess(n, wd, c or arg, env=env); sn = n; created = True
     elif not tm.has(sn): create_sess(sn, wd, sess[arg][1], env=env); created = True
+    else: _start_log(sn)
     is_p = arg.endswith('p') and not arg.endswith('pp') and len(arg) == 2 and arg in sess
     pp = [a for a in sys.argv[(2 if is_wda_prompt else (3 if wda else 2)):] if a not in ['-w', '--new-window', '--yes', '-y', '-t', '--with-terminal']]
     if pp: print("Prompt queued"); sp.Popen([sys.executable, __file__, 'send', sn, ' '.join(pp)] + (['--no-enter'] if is_p else []), stdout=sp.DEVNULL, stderr=sp.DEVNULL)
@@ -1144,7 +1185,7 @@ CMDS = {
     'watch': cmd_watch, 'wat': cmd_watch, 'push': cmd_push, 'pus': cmd_push, 'pull': cmd_pull, 'pul': cmd_pull, 'revert': cmd_revert, 'rev': cmd_revert, 'set': cmd_set,
     'install': cmd_install, 'ins': cmd_install, 'uninstall': cmd_uninstall, 'uni': cmd_uninstall, 'deps': cmd_deps, 'dep': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'n': cmd_note, 'settings': cmd_set,
     'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'all': cmd_multi, 'backup': cmd_backup, 'bak': cmd_backup, 'scan': cmd_scan, 'sca': cmd_scan,
-    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web, 'ssh': cmd_ssh,
+    'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'log': cmd_log, 'done': cmd_done, 'agent': cmd_agent, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web, 'ssh': cmd_ssh,
     'fix': cmd_workflow, 'bug': cmd_workflow, 'feat': cmd_workflow, 'fea': cmd_workflow, 'auto': cmd_workflow, 'aut': cmd_workflow, 'del': cmd_workflow, 'run': cmd_run,
     'hub': cmd_hub,
 }
