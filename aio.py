@@ -532,7 +532,7 @@ def list_all(help=True, cache=True):
     out += ([f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {fmt_cmd(c)}" for i, (n, c) in enumerate(a)] if a else [])
     txt = '\n'.join(out); out and print(txt)
     if cache:
-        Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
+        Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_FULL.format(WT_DIR=WT_DIR) + '\n' + txt + '\n')
         Path(os.path.join(DATA_DIR, 'help_cache_short.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
         Path(os.path.join(DATA_DIR, 'help_cache_full.txt')).write_text(HELP_FULL.format(WT_DIR=WT_DIR) + '\n' + txt + '\n')
     if help and (p or a): print(f"\nTip: aio add [path|name cmd]  aio remove <#|name>")
@@ -618,7 +618,8 @@ if arg == '_ghost':
 # Help
 HELP_SHORT = f"""aio - AI session manager
 Usage: aio [c|g|co|a]   Start AI (Claude, Gemini, Codex, Aider)
-       aio <project>    Open project
+       aio <#|path>     Open project/command by number or path
+       aio pull         Sync git changes
        aio update       Update aio
        aio help         Show all commands
 Code:  https://github.com/seanpattencode/aio"""
