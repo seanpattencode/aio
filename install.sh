@@ -89,7 +89,8 @@ elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/nul
 # aio itself
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/aio.py" ]]; then
-    cp "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (local)"
+    [[ -L "$BIN/aio" ]] || { ln -sf "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio"; }
+    ok "aio installed (local)"
 else
     AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/aio.py"
     curl -fsSL "$AIO_URL" -o "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (remote)"
@@ -102,4 +103,13 @@ grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$P
 # Enable aio tmux config if no existing tmux.conf (adds mouse support, status bar)
 [[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/aio" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
 
-echo -e "\n${G}Done!${R} Run: source $RC && aio"
+# Generate cache
+python3 "$BIN/aio" >/dev/null 2>&1 && ok "cache generated"
+
+# Try to reload shell
+echo -e "\n${G}Done!${R}"
+if [[ -n "$BASH_VERSION" ]] && [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    source "$RC" && ok "bashrc reloaded"
+else
+    warn "Run manually: source $RC"
+fi
