@@ -48,8 +48,8 @@ install_node() {
 case $OS in
     mac)
         command -v brew &>/dev/null || die "Install Homebrew first: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-        brew install tmux node 2>/dev/null || brew upgrade tmux node 2>/dev/null || true
-        ok "tmux + node"
+        brew install tmux node gh 2>/dev/null || brew upgrade tmux node gh 2>/dev/null || true
+        ok "tmux + node + gh"
         ;;
     debian)
         if [[ -n "$SUDO" ]]; then
