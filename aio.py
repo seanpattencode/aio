@@ -1093,6 +1093,7 @@ def _sshd_ip(): r = sp.run("ifconfig 2>/dev/null | grep -A1 wlan0 | grep inet | 
 def _sshd_port(): return 8022 if os.environ.get('TERMUX_VERSION') else 22
 
 def cmd_ssh():
+    global wda
     try: import keyring as kr
     except: kr = None
     _pw = lambda n,v=None: (kr.set_password('aio-ssh',n,v),v)[1] if v and kr else kr.get_password('aio-ssh',n) if kr else (sqlite3.connect(DB_PATH).execute("UPDATE ssh SET pw=? WHERE name=?",(v,n)).connection.commit(),v)[-1] if v else (sqlite3.connect(DB_PATH).execute("SELECT pw FROM ssh WHERE name=?",(n,)).fetchone()or[None])[0]
