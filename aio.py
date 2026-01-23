@@ -1114,62 +1114,54 @@ def cmd_ssh():
     pw and not shutil.which('sshpass') and _die("x need sshpass"); print(f"Connecting to {nm}...\n[AI: use 'timeout N aio ssh X' - interactive session needs TTY]", file=sys.stderr, flush=True); os.execvp('sshpass',['sshpass','-p',pw]+cmd) if pw else os.execvp('ssh',cmd)
 
 def cmd_hub():
-    sd = Path.home()/'.config/systemd/user'; sd.mkdir(parents=True, exist_ok=True); sc = ['systemctl', '--user']; jobs=sorted(sd.glob('aio-*.timer'))
-    def _last(n):
-        r = sp.run(sc+['show',f'aio-{n}.service','--property=ExecMainExitTimestamp,ExecMainStatus'], capture_output=True, text=True)
-        d = dict(l.split('=',1) for l in r.stdout.strip().split('\n') if '=' in l); ts, st = d.get('ExecMainExitTimestamp',''), d.get('ExecMainStatus','')
-        if not ts or ts=='n/a': return '-', '-'
-        try: p = ts.split(); dt = datetime.strptime(f"{p[1]} {p[2].split('.')[0]}", '%Y-%m-%d %H:%M:%S'); ts = dt.strftime('%-m/%d ') + dt.strftime('%I:%M%p').lower().lstrip('0')
-        except: ts = '?'
-        return ts, '✓' if st=='0' else 'x'
-    def _fmt(t):
-        try:
-            tm = next((l.split('=',1)[1].strip() for l in t.read_text().splitlines() if 'OnCalendar=' in l), '?')
-            try: tm = datetime.strptime(tm.split()[-1], "%H:%M").strftime("%I:%M%p").lower().lstrip('0')
-            except: pass
-            c = next((l.split('=',1)[1].strip() for l in t.with_suffix('.service').read_text().splitlines() if 'ExecStart=' in l), '?')
-            if str(Path(__file__).resolve()) in c:
-                c = 'aio ' + c.split(str(Path(__file__).resolve()))[-1].strip()
-                if len(c.split()) > 1 and c.split()[1].isdigit() and (i:=int(c.split()[1])) < len(PROJ)+len(APPS):
-                    c = APPS[i-len(PROJ)][0] if i >= len(PROJ) else os.path.basename(PROJ[i])
-            elif '/bin/bash -c' in c: c = c.split("'")[-2].split('&&')[-1].strip() if "'" in c else c.split('"')[-2] if '"' in c else c
-            c = c.replace(os.path.expanduser('~'), '~')[:40]
-            return tm, c, *_last(t.stem[4:])
-        except: return '?', '?', '-', '-'
-    if not wda:
-        while (print(f"{'#':<3} {'Name':<15} {'Time':<8} {'Last':<14} {'St':<3} {'Command'}") or [print(f"{i:<3} {t.stem[4:]:<15} {(f:=_fmt(t))[0]:<8} {f[2]:<14} {f[3]:<3} {f[1]}") for i,t in enumerate(jobs)] or True) and (c:=input("\nCommands: add | rm <#> | run <#> | log <#>\n> ").strip()): sp.run([sys.executable, __file__, 'hub'] + c.split()); jobs=sorted(sd.glob('aio-*.timer'))
-        return
-    if wda == 'add':
-        def _parse_time(s):
-            s = s.lower().strip(); m = re.match(r'^(\d{1,2}):(\d{2})\s*(am|pm)?$', s)
-            if not m: return s
-            h, mn, ap = int(m[1]), m[2], m[3]
-            if ap == 'pm' and h != 12: h += 12
-            elif ap == 'am' and h == 12: h = 0
-            return f"{h:02d}:{mn}"
-        a = sys.argv[3:] + ['']*3; n,s,c = a[0], a[1], ' '.join(a[2:]).strip()
-        while not n: n = input("Name: ").strip().replace(' ','-')
-        while not s or ':' not in s: s = input("Time (9:00am, 2:30pm, 14:00): ").strip()
-        s = _parse_time(s)
-        if not c:
-            items = [os.path.basename(p) for p in PROJ] + [nm for nm,_ in APPS]; cols = 3; w = max(len(x) for x in items) + 4
-            print("Commands:"); rows = [items[i:i+cols] for i in range(0, len(items), cols)]
-            for ri, row in enumerate(rows): print(''.join(f"  {ri*cols+ci:>2}. {x:<{w}}" for ci, x in enumerate(row)))
-            c = input("\n# or custom: ").strip()
-            if c.isdigit() and (i:=int(c)) < len(items): c = f'aio {i}'
-        c = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__)} ') if c.startswith('aio ') else c
-        c = c.replace('python ', f'{sys.executable} ') if 'python ' in c else (f'{sys.executable} ' + c[7:] if c.startswith('python ') else c)
-        if any(x in c for x in ['&&','||',';','>>','|']) or c.split()[0] in ['cd','echo','ls']: c = f'/bin/bash -c {shlex.quote(c)}'
-        for x,t in [('service',f"[Unit]\nDescription={n}\n[Service]\nType=oneshot\nEnvironment=DISPLAY=:0\nExecStart={c}\n"), ('timer',f"[Unit]\nDescription={n}\n[Timer]\nOnCalendar={s}\nPersistent=true\n[Install]\nWantedBy=timers.target\n")]: (sd/f"aio-{n}.{x}").write_text(t)
-        [sp.run(sc+a) for a in [['daemon-reload'], ['enable','--now',f"aio-{n}.timer"]]]; print(f"✓ Scheduled {n} @ {s} (timer active)")
-    elif wda in ('rm', 'run', 'log'):
-        n = sys.argv[3]; n = jobs[int(n)].stem[4:] if n.isdigit() and int(n)<len(jobs) else n
-        if wda == 'rm': sp.run(sc+['disable','--now',f"aio-{n}.timer"], stderr=sp.DEVNULL); [(sd/f"aio-{n}.{x}").unlink(missing_ok=True) for x in ['timer','service']]; sp.run(sc+['daemon-reload']); print(f"✓ Removed {n}")
-        elif wda == 'log': os.execvp('journalctl', ['journalctl', '--user', '-u', f'aio-{n}.service', '-n', '50', '--no-pager'])
-        else:
-            sp.run(sc+['start',f"aio-{n}.service"], stderr=sp.DEVNULL)
-            failed = sp.run(sc+['is-failed',f"aio-{n}.service"], capture_output=True).returncode == 0
-            print(f"✓ Triggered {n} (service started)" if not failed else f"x Failed {n} (check journalctl --user -u aio-{n})")
+    _termux=os.path.exists('/data/data/com.termux');LOG=f"{DATA_DIR}/hub.log";_pt=lambda s:(lambda m:(f"{int(m[1])+12 if m[3]=='pm'and int(m[1])!=12 else(0 if m[3]=='am'and int(m[1])==12 else int(m[1]))}:{m[2]}")if m else s)(re.match(r'^(\d{1,2}):(\d{2})\s*(am|pm)?$',s.lower().strip()))
+    if _termux:
+        shutil.which('crontab')or sp.run(['pkg','install','-y','cronie'],capture_output=True);shutil.which('crond')and sp.run(['pgrep','crond'],capture_output=True).returncode!=0 and sp.run(['crond'])
+        _jobs=lambda:[(m.group(1),m.group(2),m.group(3),m.group(4))for l in(sp.run(['crontab','-l'],capture_output=True,text=True).stdout or'').split('\n')if(m:=re.match(r'^(\d+)\s+(\d+)\s+\*\s+\*\s+\*\s+(.+)\s+#\s*aio:(\S+)',l))]
+        if not wda:
+            while(print(f"{'#':<3}{'Name':<15}{'Time':<8}{'Command'}")or[print(f"{i:<3}{j[3]:<15}{j[1]}:{j[0].zfill(2):<6}{j[2][:35]}")for i,j in enumerate(_jobs())]or 1)and(c:=input("\nadd|rm <#>|run <#>|log\n> ").strip()):sp.run([sys.executable,__file__,'hub']+c.split())
+            return
+        if wda=='add':
+            a=sys.argv[3:]+['']*3;n,s,c=a[0],a[1],' '.join(a[2:]).strip()
+            while not n:n=input("Name: ").strip().replace(' ','-')
+            while':'not in s:s=input("Time (9:00am, 14:00): ").strip()
+            h,m=_pt(s).split(':')
+            if not c:items=[os.path.basename(p)for p in PROJ]+[nm for nm,_ in APPS];print("Commands:");[print(f"  {i}. {x}")for i,x in enumerate(items)];c=input("# or cmd: ").strip();c=f'aio {c}'if c.isdigit()and int(c)<len(items)else c
+            c=c.replace('aio ',f'{sys.executable} {os.path.abspath(__file__)} ')if c.startswith('aio ')else c;old='\n'.join(l for l in(sp.run(['crontab','-l'],capture_output=True,text=True).stdout or'').split('\n')if f'# aio:{n}'not in l).strip()
+            sp.run(['crontab','-'],input=f"{old}\n{m} {h} * * * {c} >> {LOG} 2>&1 # aio:{n}\n",text=True);print(f"✓ {n} @ {h}:{m}")
+        elif wda in('rm','run','log'):
+            jobs=_jobs();n=sys.argv[3]if len(sys.argv)>3 else'';n=jobs[int(n)][3]if n.isdigit()and int(n)<len(jobs)else n
+            if wda=='rm':sp.run(['crontab','-'],input='\n'.join(l for l in(sp.run(['crontab','-l'],capture_output=True,text=True).stdout or'').split('\n')if f'# aio:{n}'not in l)+'\n',text=True);print(f"✓ rm {n}")
+            elif wda=='log':print(open(LOG).read()[-2000:]if os.path.exists(LOG)else'No logs')
+            else:cmd=next((j[2]for j in jobs if j[3]==n),None);cmd and sp.run(cmd.split('>>')[0],shell=True);print(f"✓ {n}"if cmd else f"x {n}?")
+    else:
+        sd=Path.home()/'.config/systemd/user';sd.mkdir(parents=True,exist_ok=True);sc=['systemctl','--user'];jobs=sorted(sd.glob('aio-*.timer'))
+        def _last(n):
+            r=sp.run(sc+['show',f'aio-{n}.service','--property=ExecMainExitTimestamp,ExecMainStatus'],capture_output=True,text=True);d=dict(l.split('=',1)for l in r.stdout.strip().split('\n')if'='in l);ts,st=d.get('ExecMainExitTimestamp',''),d.get('ExecMainStatus','')
+            if not ts or ts=='n/a':return'-','-'
+            try:p=ts.split();ts=datetime.strptime(f"{p[1]} {p[2].split('.')[0]}",'%Y-%m-%d %H:%M:%S').strftime('%-m/%d %I:%M%p').lower()
+            except:ts='?'
+            return ts,'✓'if st=='0'else'x'
+        def _fmt(t):
+            try:tm=next((l.split('=',1)[1].strip()for l in t.read_text().splitlines()if'OnCalendar='in l),'?');c=next((l.split('=',1)[1].strip()for l in t.with_suffix('.service').read_text().splitlines()if'ExecStart='in l),'?');return(datetime.strptime(tm.split()[-1],"%H:%M").strftime("%I:%M%p").lower().lstrip('0')if':'in tm else tm),c.replace(os.path.expanduser('~'),'~')[:40],*_last(t.stem[4:])
+            except:return'?','?','-','-'
+        if not wda:
+            while(print(f"{'#':<3}{'Name':<15}{'Time':<8}{'Last':<14}{'St':<3}{'Command'}")or[print(f"{i:<3}{t.stem[4:]:<15}{(f:=_fmt(t))[0]:<8}{f[2]:<14}{f[3]:<3}{f[1]}")for i,t in enumerate(jobs)]or 1)and(c:=input("\nadd|rm <#>|run <#>|log <#>\n> ").strip()):sp.run([sys.executable,__file__,'hub']+c.split());jobs=sorted(sd.glob('aio-*.timer'))
+            return
+        if wda=='add':
+            a=sys.argv[3:]+['']*3;n,s,c=a[0],a[1],' '.join(a[2:]).strip()
+            while not n:n=input("Name: ").strip().replace(' ','-')
+            while':'not in s:s=input("Time (9:00am, 14:00): ").strip()
+            s=_pt(s)
+            if not c:items=[os.path.basename(p)for p in PROJ]+[nm for nm,_ in APPS];print("Commands:");[print(f"  {i}. {x}")for i,x in enumerate(items)];c=input("# or cmd: ").strip();c=f'aio {c}'if c.isdigit()and int(c)<len(items)else c
+            c=c.replace('aio ',f'{sys.executable} {os.path.abspath(__file__)} ')if c.startswith('aio ')else c;c=f'/bin/bash -c {shlex.quote(c)}'if any(x in c for x in['&&','||',';','|'])else c
+            for x,t in[('service',f"[Unit]\nDescription={n}\n[Service]\nType=oneshot\nExecStart={c}\n"),('timer',f"[Unit]\nDescription={n}\n[Timer]\nOnCalendar={s}\nPersistent=true\n[Install]\nWantedBy=timers.target\n")]:(sd/f"aio-{n}.{x}").write_text(t)
+            [sp.run(sc+a)for a in[['daemon-reload'],['enable','--now',f"aio-{n}.timer"]]];print(f"✓ {n} @ {s}")
+        elif wda in('rm','run','log'):
+            n=sys.argv[3]if len(sys.argv)>3 else'';n=jobs[int(n)].stem[4:]if n.isdigit()and int(n)<len(jobs)else n
+            if wda=='rm':sp.run(sc+['disable','--now',f"aio-{n}.timer"],stderr=sp.DEVNULL);[(sd/f"aio-{n}.{x}").unlink(missing_ok=True)for x in['timer','service']];sp.run(sc+['daemon-reload']);print(f"✓ rm {n}")
+            elif wda=='log':os.execvp('journalctl',['journalctl','--user','-u',f'aio-{n}.service','-n','50','--no-pager'])
+            else:sp.run(sc+['start',f"aio-{n}.service"],stderr=sp.DEVNULL);print(f"✓ {n}")
 
 def cmd_run():
     args = sys.argv[2:]; hosts = list(db().execute("SELECT name,host FROM ssh")); [print(f"  {i}. {n}") for i,(n,h) in enumerate(hosts)] if args and not args[0].isdigit() else None
