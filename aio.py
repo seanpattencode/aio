@@ -535,11 +535,11 @@ def list_all(cache=True, quiet=False):
     txt = '\n'.join(out); not quiet and out and print(txt); cache and Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
     return p, a
 
-def db_sync():
+def db_sync(pull=False):
     if not os.path.isdir(f"{DATA_DIR}/.git"): return True
     sqlite3.connect(DB_PATH).execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
-    r = sp.run(f'cd "{DATA_DIR}" && git rebase --abort 2>/dev/null; git add -A && git diff --cached --quiet || git commit -m "sync {DEVICE_ID}" && (git push -q 2>&1 || git pull --rebase -q && git push -q 2>&1)', shell=True, capture_output=True, text=True)
-    r.returncode != 0 and r.stderr and print(f"! sync: {r.stderr.strip()[:50]}"); (rc := get_rclone()) and cloud_configured() and sp.Popen([rc, 'copy', LOG_DIR, f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/logs/', '-q'], stdout=sp.DEVNULL, stderr=sp.DEVNULL); return r.returncode == 0
+    sp.run(f'cd "{DATA_DIR}" && git add -A && git diff --cached --quiet || git commit -m "sync" -q && git push -q 2>/dev/null || git pull --rebase -q && git push -q', shell=True, capture_output=True)
+    pull and sp.run(f'cd "{DATA_DIR}" && git pull -q', shell=True, capture_output=True); return True
 
 def cmd_backup():
     if wda == 'setup':
@@ -871,7 +871,7 @@ def cmd_gdrive():
     else: cloud_status()
 
 def cmd_note():
-    os.path.exists(DB_PATH) and sqlite3.connect(DB_PATH).execute("PRAGMA wal_checkpoint(TRUNCATE)").connection.close(); os.path.isdir(f"{DATA_DIR}/.git") and sp.run(f'cd "{DATA_DIR}" && git fetch -q 2>/dev/null && git reset --hard @{{u}} 2>/dev/null', shell=True, capture_output=True)
+    db_sync(pull=True)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     with db() as c:
         if raw: c.execute("INSERT INTO notes(t) VALUES(?)", (raw,)); c.commit(); db_sync(); print("✓"); sys.exit()
@@ -989,7 +989,7 @@ def cmd_copy():
     L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); full='\n'.join(L[p+1:u]).strip() if P else ''; sp.run(_clip(),shell=True,input=full,text=True); s=full.replace('\n',' '); print(f"✓ {s[:23]+'...'+s[-24:] if len(s)>50 else s}")
 
 def cmd_log():
-    os.makedirs(LOG_DIR, exist_ok=True); sp.run(f'cd "{DATA_DIR}" && git pull -q 2>/dev/null', shell=True, capture_output=True); logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
+    os.makedirs(LOG_DIR, exist_ok=True); db_sync(pull=True); logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
     total = sum(f.stat().st_size for f in logs); print(f"Logs: {len(logs)} files, {total/1024/1024:.1f}MB")
     if not logs: return
     if wda == 'clean': days = int(sys.argv[3]) if len(sys.argv) > 3 else 7; old = [f for f in logs if (time.time() - f.stat().st_mtime) > days*86400]; [f.unlink() for f in old]; print(f"✓ Deleted {len(old)} logs older than {days}d"); return
