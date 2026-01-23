@@ -7,7 +7,7 @@ if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
 import subprocess as sp, json, sqlite3, shlex, shutil, time, atexit, re, socket
 from datetime import datetime
 from pathlib import Path
-DEVICE_ID = socket.gethostname()
+DEVICE_ID = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
 
 _START, _CMD = time.time(), ' '.join(sys.argv[1:3]) if len(sys.argv) > 1 else 'help'
 def _save_timing():
