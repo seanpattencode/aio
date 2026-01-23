@@ -71,6 +71,19 @@ case $OS in
     *) install_node; warn "Unknown OS - install tmux manually" ;;
 esac
 
+# aio itself (install early, before slow npm installs)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/aio.py"
+if [[ -f "$SCRIPT_DIR/aio.py" ]]; then
+    ln -sf "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (local)"
+else
+    curl -fsSL "$AIO_URL" -o "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (remote)"
+fi
+
+# PATH setup in shell rc (do early so aio works immediately)
+RC="$HOME/.bashrc"; [[ -f "$HOME/.zshrc" ]] && RC="$HOME/.zshrc"
+grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
+
 # Node CLIs
 install_cli() {
     local pkg="$1" cmd="$2"
@@ -94,20 +107,6 @@ install_cli "@google/gemini-cli" "gemini"
 if command -v pip3 &>/dev/null; then pip3 install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras"
 elif command -v pip &>/dev/null; then pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras"
 elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/null; python3 -m pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras" || warn "pip not available"; fi
-
-# aio itself
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$SCRIPT_DIR/aio.py" ]]; then
-    [[ -L "$BIN/aio" ]] || { ln -sf "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio"; }
-    ok "aio installed (local)"
-else
-    AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/aio.py"
-    curl -fsSL "$AIO_URL" -o "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (remote)"
-fi
-
-# PATH setup in shell rc
-RC="$HOME/.bashrc"; [[ -f "$HOME/.zshrc" ]] && RC="$HOME/.zshrc"
-grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
 
 # Enable aio tmux config if no existing tmux.conf (adds mouse support, status bar)
 [[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/aio" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
