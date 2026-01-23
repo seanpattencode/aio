@@ -1116,6 +1116,7 @@ def cmd_ssh():
 
 def cmd_hub():
     _tx=os.path.exists('/data/data/com.termux');LOG=f"{DATA_DIR}/hub.log";db_sync(pull=True)
+    if _tx:c=db();c.execute("UPDATE hub_jobs SET device=? WHERE device='localhost'",(DEVICE_ID,));c.commit();c.close();db_sync()
     _pt=lambda s:(lambda m:f"{int(m[1])+(12 if m[3]=='pm'and int(m[1])!=12 else(-int(m[1])if m[3]=='am'and int(m[1])==12 else 0))}:{m[2]}"if m else s)(re.match(r'^(\d{1,2}):(\d{2})\s*(am|pm)?$',s.lower().strip()))
     def _install(nm,sched,cmd):
         if _tx:
