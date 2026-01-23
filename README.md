@@ -89,3 +89,32 @@ The workflow:
 ## Philosophy
 
 Sovereign computing. A personal productivity layer small enough to own completely. Unlike Linux or Chromium, you can understand the whole thing and bend it to your will.
+
+## Why Not Aliases?
+
+"I could build this with aliases" means "I could, but I didn't, and it wouldn't sync across machines, and I'd forget the syntax."
+
+**The math with 20 projects:**
+
+```
+cd ~/projects/company/apps/frontend-dashboard
+= 47 characters × 20 projects = mass you'll never memorize
+
+aio 7
+= 5 characters × 20 projects = muscle memory
+```
+
+**Mobile/Termux reality:**
+
+Every character on a phone keyboard has ~5% error rate. A 47-character path means you'll mistype 2-3 times per command. With `aio 7`, you're done before autocorrect kicks in.
+
+**The real cost:**
+
+Each command alone saves seconds. But friction changes behavior:
+
+- You checkpoint more because `aio push` is trivial
+- You nuke bad runs faster because `aio pull` has no mental overhead
+- You try other agents because switching is one letter
+- You work from anywhere because state lives in tmux + git
+
+We could dev more, push more, nuke bad runs more. But we don't, because the tools we have make the right thing annoying. aio doesn't save time on any single action. It changes which actions you take.
