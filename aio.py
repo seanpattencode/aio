@@ -989,7 +989,7 @@ def cmd_copy():
     L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); full='\n'.join(L[p+1:u]).strip() if P else ''; sp.run(_clip(),shell=True,input=full,text=True); s=full.replace('\n',' '); print(f"✓ {s[:23]+'...'+s[-24:] if len(s)>50 else s}")
 
 def cmd_log():
-    os.makedirs(LOG_DIR, exist_ok=True); (rc := get_rclone()) and cloud_configured() and sp.run([rc, 'copy', f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}/logs/', LOG_DIR, '-q'], capture_output=True); logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
+    os.makedirs(LOG_DIR, exist_ok=True); sp.run(f'cd "{DATA_DIR}" && git pull -q 2>/dev/null', shell=True, capture_output=True); logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
     total = sum(f.stat().st_size for f in logs); print(f"Logs: {len(logs)} files, {total/1024/1024:.1f}MB")
     if not logs: return
     if wda == 'clean': days = int(sys.argv[3]) if len(sys.argv) > 3 else 7; old = [f for f in logs if (time.time() - f.stat().st_mtime) > days*86400]; [f.unlink() for f in old]; print(f"✓ Deleted {len(old)} logs older than {days}d"); return
