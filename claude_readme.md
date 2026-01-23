@@ -1,22 +1,18 @@
 # aio
 
-Git workflow for AI-assisted development. Also manages Claude, Codex, Gemini, and Aider sessions.
+A 1200-line Python script that manages AI agents. Small enough to understand, modify, and make yours.
 
-## The Problem
+## Why
 
-AI agents are high variance. They write brilliant code or garbage—rarely in between. You need to checkpoint constantly and nuke bad runs fast.
+AI agents are high variance. They write brilliant code or garbage. You need to checkpoint constantly and nuke bad runs fast.
 
 ```bash
-# Traditional git for this workflow
-git add -A && git commit -m "before agent" && git push
-# agent breaks everything
+# Without aio
+git add -A && git commit -m "checkpoint" && git push
 git fetch origin && git reset --hard origin/main && git clean -fd
-```
 
-```bash
-# aio
-aio push "before agent"
-# agent breaks everything
+# With aio
+aio push "checkpoint"
 aio pull
 ```
 
@@ -24,58 +20,43 @@ aio pull
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/seanpattencode/aio/main/install.sh | bash
-source ~/.bashrc
 ```
 
-## Git Workflow
+## Core Commands
 
 ```bash
-aio push           # Checkpoint: commit all + push
-aio push "msg"     # Checkpoint with message
+aio c              # Start Claude (co=codex, g=gemini, a=aider)
+aio push           # Checkpoint: commit + push
 aio pull           # Nuke local: reset to remote
-aio diff           # What changed?
 aio revert         # Interactive: pick commit to restore
+aio <#>            # cd to project by number
+aio prompt         # Set default prompt for all agents
 ```
 
-## Agents
+## The Point
 
-Why type `claude --dangerously-skip-permissions` when you can type `aio c`?
+This isn't a tool you just use. It's a tool you **evolve**.
 
-```bash
-aio c              # Claude
-aio co             # Codex
-aio g              # Gemini
-aio a              # Aider
-aio c 0            # Claude in project 0
-```
+- Single file, ~1200 lines - you can read all of it
+- AI-native - ask your agent to modify aio itself
+- Hackable - fork it, change it, make it yours
 
-## Projects
+The workflow:
+1. Hit friction
+2. Ask agent to fix aio
+3. Now aio handles that
+4. Repeat
 
-```bash
-aio                # List projects
-aio 0              # cd to project 0
-aio add .          # Add current dir
-aio remove 3       # Remove project 3
-```
-
-## Why aio?
-
-- **4 keystrokes** - `aio c` vs 40+ character commands
-- **Mobile usable** - Short commands work on phone keyboards (Termux)
-- **Session persistence** - tmux sessions survive disconnects
-- **Multi-device** - SSH into any host, run agents remotely
-
-```bash
-aio ssh            # List hosts
-aio ssh 0          # Connect
-aio run 0 "task"   # Run task remotely
-```
-
-## More
+## More Commands
 
 ```bash
 aio help           # Full command list
-aio jobs           # Active sessions
+aio add .          # Add current dir as project
+aio ssh            # Manage remote hosts
+aio jobs           # View active sessions
 aio n "text"       # Quick note
-aio update         # Update aio
 ```
+
+## Philosophy
+
+Sovereign computing. A personal productivity layer small enough to own completely. Unlike Linux or Chromium, you can understand the whole thing and bend it to your will.
