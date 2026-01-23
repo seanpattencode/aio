@@ -1113,7 +1113,7 @@ def cmd_ssh():
     nm = hosts[int(wda)][0] if wda.isdigit() and int(wda) < len(hosts) else (_die(f"x No host #{wda}. Run: aio ssh") if wda.isdigit() else wda); shutil.which('ssh') or _die("x ssh not installed"); h=hmap.get(nm,nm); pw=_pw(nm); hp=h.rsplit(':',1); cmd=['ssh','-tt','-o','StrictHostKeyChecking=accept-new']+(['-p',hp[1]] if len(hp)>1 else [])+[hp[0]]
     if 'cmd' in sys.argv or '--cmd' in sys.argv: print(' '.join(cmd)); return
     if not pw and nm in hmap: pw=input("Password? ").strip(); pw and _pw(nm,pw)
-    _sp=shutil.which('sshpass')or'/data/data/com.termux/files/usr/bin/sshpass'; pw and not os.path.exists(_sp) and (os.environ.get('TERMUX_VERSION') and sp.run(['pkg','install','-y','sshpass']) or _die("x apt install sshpass")); print(f"Connecting to {nm}...", file=sys.stderr, flush=True); os.execvp(_sp,[_sp,'-p',pw]+cmd) if pw else os.execvp('ssh',cmd)
+    _sp=shutil.which('sshpass')or'/data/data/com.termux/files/usr/bin/sshpass'; pw and not os.path.exists(_sp) and (os.environ.get('TERMUX_VERSION') and sp.run(['pkg','install','-y','sshpass']) or _die("x apt install sshpass")); pw or os.execvp('ssh',cmd); r=sp.call([_sp,'-p',pw]+cmd); p=r and input(f"x Exit {r}. 5=wrong password 6=host down. New password? ").strip(); p and _pw(nm,p) and print("✓ Saved. Retry: aio ssh "+nm)
 
 def cmd_hub():
     _tx=os.path.exists('/data/data/com.termux');LOG=f"{DATA_DIR}/hub.log";db_sync(pull=True)
