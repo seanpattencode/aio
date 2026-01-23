@@ -84,13 +84,13 @@ fi
 RC="$HOME/.bashrc"; [[ -f "$HOME/.zshrc" ]] && RC="$HOME/.zshrc"
 grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
 
-# Node CLIs
+# Node CLIs (may take a few minutes)
 install_cli() {
     local pkg="$1" cmd="$2"
     if ! command -v "$cmd" &>/dev/null; then
         info "Installing $cmd..."
         if command -v npm &>/dev/null; then
-            npm install -g "$pkg" 2>&1 | tail -1 && ok "$cmd" || warn "$cmd failed"
+            npm install -g "$pkg" && ok "$cmd" || warn "$cmd failed"
         else
             warn "$cmd skipped (npm not found)"
         fi
