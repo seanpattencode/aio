@@ -6,7 +6,7 @@
 
 1. **Vendor lock-in** - Today it's Claude. Tomorrow it's OpenAI. Next week it's Google. `aio c`, `aio g`, and `aio co` all feel the same. Switch instantly.
 
-2. **Losing context** - Closing a terminal shouldn't kill your session. aio runs everything in tmux. Detach, go home, reattach.
+2. **Typing paragraphs** - Switching projects and starting agents shouldn't require memorizing flags and paths.
 
 3. **High variance** - AI agents write brilliant code or garbage. You need to checkpoint constantly and nuke bad runs fast.
 
