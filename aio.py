@@ -422,9 +422,10 @@ def wt_rm(p, confirm=True):
     os.path.exists(p) and shutil.rmtree(p); print(f"✓ Removed {os.path.basename(p)}"); return True
 
 def get_prefix(agent, wd=None):
+    dp = cfg.get('default_prompt', '')
     pre = cfg.get('claude_prefix', 'Ultrathink. ') if 'claude' in agent else ''
     af = Path(wd or os.getcwd()) / 'AGENTS.md'
-    return pre + (af.read_text().strip() + ' ' if af.exists() else '')
+    return (dp + ' ' if dp else '') + pre + (af.read_text().strip() + ' ' if af.exists() else '')
 
 def send_prefix(sn, agent, wd):
     pre = get_prefix(agent, wd)
@@ -526,11 +527,12 @@ def fmt_cmd(c, mx=60):
     d = c.replace(os.path.expanduser('~'), '~')
     return d[:mx-3] + "..." if len(d) > mx else d
 
-def list_all(cache=True):
+def list_all(cache=True, quiet=False):
     p, a = load_proj(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(p) + '\n')
-    out = ([f"PROJECTS:"] + [f"  {i}. {'+' if os.path.exists(x) else 'x'} {x}" for i, x in enumerate(p)] if p else [])
+    dp = cfg.get('default_prompt', ''); dpl = f"DEFAULT PROMPT: {dp[:50]}{'...' if len(dp)>50 else ''}" if dp else ''
+    out = ([dpl] if dpl else []) + ([f"PROJECTS:"] + [f"  {i}. {'+' if os.path.exists(x) else 'x'} {x}" for i, x in enumerate(p)] if p else [])
     out += ([f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {fmt_cmd(c)}" for i, (n, c) in enumerate(a)] if a else [])
-    txt = '\n'.join(out); out and print(txt); cache and Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
+    txt = '\n'.join(out); not quiet and out and print(txt); cache and Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
     return p, a
 
 def db_sync():
@@ -613,6 +615,7 @@ if arg == '_ghost':
 # Help
 HELP_SHORT = """aio c|co|g|a    Start claude/codex/gemini/aider
 aio <#>         Open project by number
+aio prompt      Manage default prompt
 aio help        All commands"""
 
 HELP_FULL = f"""aio - AI agent session manager
@@ -622,20 +625,17 @@ AGENTS          c=claude  co=codex  g=gemini  a=aider
   aio <key> <#>       Start agent in project #
   aio <key>++         Start agent in new worktree
 
-WORKFLOWS
-  aio fix             Auto-find and fix issues
-  aio bug "desc"      Fix a specific bug
-  aio feat "desc"     Add a feature
-
 PROJECTS
   aio <#>             cd to project #
   aio add <path>      Add project
   aio remove <#>      Remove project
+  aio scan            Discover repos to add
 
 GIT
   aio push [msg]      Commit and push
   aio pull            Sync with remote
   aio diff            Show changes
+  aio revert          Select commit to revert to
 
 REMOTE
   aio ssh             List hosts
@@ -644,8 +644,20 @@ REMOTE
 
 OTHER
   aio jobs            Active sessions
+  aio ls              List tmux sessions
+  aio attach          Reconnect to session
+  aio kill            Kill all sessions
   aio n "text"        Quick note
-  aio update          Update aio"""
+  aio log             View agent logs
+  aio config          View/set settings
+  aio update          Update aio
+
+EXPERIMENTAL
+  aio agent "task"    Spawn autonomous subagent
+  aio hub             Scheduled jobs (systemd)
+  aio all             Multi-agent parallel runs
+  aio tree            Create git worktree
+  aio gdrive          Cloud sync (Google Drive)"""
 
 # Commands
 def cmd_help(): print(HELP_SHORT); list_all()
@@ -681,11 +693,14 @@ def cmd_cleanup():
     print("✓ Cleaned")
 
 def cmd_config():
+    global cfg
     key, val = wda, ' '.join(sys.argv[3:]) if len(sys.argv) > 3 else None
     if not key: [print(f"  {k}: {v[:50]}{'...' if len(v)>50 else ''}") for k, v in sorted(cfg.items())]
     elif val:
+        val = '' if val in ('off', 'none', '""', "''") else val
         with db() as c: c.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", (key, val)); c.commit()
-        print(f"✓ {key}={val}")
+        cfg = load_cfg(); list_all(quiet=True)
+        print(f"✓ {key}={'(cleared)' if not val else val}")
     else: print(f"{key}: {cfg.get(key, '(not set)')}")
 
 def cmd_ls():
@@ -837,15 +852,16 @@ def cmd_deps():
     shutil.which('aider') or _run(f'{sys.executable} -m pip install --user aider-chat'); print(f"{'✓' if shutil.which('aider') else 'x'} aider")
 
 def cmd_prompt():
-    name = wda or 'feat'
-    pf = PROMPTS_DIR / f'{name}.txt'
-    if not pf.exists(): print(f"Prompts dir: {PROMPTS_DIR}\nAvailable: {', '.join(p.stem for p in PROMPTS_DIR.glob('*.txt'))}"); sys.exit(1)
-    print(f"Editing: {pf}")
-    cur = pf.read_text().strip()
-    nv = input_box(cur, f"Edit '{name}' (Ctrl+D to save, Ctrl+C to cancel)")
-    if nv is None: print("Cancelled")
-    elif nv.strip() != cur: pf.write_text(nv.strip()); print(f"✓ Saved")
-    else: print("No changes")
+    global cfg
+    val = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
+    if not val:
+        cur = cfg.get('default_prompt', '')
+        print(f"Current: {cur or '(none)'}"); val = input("New (empty to clear): ").strip()
+        if val == '' and cur == '': return
+    val = '' if val in ('off', 'none', '""', "''") else val
+    with db() as c: c.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", ('default_prompt', val)); c.commit()
+    cfg = load_cfg(); list_all(quiet=True)
+    print(f"✓ {'(cleared)' if not val else val}")
 
 def cmd_gdrive():
     if wda == 'login': cloud_configured() and not _confirm("Already logged in. Switch?") or cloud_login()
@@ -925,17 +941,6 @@ def cmd_remove():
 def cmd_dash():
     if not tm.has('dash'): sp.run(['tmux', 'new-session', '-d', '-s', 'dash', '-c', wd]); sp.run(['tmux', 'split-window', '-h', '-t', 'dash', '-c', wd, 'sh -c "aio jobs; exec $SHELL"'])
     os.execvp('tmux', ['tmux', 'switch-client' if 'TMUX' in os.environ else 'attach', '-t', 'dash'])
-
-def cmd_workflow():
-    args, agent = sys.argv[2:], 'l'
-    if args and args[0] in 'clg': agent, args = args[0], args[1:]
-    pt = get_prompt(arg, show=True) or '{task}'
-    task = 'autonomous' if arg in ('fix', 'auto', 'del') else (' '.join(args) if args else input(f"{arg}: "))
-    an, cmd = sess[agent]; sn = f"{arg}-{agent}-{datetime.now().strftime('%H%M%S')}"; prompt = pt if arg in ('fix', 'auto', 'del') else pt.format(task=task)
-    pre = get_prefix(an); fp = (pre if pre and not prompt.startswith(pre.strip()) else '') + prompt
-    print(f"{arg.upper()} [{an}]: {task[:50]}{'...' if len(task) > 50 else ''}")
-    create_sess(sn, os.getcwd(), f"{cmd} {shlex.quote(fp)}")
-    launch_win(sn) if 'TMUX' in os.environ else os.execvp(tm.attach(sn)[0], tm.attach(sn))
 
 def cmd_multi():
     if wda == 'set':
@@ -1208,7 +1213,7 @@ CMDS = {
     'install': cmd_install, 'ins': cmd_install, 'uninstall': cmd_uninstall, 'uni': cmd_uninstall, 'deps': cmd_deps, 'dep': cmd_deps, 'prompt': cmd_prompt, 'pro': cmd_prompt, 'gdrive': cmd_gdrive, 'gdr': cmd_gdrive, 'note': cmd_note, 'n': cmd_note, 'settings': cmd_set,
     'add': cmd_add, 'remove': cmd_remove, 'rem': cmd_remove, 'rm': cmd_remove, 'dash': cmd_dash, 'das': cmd_dash, 'all': cmd_multi, 'backup': cmd_backup, 'bak': cmd_backup, 'scan': cmd_scan, 'sca': cmd_scan,
     'e': cmd_e, 'x': cmd_x, 'p': cmd_p, 'copy': cmd_copy, 'cop': cmd_copy, 'log': cmd_log, 'done': cmd_done, 'agent': cmd_agent, 'tree': cmd_tree, 'tre': cmd_tree, 'dir': lambda: (print(f"{os.getcwd()}"), sp.run(['ls'])), 'web': cmd_web, 'ssh': cmd_ssh,
-    'fix': cmd_workflow, 'bug': cmd_workflow, 'feat': cmd_workflow, 'fea': cmd_workflow, 'auto': cmd_workflow, 'aut': cmd_workflow, 'del': cmd_workflow, 'run': cmd_run,
+    'run': cmd_run,
     'hub': cmd_hub,
 }
 
