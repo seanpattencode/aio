@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import subprocess,smtplib,sqlite3,os,sys
+import subprocess,smtplib,sqlite3,os,sys,shutil
 from email.message import EmailMessage
 
 P=os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +28,8 @@ Given where aio.py is right now as an AI agent manager, which of the 8 great fil
 
 Pick ONE. Explain in 2-3 sentences why it's the bottleneck right now and what the smallest step to unblock it would be."""
     try:
-        r=subprocess.run(['claude','-p','--allowedTools','Read,Glob,Grep'],input=prompt,capture_output=True,text=True,timeout=120,cwd=os.path.dirname(AIO))
+        claude=shutil.which('claude')or os.path.expanduser('~/.local/bin/claude')
+        r=subprocess.run([claude,'-p','--allowedTools','Read,Glob,Grep'],input=prompt,capture_output=True,text=True,timeout=120,cwd=os.path.dirname(AIO))
         return r.stdout.strip() if r.returncode==0 else f"analysis failed: {r.stderr}"
     except Exception as e:
         return f"analysis failed: {e}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import subprocess,smtplib,sqlite3,os,sys
+import subprocess,smtplib,sqlite3,os,sys,shutil
 from email.message import EmailMessage
 
 P=os.path.dirname(os.path.abspath(__file__))
@@ -21,7 +21,8 @@ def send(subj,body):
 
 def weather():
     try:
-        r=subprocess.run(['claude','-p','--allowedTools','WebSearch'],input='NYC weather in 10 words or less',capture_output=True,text=True,timeout=30)
+        claude=shutil.which('claude')or os.path.expanduser('~/.local/bin/claude')
+        r=subprocess.run([claude,'-p','--allowedTools','WebSearch'],input='NYC weather in 10 words or less',capture_output=True,text=True,timeout=30)
         return r.stdout.strip() if r.returncode==0 else "weather unavailable"
     except:return "weather unavailable"
 

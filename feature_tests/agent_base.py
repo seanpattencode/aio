@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Base module for hourly agents"""
-import subprocess,smtplib,sqlite3,os
+import subprocess,smtplib,sqlite3,os,shutil
 from email.message import EmailMessage
 
 P=os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +25,8 @@ def send(subj,body):
 
 def ask_claude(prompt,tools="Read,Glob,Grep",timeout=120):
     try:
-        r=subprocess.run(['claude','-p','--allowedTools',tools],input=prompt,capture_output=True,text=True,timeout=timeout,cwd=os.path.dirname(AIO))
+        claude=shutil.which('claude')or os.path.expanduser('~/.local/bin/claude')
+        r=subprocess.run([claude,'-p','--allowedTools',tools],input=prompt,capture_output=True,text=True,timeout=timeout,cwd=os.path.dirname(AIO))
         return r.stdout.strip() if r.returncode==0 else f"failed: {r.stderr}"
     except Exception as e:
         return f"failed: {e}"
