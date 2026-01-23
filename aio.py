@@ -1174,15 +1174,15 @@ def cmd_scan():
         if ch == '2': gh_mode = True
         elif ch != '1': return
     if gh_mode:
-        r = sp.run(['gh', 'repo', 'list', '-L', '50', '--json', 'name,url'], capture_output=True, text=True); repos = json.loads(r.stdout) if r.returncode == 0 else []
-        cloned = {os.path.basename(p) for p in load_proj()}; repos = [(r['name'], r['url']) for r in repos if r['name'] not in cloned]
+        r = sp.run(['gh', 'repo', 'list', '-L', '50', '--json', 'name,url,pushedAt'], capture_output=True, text=True); repos = sorted(json.loads(r.stdout) if r.returncode == 0 else [], key=lambda x: x.get('pushedAt',''), reverse=True)
+        cloned = {os.path.basename(p) for p in load_proj()}; repos = [(r['name'], r['url'], r.get('pushedAt','')[:10]) for r in repos if r['name'] not in cloned]
         if not repos: print("No new GitHub repos"); return
-        for i, (n, u) in enumerate(repos): print(f"  {i}. {n}")
+        for i, (n, u, d) in enumerate(repos): print(f"  {i}. {n:<25} {d}")
         if not sel: sel = input("\nClone+add (#, #-#, 'all', or q): ").strip() if sys.stdin.isatty() else 'q'
         if sel in ('q', ''): return
         idxs = list(range(len(repos))) if sel == 'all' else [j for x in sel.replace(',', ' ').split() for j in (range(int(x.split('-')[0]), int(x.split('-')[1])+1) if '-' in x else [int(x)]) if 0 <= j < len(repos)]
         pd = os.path.expanduser('~/projects'); os.makedirs(pd, exist_ok=True)
-        for i in idxs: n, u = repos[i]; dest = f"{pd}/{n}"; r = sp.run(['gh', 'repo', 'clone', u, dest], capture_output=True, text=True); ok, _ = add_proj(dest) if r.returncode == 0 or os.path.isdir(dest) else (False, ''); print(f"{'✓' if ok else 'x'} {n}")
+        for i in idxs: n, u, _ = repos[i]; dest = f"{pd}/{n}"; r = sp.run(['gh', 'repo', 'clone', u, dest], capture_output=True, text=True); ok, _ = add_proj(dest) if r.returncode == 0 or os.path.isdir(dest) else (False, ''); print(f"{'✓' if ok else 'x'} {n}")
     else:
         default = next((p for p in ['~/projects', '~/storage/shared', '~'] if os.path.isdir(os.path.expanduser(p))), '~')
         d = os.path.expanduser(next((a for a in args if a not in (sel,) and not a.startswith('-')), default)); existing = set(load_proj())
