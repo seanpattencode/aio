@@ -67,7 +67,7 @@ case $OS in
         if [[ -n "$SUDO" ]]; then $SUDO dnf install -y tmux nodejs npm git python3-pip 2>/dev/null && ok "system packages"
         else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi
         ;;
-    termux) pkg update -y && pkg install -y tmux nodejs git python && ok "system packages" ;;
+    termux) pkg update -y && pkg install -y tmux nodejs git python openssh sshpass && ok "system packages" ;;
     *) install_node; warn "Unknown OS - install tmux manually" ;;
 esac
 
