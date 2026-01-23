@@ -1150,7 +1150,7 @@ def cmd_hub():
     elif wda in('rm','run','log'):
         n=sys.argv[3]if len(sys.argv)>3 else'';j=jobs[int(n)]if n.isdigit()and int(n)<len(jobs)else next((x for x in jobs if x[1]==n),None)
         if not j:print(f"x {n}?");return
-        if wda=='rm':_uninstall(j[1]);db().execute("DELETE FROM hub_jobs WHERE id=?",(j[0],));db().commit();db_sync();print(f"✓ rm {j[1]}")
+        if wda=='rm':_uninstall(j[1]);c=db();c.execute("DELETE FROM hub_jobs WHERE id=?",(j[0],));c.commit();c.close();db_sync();print(f"✓ rm {j[1]}")
         elif wda=='log':print(open(LOG).read()[-2000:]if os.path.exists(LOG)else'No logs')
         else:cmd=j[3].replace('aio ',f'{sys.executable} {os.path.abspath(__file__)} ')if j[3].startswith('aio ')else j[3];sp.run(cmd,shell=True);print(f"✓ {j[1]}")
 
