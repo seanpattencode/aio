@@ -21,7 +21,7 @@ def send(subj,body):
 
 def weather():
     try:
-        r=subprocess.run(['claude','-p','--dangerously-skip-permissions','NYC weather in 10 words or less'],capture_output=True,text=True,timeout=30)
+        r=subprocess.run(['claude','-p','--allowedTools','WebSearch'],input='NYC weather in 10 words or less',capture_output=True,text=True,timeout=30)
         return r.stdout.strip() if r.returncode==0 else "weather unavailable"
     except:return "weather unavailable"
 

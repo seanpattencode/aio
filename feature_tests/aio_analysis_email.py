@@ -23,7 +23,7 @@ def send(subj,body):
 def analyze():
     prompt=f"""Read {AIO} fully. What is the ONE single most important thing lacking from aio.py that would make it a true AI agent manager? Be specific and concise (under 100 words). Focus on autonomous agent capabilities, not UI/UX."""
     try:
-        r=subprocess.run(['claude','-p','--dangerously-skip-permissions',prompt],capture_output=True,text=True,timeout=120,cwd=os.path.dirname(AIO))
+        r=subprocess.run(['claude','-p','--allowedTools','Read,Glob,Grep'],input=prompt,capture_output=True,text=True,timeout=120,cwd=os.path.dirname(AIO))
         return r.stdout.strip() if r.returncode==0 else f"analysis failed: {r.stderr}"
     except Exception as e:
         return f"analysis failed: {e}"
