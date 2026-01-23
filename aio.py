@@ -107,9 +107,10 @@ def manual_update():
     if _sg('rev-parse', '--git-dir').returncode != 0: print("x Not in git repo"); return False
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return False
-    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); return True
+    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); list_all(); return True
     print("Downloading..."); _sg('pull', '--ff-only')
-    after = _sg('rev-parse', 'HEAD'); print(f"✓ {before} -> {after.stdout.strip()[:8]}" if after.returncode == 0 else "✓ Done"); return True
+    after = _sg('rev-parse', 'HEAD'); print(f"✓ {before} -> {after.stdout.strip()[:8]}" if after.returncode == 0 else "✓ Done")
+    list_all(); print("Run: source ~/.bashrc"); return True
 
 def check_updates():
     ts = os.path.join(DATA_DIR, '.update_check')
@@ -525,12 +526,11 @@ def fmt_cmd(c, mx=60):
     d = c.replace(os.path.expanduser('~'), '~')
     return d[:mx-3] + "..." if len(d) > mx else d
 
-def list_all(help=True, cache=True):
+def list_all(cache=True):
     p, a = load_proj(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(p) + '\n')
     out = ([f"PROJECTS:"] + [f"  {i}. {'+' if os.path.exists(x) else 'x'} {x}" for i, x in enumerate(p)] if p else [])
     out += ([f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {fmt_cmd(c)}" for i, (n, c) in enumerate(a)] if a else [])
     txt = '\n'.join(out); out and print(txt); cache and Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
-    if help and (p or a): print(f"\nTip: aio add [path|name cmd]  aio remove <#|name>")
     return p, a
 
 def db_sync():
@@ -611,44 +611,45 @@ if arg == '_ghost':
     sys.exit(0)
 
 # Help
-HELP_SHORT = f"""aio - AI agent session manager
-QUICK START:
-  aio c               Start agent (c=claude co=codex g=gemini a=aider)
-  aio run "task"      Run task on remote SSH host
-  aio fix             AI finds/fixes issues
-  aio bug "task"      Fix a bug
-  aio feat "task"     Add a feature
-REMOTE:
-  aio ssh             List SSH hosts (✓/x = online)
-  aio ssh 2           Connect to host 2
-  aio run 2 "task"    Run on host 2 | aio run 2 co "task" (codex)
-GIT:
-  aio push msg        Push with message
-  aio pull            Sync with server
-MANAGEMENT:
-  aio jobs            Show active jobs
-  aio attach          Reconnect to session
-  aio n               Notes (aio n "text" to add)
-Run 'aio help' for all commands"""
+HELP_SHORT = """aio c|co|g|a    Start claude/codex/gemini/aider
+aio <#>         Open project by number
+aio help        All commands"""
 
 HELP_FULL = f"""aio - AI agent session manager
-SESSIONS: c=claude co=codex g=gemini a=aider h=htop t=top
-  aio <key> [#|dir]      Start session (# = project index)
-  aio <key>++ [#]        New worktree  |  aio <key> "prompt"  Send prompt
-WORKFLOWS: aio fix|bug|feat|auto|del [agent] ["task"]
-WORKTREES: aio w  list | w<#>  open | w<#>-  delete
-REMOTE: ssh  list hosts | ssh <#>  connect | run [#] [agent] "task"
-ADD/REMOVE: aio add [path|name "cmd"]  aio remove <#|name>
-MONITOR: jobs [-r] | cleanup | ls | attach | kill
-GIT: push [file] [msg] | pull [-y] | revert [N]
-NOTES: n  review | n "text"  add | n sync
-CLOUD: gdrive [login|logout|status|sync]
-CONFIG: install | deps | update | config [key] [val]
-DB: {DB_PATH}  Worktrees: {{WT_DIR}}"""
+
+AGENTS          c=claude  co=codex  g=gemini  a=aider
+  aio <key>           Start agent in current dir
+  aio <key> <#>       Start agent in project #
+  aio <key>++         Start agent in new worktree
+
+WORKFLOWS
+  aio fix             Auto-find and fix issues
+  aio bug "desc"      Fix a specific bug
+  aio feat "desc"     Add a feature
+
+PROJECTS
+  aio <#>             cd to project #
+  aio add <path>      Add project
+  aio remove <#>      Remove project
+
+GIT
+  aio push [msg]      Commit and push
+  aio pull            Sync with remote
+  aio diff            Show changes
+
+REMOTE
+  aio ssh             List hosts
+  aio ssh <#>         Connect to host
+  aio run <#> "task"  Run task on remote
+
+OTHER
+  aio jobs            Active sessions
+  aio n "text"        Quick note
+  aio update          Update aio"""
 
 # Commands
-def cmd_help(): print(HELP_SHORT); list_all(help=False)
-def cmd_help_full(): print(HELP_FULL.format(WT_DIR=WT_DIR)); list_all(help=False)
+def cmd_help(): print(HELP_SHORT); list_all()
+def cmd_help_full(): print(HELP_FULL); list_all()
 def cmd_update(): manual_update()
 def cmd_jobs(): list_jobs(running='--running' in sys.argv or '-r' in sys.argv)
 def cmd_kill(): input("Kill all tmux sessions? (y/n): ").lower() in ['y', 'yes'] and (print("✓ Killed all tmux"), sp.run(['tmux', 'kill-server']))
@@ -973,7 +974,7 @@ def cmd_e():
     else: create_sess('edit', os.getcwd(), 'nvim .'); os.execvp('tmux', ['tmux', 'attach', '-t', 'edit'])
 
 def cmd_x(): sp.run(['tmux', 'kill-server']); print("✓ All sessions killed")
-def cmd_p(): list_all(help=False)
+def cmd_p(): list_all()
 def cmd_web(): sp.Popen(['xdg-open', 'https://google.com/search?q='+'+'.join(sys.argv[2:]) if len(sys.argv)>2 else 'https://google.com'], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
 def cmd_copy():
     L=os.popen('tmux capture-pane -pJ -S -99').read().split('\n') if os.environ.get('TMUX') else []; P=[i for i,l in enumerate(L) if '$'in l and'@'in l]; u=next((i for i in reversed(P) if 'copy'in L[i]),len(L)); p=next((i for i in reversed(P) if i<u),-1); full='\n'.join(L[p+1:u]).strip() if P else ''; sp.run(_clip(),shell=True,input=full,text=True); s=full.replace('\n',' '); print(f"✓ {s[:23]+'...'+s[-24:] if len(s)>50 else s}")
