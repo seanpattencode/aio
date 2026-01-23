@@ -12,22 +12,16 @@
 
 ```bash
 # Without aio
+claude --dangerously-skip-permissions
+cd ~/projects/my-company/apps/frontend-dashboard
 git add -A && git commit -m "checkpoint" && git push
 git fetch origin && git reset --hard origin/main && git clean -fd
 
 # With aio
-aio push "checkpoint"
-aio pull
-```
-
-```bash
-# Without aio
-claude --dangerously-skip-permissions
-cd ~/projects/my-company/apps/frontend-dashboard
-
-# With aio
 aio c
 aio 3
+aio push "checkpoint"
+aio pull
 ```
 
 ## What is aio
