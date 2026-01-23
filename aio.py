@@ -371,7 +371,7 @@ def ensure_tmux():
     sp.run(['tmux', 'refresh-client', '-S'], capture_output=True)
 
 def _start_log(sn, parent=None):
-    os.makedirs(LOG_DIR, exist_ok=True); lf = os.path.join(LOG_DIR, f"{DEVICE_ID}-{sn}.log")
+    os.makedirs(LOG_DIR, exist_ok=True); lf = os.path.join(LOG_DIR, f"{DEVICE_ID}__{sn}.log")
     sp.run(['tmux', 'pipe-pane', '-t', sn, f"cat >> {lf}"], capture_output=True)
     with db() as c: c.execute("INSERT OR REPLACE INTO agent_logs VALUES (?,?,?,?)", (sn, parent, time.time(), DEVICE_ID))
 
@@ -996,7 +996,7 @@ def cmd_log():
     if wda == 'tail': f = logs[int(sys.argv[3])] if len(sys.argv) > 3 and sys.argv[3].isdigit() else logs[0]; os.execvp('tail', ['tail', '-f', str(f)])
     for i, f in enumerate(logs[:20]):
         sz, nm, mt = f.stat().st_size/1024, f.stem, f.stat().st_mtime
-        parts = nm.split('-'); dev, sn = (parts[0], '-'.join(parts[1:])) if len(parts) > 2 and parts[0] not in ['claude','gemini','codex','aider'] else (DEVICE_ID[:10], nm)
+        parts = nm.split('__'); dev, sn = (parts[0][:10], '__'.join(parts[1:])) if len(parts) > 1 else (DEVICE_ID[:10], nm)
         ts = datetime.fromtimestamp(mt).strftime('%m/%d %H:%M')
         print(f"  {i}. {ts}  {dev:<10} {sn:<25} {sz:>5.0f}KB")
     print(f"\naio log tail [#] | aio log clean [days]")
