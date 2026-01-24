@@ -732,7 +732,11 @@ def cmd_diff():
     stat = sp.run(['git', 'diff', target, '--shortstat'], capture_output=True, text=True).stdout.strip()
     ins = int(re.search(r'(\d+) insertion', stat).group(1)) if 'insertion' in stat else 0
     dels = int(re.search(r'(\d+) deletion', stat).group(1)) if 'deletion' in stat else 0
-    stat and print(f"\n{stat} | Net: {'+' if ins-dels >= 0 else ''}{ins-dels} lines")
+    added = '\n'.join(L[1:] for L in diff.split('\n') if L.startswith('+') and not L.startswith('+++'))
+    removed = '\n'.join(L[1:] for L in diff.split('\n') if L.startswith('-') and not L.startswith('---'))
+    try: enc = __import__('tiktoken').get_encoding('cl100k_base').encode; ta, tr = len(enc(added)), len(enc(removed))
+    except: ta, tr = len(added) // 4, len(removed) // 4
+    stat and print(f"\n{stat} | Net: {ins-dels:+} lines, {ta-tr:+} tokens")
 
 def cmd_send():
     wda or _die("Usage: aio send <session> <prompt> [--wait] [--no-enter]")
