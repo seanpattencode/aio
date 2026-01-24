@@ -74,9 +74,8 @@ def run():
         print(f"✓ synced {len(mine)} jobs")
     elif wda == 'log':
         if not os.path.exists(LOG): print('No logs'); return
-        runs = db().execute("SELECT name,last_run FROM hub_jobs WHERE last_run IS NOT NULL ORDER BY last_run DESC LIMIT 20").fetchall()
-        print(f"{'Name':<15}{'Last Run'}"); [print(f"{r[0]:<15}{r[1]}") for r in runs] if runs else print("  (no runs)")
-        print(f"\n--- Recent log output ---\n{open(LOG).read()[-3000:]}")
+        runs = [(m.group(1), m.group(2)[:20]) for l in open(LOG) if (m := re.match(r'^\[(\d{4}-\d{2}-\d{2}[^\]]+)\] (.+)', l))][-20:][::-1]
+        print(f"{'Time':<24}{'Job'}"); [print(f"{t:<24}{n}") for t, n in runs] or print('No runs'); input("\nq to exit> ")
     elif wda == 'ed':
         n = sys.argv[3] if len(sys.argv) > 3 else ''; j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else None
         if not j or not (new := input(f"Name [{j[1]}]: ").strip()): return print(f"x {n}?") if not j else None
