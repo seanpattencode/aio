@@ -825,7 +825,9 @@ def cmd_revert():
     if not c.isdigit() or int(c) >= len(logs): _die("x Invalid")
     h = logs[int(c)].split()[0]
     r = _git(cwd, 'revert', '--no-commit', f'{h}..HEAD'); _git(cwd, 'commit', '-m', f'revert to {h}') if r.returncode == 0 else None
-    print(f"✓ Reverted to {h}") if r.returncode == 0 else _die(f"x Failed: {r.stderr.strip()}")
+    if r.returncode != 0: _die(f"x Failed: {r.stderr.strip()}")
+    print(f"✓ Reverted to {h}")
+    if input("Push to main? (y/n): ").strip().lower() in ['y', 'yes']: _git(cwd, 'push'); print("✓ Pushed")
 
 def cmd_install():
     script = os.path.join(SCRIPT_DIR, "install.sh")
