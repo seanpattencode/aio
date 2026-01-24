@@ -5,15 +5,7 @@ CMDS = ['help','update','jobs','kill','attach','cleanup','config','ls','diff','s
         'push','pull','revert','set','settings','install','uninstall','deps','prompt','gdrive',
         'add','remove','move','dash','all','backup','scan','copy','log','done','agent','tree',
         'dir','web','ssh','run','hub','daemon','ui','review','note']
-
-def build_prefix(items):
-    d = {}
-    for c in items:
-        for i in range(1, len(c)+1):
-            d.setdefault(c[:i], []).append(c)
-    return d
-
-PREFIX = build_prefix(CMDS)
+CACHE = os.path.expanduser("~/.local/share/aios/i_cache.txt")
 
 def getch():
     fd = sys.stdin.fileno()
@@ -21,13 +13,22 @@ def getch():
     try: tty.setraw(fd); return sys.stdin.read(1)
     finally: termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
-def run():
-    if not sys.stdin.isatty():
-        print("x Interactive mode requires tty"); sys.exit(1)
-
+def refresh_cache():
     from . _common import load_proj, load_apps, init_db
-    init_db()
-    items = [str(i) for i in range(len(load_proj()) + len(load_apps()))] + CMDS
+    init_db(); items = [str(i) for i in range(len(load_proj()) + len(load_apps()))] + CMDS
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+    open(CACHE, 'w').write('\n'.join(items))
+
+def run():
+    # Fast path: read from cache
+    try: items = open(CACHE).read().strip().split('\n')
+    except: items = CMDS; refresh_cache()
+
+    if not sys.stdin.isatty():
+        print('\n'.join(items)); sys.exit(0)  # Output for piping to fzf
+
+    # Rebuild cache in background
+    if os.fork() == 0: refresh_cache(); os._exit(0)
 
     buf, sel = "", 0
     print("Type to filter, Tab=cycle, Enter=run, Esc=quit\n")
