@@ -46,7 +46,7 @@ def run():
     if not wda:
         _pj = lambda jobs: [print(f"{i:<3}{j[1]:<12}{j[2]:<7}{j[4]:<10}{'✓' if j[5] else 'x':<4}{(j[3] or '')}") for i, j in enumerate(jobs)] or print("  (none)")
         print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Device':<10}{'On':<4}{'Command'}"); _pj(jobs)
-        while (c := input("\n<#>|add|rm <#>|sync|log\n> ").strip()):
+        while (c := input("\n<#>|add|rm <#>|sync|log|q\n> ").strip()) and c != 'q':
             args = ['run', c] if c.isdigit() else c.split()
             sp.run([sys.executable, __file__.replace('hub.py', '../aio.py'), 'hub'] + args)
             jobs = db().execute("SELECT id,name,schedule,prompt,device,enabled FROM hub_jobs ORDER BY device,name").fetchall()
