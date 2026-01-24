@@ -23,7 +23,7 @@ CMDS = {
     'all': 'multi', 'backup': 'backup', 'bak': 'backup', 'scan': 'scan', 'sca': 'scan',
     'e': 'e', 'x': 'x', 'p': 'p', 'copy': 'copy', 'cop': 'copy', 'log': 'log', 'done': 'done',
     'agent': 'agent', 'tree': 'tree', 'tre': 'tree', 'dir': 'dir', 'web': 'web', 'ssh': 'ssh', 'run': 'run', 'hub': 'hub',
-    'daemon': 'daemon', 'ui': 'ui',
+    'daemon': 'daemon', 'ui': 'ui', 'review': 'review',
 }
 
 def main():
