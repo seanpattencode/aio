@@ -758,7 +758,7 @@ def cmd_watch():
 
 def cmd_push():
     cwd, skip = os.getcwd(), '--yes' in sys.argv or '-y' in sys.argv
-    if _git(cwd, 'rev-parse', '--git-dir').returncode != 0:
+    if not os.path.isdir(os.path.join(cwd, '.git')):
         _git(cwd, 'init', '-b', 'main'); Path(os.path.join(cwd, '.gitignore')).touch(); _git(cwd, 'add', '-A'); _git(cwd, 'commit', '-m', 'Initial commit'); print("✓ Initialized")
         if not shutil.which('gh') or sp.run(['gh', 'auth', 'status'], capture_output=True).returncode != 0:
             print("! gh not installed or not authenticated. Run: brew install gh && gh auth login"); return
