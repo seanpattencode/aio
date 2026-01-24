@@ -44,32 +44,30 @@ def run():
         jobs = c.execute("SELECT id,name,schedule,prompt,device,enabled FROM hub_jobs ORDER BY device,name").fetchall()
 
     if not wda:
-        print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Device':<10}{'On':<4}{'Command'}")
-        [print(f"{i:<3}{j[1]:<12}{j[2]:<7}{j[4]:<10}{'✓' if j[5] else 'x':<4}{(j[3] or '')[:30]}") for i, j in enumerate(jobs)] or print("  (none)")
-        while (c := input("\nadd|rm <#>|run <#>|sync|log\n> ").strip()):
-            sp.run([sys.executable, __file__.replace('hub.py', '../aio_new.py'), 'hub'] + c.split())
+        _pj = lambda jobs: [print(f"{i:<3}{j[1]:<12}{j[2]:<7}{j[4]:<10}{'✓' if j[5] else 'x':<4}{(j[3] or '')}") for i, j in enumerate(jobs)] or print("  (none)")
+        print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Device':<10}{'On':<4}{'Command'}"); _pj(jobs)
+        while (c := input("\n<#>|add|rm <#>|sync|log\n> ").strip()):
+            args = ['run', c] if c.isdigit() else c.split()
+            sp.run([sys.executable, __file__.replace('hub.py', '../aio.py'), 'hub'] + args)
             jobs = db().execute("SELECT id,name,schedule,prompt,device,enabled FROM hub_jobs ORDER BY device,name").fetchall()
-            print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Device':<10}{'On':<4}{'Command'}")
-            [print(f"{i:<3}{j[1]:<12}{j[2]:<7}{j[4]:<10}{'✓' if j[5] else 'x':<4}{(j[3] or '')[:30]}") for i, j in enumerate(jobs)] or print("  (none)")
+            print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Device':<10}{'On':<4}{'Command'}"); _pj(jobs)
         return
 
     if wda == 'add':
-        a = sys.argv[3:] + [''] * 3; n, s, c = a[0], a[1], ' '.join(a[2:]).strip()
+        a = sys.argv[3:] + [''] * 3; c, s, n = ' '.join(a[:2]).strip(), a[2], a[3] if len(a) > 3 else ''
+        items = [(os.path.basename(p), f"aio {i}") for i, p in enumerate(PROJ)] + [(nm, cmd) for nm, cmd in APPS]
+        if not c: print("Commands:"); [print(f"  {i}. {nm} -> {cmd}") for i, (nm, cmd) in enumerate(items)]; c = input("# or cmd: ").strip()
+        c = items[int(c)][1] if c.isdigit() and int(c) < len(items) else c
         while not n: n = input("Name: ").strip().replace(' ', '-')
         while ':' not in s: s = input("Time (9:00am, 14:00): ").strip()
         s = _pt(s)
-        if not c:
-            items = [os.path.basename(p) for p in PROJ] + [nm for nm, _ in APPS]
-            print("Commands:"); [print(f"  {i}. {x}") for i, x in enumerate(items)]
-            c = input("# or cmd: ").strip()
-            c = f'aio {c}' if c.isdigit() and int(c) < len(items) else c
         with db() as cn: cn.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,1)", (n, s, c, DEVICE_ID)); cn.commit()
-        cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio_new.py")} ') if c.startswith('aio ') else c
+        cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ') if c.startswith('aio ') else c
         _install(n, s, cmd); db_sync(); print(f"✓ {n} @ {s}")
     elif wda == 'sync':
         [_uninstall(j[1]) for j in jobs]; mine = [j for j in jobs if j[4] == DEVICE_ID and j[5]]
         for j in mine:
-            cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio_new.py")} ') if j[3].startswith('aio ') else j[3]
+            cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ') if j[3].startswith('aio ') else j[3]
             _install(j[1], j[2], cmd)
         print(f"✓ synced {len(mine)} jobs")
     elif wda in ('rm', 'run', 'log'):
@@ -81,5 +79,5 @@ def run():
         elif wda == 'log':
             print(open(LOG).read()[-2000:] if os.path.exists(LOG) else 'No logs')
         else:
-            cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio_new.py")} ') if j[3].startswith('aio ') else j[3]
-            sp.run(cmd, shell=True); print(f"✓ {j[1]}")
+            cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ') if j[3].startswith('aio ') else j[3]
+            print(f"$ {cmd}", flush=True); sp.run(cmd, shell=True); print(f"✓")

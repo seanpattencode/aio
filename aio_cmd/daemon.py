@@ -2,7 +2,7 @@
 """aio warm daemon - pre-warms Python for 4-6x faster commands"""
 import os, sys, socket, io
 
-SOCK, AIO = '/tmp/aio.sock', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'aio.py')
+SOCK, AIO = '/tmp/aio.sock', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'aio.py')
 
 def daemon():
     os.environ['_AIO_WARM'] = '1'
@@ -39,10 +39,12 @@ def client(args):
 def install():
     me = os.path.abspath(__file__)
     py = sys.executable
-    # Create shell client for max speed
-    sh = os.path.join(os.path.dirname(me), 'aiow')
-    open(sh, 'w').write(f'#!/bin/sh\nprintf "%s\\n%s" "$PWD" "$*" | nc -U /tmp/aio.sock\n')
-    os.chmod(sh, 0o755)
+    # Symlink shell client to ~/.local/bin (like VS Code does)
+    sh_src = os.path.join(os.path.dirname(me), 'aiow')
+    sh_dst = os.path.expanduser('~/.local/bin/aiow')
+    os.makedirs(os.path.dirname(sh_dst), exist_ok=True)
+    os.path.exists(sh_dst) and os.remove(sh_dst)
+    os.symlink(sh_src, sh_dst); print(f"✓ Symlinked: {sh_dst} -> {sh_src}")
     if sys.platform == 'darwin':  # macOS launchd
         p = os.path.expanduser('~/Library/LaunchAgents/com.aio.warm.plist')
         os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -62,12 +64,10 @@ def install():
         d = os.path.expanduser('~/.config/systemd/user'); os.makedirs(d, exist_ok=True)
         open(f'{d}/aio-warm.service', 'w').write(f'[Unit]\nDescription=aio warm daemon\n[Service]\nExecStart={py} {me} daemon\nRestart=always\n[Install]\nWantedBy=default.target')
         os.system('systemctl --user daemon-reload && systemctl --user enable --now aio-warm'); print(f"✓ Installed: {d}/aio-warm.service")
-    # Add alias to shell client (faster than Python client)
-    rc = os.path.expanduser('~/.zshrc' if os.path.exists(os.path.expanduser('~/.zshrc')) else '~/.bashrc')
-    alias = f"\nalias aiow='{sh}'\n"
-    if 'aiow=' not in open(rc).read(): open(rc, 'a').write(alias); print(f"✓ Added alias: aiow -> {sh}")
 
 def uninstall():
+    sh = os.path.expanduser('~/.local/bin/aiow')
+    os.path.exists(sh) and os.remove(sh)
     if sys.platform == 'darwin':
         p = os.path.expanduser('~/Library/LaunchAgents/com.aio.warm.plist')
         os.system(f'launchctl unload {p} 2>/dev/null'); os.path.exists(p) and os.remove(p)
@@ -77,19 +77,21 @@ def uninstall():
         os.system('systemctl --user disable --now aio-warm 2>/dev/null')
         p = os.path.expanduser('~/.config/systemd/user/aio-warm.service')
         os.path.exists(p) and os.remove(p)
-    os.system('pkill -f "aiow.py daemon"'); print("✓ Uninstalled")
+    os.system('pkill -f "daemon.py daemon"'); print("✓ Uninstalled")
 
 def status():
     try: s = socket.socket(socket.AF_UNIX); s.connect(SOCK); s.close(); print("✓ Running")
     except: print("✗ Not running")
 
-if __name__ == '__main__':
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ''
-    if cmd == 'daemon': daemon()
+def run():
+    cmd = sys.argv[2] if len(sys.argv) > 2 else ''
+    if cmd in ('start', 'daemon'): daemon()
     elif cmd == 'install': install()
     elif cmd == 'uninstall': uninstall()
     elif cmd == 'status': status()
     elif cmd == 'stop': socket.socket(socket.AF_UNIX).connect(SOCK) or None; print("Stopped")
-    else:
-        try: client(sys.argv[1:])
-        except: print("Daemon not running. Start: python3 aiow.py daemon &\nOr install: python3 aiow.py install")
+    else: print("aio daemon [start|stop|status|install|uninstall]")
+
+if __name__ == '__main__':
+    sys.argv = ['aio', 'daemon'] + sys.argv[1:]  # Normalize for run()
+    run()

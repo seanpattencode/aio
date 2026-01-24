@@ -137,6 +137,12 @@ def load_sess(cfg):
         s[k] = (n, t.replace(' "{CLAUDE_PROMPT}"', '').replace(' "{CODEX_PROMPT}"', '').replace(' "{GEMINI_PROMPT}"', '') if k in ['cp','lp','gp'] else t.format(CLAUDE_PROMPT=esc('claude_prompt'), CODEX_PROMPT=esc('codex_prompt'), GEMINI_PROMPT=esc('gemini_prompt')))
     return s
 
+def _refresh_cache():
+    p, a = load_proj(), load_apps()
+    out = [f"PROJECTS:"] + [f"  {i}. {'+' if os.path.exists(x) else 'x'} {x}" for i, x in enumerate(p)]
+    out += [f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {c.replace(os.path.expanduser('~'), '~')[:60]}" for i, (n, c) in enumerate(a)] if a else []
+    Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + '\n'.join(out) + '\n')
+
 def add_proj(p):
     p = os.path.abspath(os.path.expanduser(p))
     if not os.path.isdir(p): return False, f"Not a directory: {p}"
@@ -144,7 +150,7 @@ def add_proj(p):
         if c.execute("SELECT 1 FROM projects WHERE path=? AND device IN (?, '*')", (p, DEVICE_ID)).fetchone(): return False, f"Exists: {p}"
         m = c.execute("SELECT MAX(display_order) FROM projects").fetchone()[0]
         c.execute("INSERT INTO projects (path, display_order, device) VALUES (?, ?, ?)", (p, 0 if m is None else m+1, DEVICE_ID)); c.commit()
-    return True, f"Added: {p}"
+    _refresh_cache(); return True, f"Added: {p}"
 
 def rm_proj(i):
     with db() as c:
@@ -153,7 +159,7 @@ def rm_proj(i):
         c.execute("DELETE FROM projects WHERE id=?", (rows[i][0],))
         for j, r in enumerate(c.execute("SELECT id FROM projects WHERE device=? ORDER BY display_order", (DEVICE_ID,))): c.execute("UPDATE projects SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
-    return True, f"Removed: {rows[i][1]}"
+    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
 def add_app(n, cmd):
     if not n or not cmd: return False, "Name and command required"
@@ -161,7 +167,7 @@ def add_app(n, cmd):
         if c.execute("SELECT 1 FROM apps WHERE name=? AND device IN (?, '*')", (n, DEVICE_ID)).fetchone(): return False, f"Exists: {n}"
         m = c.execute("SELECT MAX(display_order) FROM apps").fetchone()[0]
         c.execute("INSERT INTO apps (name, command, display_order, device) VALUES (?, ?, ?, ?)", (n, cmd, 0 if m is None else m+1, DEVICE_ID)); c.commit()
-    return True, f"Added: {n}"
+    _refresh_cache(); return True, f"Added: {n}"
 
 def rm_app(i):
     with db() as c:
@@ -170,7 +176,7 @@ def rm_app(i):
         c.execute("DELETE FROM apps WHERE id=?", (rows[i][0],))
         for j, r in enumerate(c.execute("SELECT id FROM apps WHERE device=? ORDER BY display_order", (DEVICE_ID,))): c.execute("UPDATE apps SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
-    return True, f"Removed: {rows[i][1]}"
+    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
 def fmt_cmd(c, mx=60):
     d = c.replace(os.path.expanduser('~'), '~')
@@ -487,6 +493,7 @@ OTHER
   aio log             View agent logs
   aio config          View/set settings
   aio update          Update aio
+  aio mono            Generate monolith for reading
 
 EXPERIMENTAL
   aio agent "task"    Spawn autonomous subagent

@@ -25,7 +25,7 @@ HTML = '''<!doctype html>
 </script>'''
 
 async def page(r): return web.Response(text=HTML, content_type='text/html', headers={'Cache-Control':'no-store'})
-async def run(r): d=await r.json(); return web.json_response({'out': subprocess.getoutput(f"source ~/.bashrc 2>/dev/null && {d['cmd']}")})
+async def exec_cmd(r): d=await r.json(); return web.json_response({'out': subprocess.getoutput(f"source ~/.bashrc 2>/dev/null && {d['cmd']}")})
 
 async def restart(r): os.execv(sys.executable, [sys.executable] + sys.argv)
 async def term(r):
@@ -47,6 +47,11 @@ N='<meta name=viewport content="width=device-width"><form method=post style="hei
 async def note(r):
     if r.method=='POST': c=(await r.post()).get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); raise web.HTTPFound('/n')
     return web.Response(text=N,content_type='text/html')
-app = web.Application(); app.add_routes([web.get('/', page), web.post('/exec', run), web.get('/ws', term), web.get('/restart', restart), web.route('*','/n',note)])
-if '--install' in sys.argv: os.makedirs(os.path.expanduser('~/.config/autostart'), exist_ok=True); open(os.path.expanduser('~/.config/autostart/aioUI.desktop'),'w').write(f'[Desktop Entry]\nType=Application\nExec=python3 {os.path.abspath(__file__)}\nName=aioUI'); sys.exit()
-if __name__ == '__main__': a=sys.argv[1:];p=int(a[0])if a and a[0].isdigit()else 8080;u=f'http://localhost:{p}/'+a[-1]if a and not a[-1].isdigit()else f'http://localhost:{p}';(subprocess.run(['termux-open-url',u])if os.environ.get('TERMUX_VERSION')else webbrowser.open(u));web.run_app(app,port=p)
+app = web.Application(); app.add_routes([web.get('/', page), web.post('/exec', exec_cmd), web.get('/ws', term), web.get('/restart', restart), web.route('*','/n',note)])
+
+def run():
+    if '--install' in sys.argv: os.makedirs(os.path.expanduser('~/.config/autostart'), exist_ok=True); open(os.path.expanduser('~/.config/autostart/aioUI.desktop'),'w').write(f'[Desktop Entry]\nType=Application\nExec=python3 {os.path.abspath(__file__)}\nName=aioUI'); sys.exit()
+    a=sys.argv[2:];p=int(a[0])if a and a[0].isdigit()else 8080;u=f'http://localhost:{p}/'+a[-1]if a and not a[-1].isdigit()else f'http://localhost:{p}';(subprocess.run(['termux-open-url',u])if os.environ.get('TERMUX_VERSION')else webbrowser.open(u));web.run_app(app,port=p)
+
+if __name__ == '__main__':
+    sys.argv = ['aio', 'ui'] + sys.argv[1:]; run()
