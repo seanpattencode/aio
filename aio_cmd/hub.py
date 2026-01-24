@@ -48,7 +48,7 @@ def run():
         _lr = lambda t: dt.strptime(t, '%Y-%m-%d %H:%M').strftime('%m/%d %I:%M%p').lower() if t else '-'
         _pj = lambda jobs: [print(f"{i:<3}{j[1]:<12}{j[2]:<7}{_lr(j[6]):<14}{j[4]:<10}{'✓' if j[5] else 'x':<4}{(j[3] or '')}") for i, j in enumerate(jobs)] or print("  (none)")
         print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Last Run':<14}{'Device':<10}{'On':<4}{'Command'}"); _pj(jobs)
-        while (c := input("\n<#>|add|rm <#>|sync|log|q\n> ").strip()) and c != 'q':
+        while (c := input("\n<#>|add|rm|ed <#>|sync|log|q\n> ").strip()) and c != 'q':
             args = ['run', c] if c.isdigit() else c.split()
             sp.run([sys.executable, __file__.replace('hub.py', '../aio.py'), 'hub'] + args)
             jobs = db().execute("SELECT id,name,schedule,prompt,device,enabled,last_run FROM hub_jobs ORDER BY device,name").fetchall()
@@ -77,6 +77,10 @@ def run():
         runs = db().execute("SELECT name,last_run FROM hub_jobs WHERE last_run IS NOT NULL ORDER BY last_run DESC LIMIT 20").fetchall()
         print(f"{'Name':<15}{'Last Run'}"); [print(f"{r[0]:<15}{r[1]}") for r in runs] if runs else print("  (no runs)")
         print(f"\n--- Recent log output ---\n{open(LOG).read()[-3000:]}")
+    elif wda == 'ed':
+        n = sys.argv[3] if len(sys.argv) > 3 else ''; j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else None
+        if not j or not (new := input(f"Name [{j[1]}]: ").strip()): return print(f"x {n}?") if not j else None
+        _uninstall(j[1]); c = db(); c.execute("UPDATE hub_jobs SET name=? WHERE id=?", (new, j[0])); c.commit(); db_sync(); print(f"✓ {new} (run 'sync' to update timer)")
     elif wda in ('rm', 'run'):
         n = sys.argv[3] if len(sys.argv) > 3 else ''
         j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else next((x for x in jobs if x[1] == n), None)
@@ -86,6 +90,6 @@ def run():
         else:
             from datetime import datetime
             cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ') if j[3].startswith('aio ') else j[3]
-            print(f"$ {cmd}", flush=True); r = sp.run(cmd, shell=True, capture_output=True, text=True); out = r.stdout + r.stderr
+            print(f"Running {j[1]}...", flush=True); r = sp.run(cmd, shell=True, capture_output=True, text=True); out = r.stdout + r.stderr
             print(out) if out else None; open(LOG, 'a').write(f"\n[{datetime.now():%Y-%m-%d %I:%M:%S%p}] {j[1]}\n{out}")
             c = db(); c.execute("UPDATE hub_jobs SET last_run=? WHERE id=?", (datetime.now().strftime('%Y-%m-%d %H:%M'), j[0])); c.commit(); c.close(); db_sync(); print(f"✓")
