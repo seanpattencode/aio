@@ -6,10 +6,10 @@ import sys, os
 # SYNC: Emits notes.add event to events.jsonl. Never delete - ack to archive. Any device can ack.
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
     import sqlite3, subprocess as sp, json, time, hashlib, socket; dd = os.path.expanduser("~/.local/share/aios"); db = f"{dd}/aio.db"; ef = f"{dd}/events.jsonl"; os.makedirs(dd, exist_ok=True); dev = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
-    eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]; txt = ' '.join(sys.argv[2:])
-    open(ef, "a").write(json.dumps({"ts": time.time(), "id": eid, "dev": dev, "op": "notes.add", "d": {"t": txt}}) + "\n")
-    c = sqlite3.connect(db); c.execute("CREATE TABLE IF NOT EXISTS notes(id,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close()
-    r = sp.run(f'cd "{dd}" && git add -A && git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -m n -q && git push origin HEAD:main -q 2>&1', shell=True, capture_output=True, text=True) if os.path.isdir(f"{dd}/.git") else type('R',(),{'returncode':0})(); print("✓" if r.returncode == 0 else f"! {r.stderr.strip()[:40] or 'sync failed'}"); sys.exit(0)
+    eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]; txt = ' '.join(sys.argv[2:]); ev = json.dumps({"ts": time.time(), "id": eid, "dev": dev, "op": "notes.add", "d": {"t": txt}})
+    open(ef, "a").write(ev + "\n"); c = sqlite3.connect(db); c.execute("CREATE TABLE IF NOT EXISTS notes(id,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close()
+    sp.run(f'cd "{dd}" && git add -A && git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -m n -q; git fetch -q && git -c user.name=aio -c user.email=a@a merge -q -X theirs --no-edit origin/main 2>/dev/null', shell=True, capture_output=True) if os.path.isdir(f"{dd}/.git") else None
+    eid not in open(ef).read() and open(ef, "a").write(ev + "\n"); r = sp.run(f'cd "{dd}" && git add -A && git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -m n -q; git push origin HEAD:main -q', shell=True, capture_output=True, text=True) if os.path.isdir(f"{dd}/.git") else type('R',(),{'returncode':0})(); print("✓" if r.returncode == 0 else f"! {r.stderr.strip()[:40] or 'sync failed'}"); sys.exit(0)
 
 # Fast-path for 'aio i' - show cache instantly, start interactive in background
 # NOTE: Agents test with `bash -i -c 'aio i'`, time with `bash -i -c 'time aio i < /dev/null' 2>&1`
