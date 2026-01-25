@@ -30,7 +30,7 @@ def run():
     # Rebuild cache in background
     if os.fork() == 0: refresh_cache(); os._exit(0)
 
-    sys.stdout.write("\033[u\033[J"); buf, sel = "", 0  # Restore cursor, clear below
+    sys.stdout.write("\033[?25l\033[u"); buf, sel = "", 0  # Hide cursor, restore position
 
     while True:
         matches = [x for x in items if buf.replace(' ','').lower() in x.lower()][:8] if buf else items[:8]
@@ -39,7 +39,7 @@ def run():
         # Render
         sys.stdout.write(f"\r\033[K> {buf}\n")
         for i, m in enumerate(matches): sys.stdout.write(f"\033[K{' >' if i==sel else '  '} {m}\n")
-        sys.stdout.write(f"\033[{len(matches)+1}A\033[{len(buf)+3}C")
+        sys.stdout.write(f"\033[{len(matches)+1}A\033[{len(buf)+3}C\033[?25h")
         sys.stdout.flush()
 
         ch = getch()
