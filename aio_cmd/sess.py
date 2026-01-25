@@ -38,11 +38,11 @@ def run():
     if 'TMUX' in os.environ and arg in sess and len(arg) == 1:
         an, cmd = sess[arg]
         n = int(wda) if wda and wda.isdigit() and int(wda) < 10 else 1
-        for _ in range(n):
-            pid = sp.run(['tmux', 'split-window', '-hfP', '-F', '#{pane_id}', '-c', wd, cmd], capture_output=True, text=True).stdout.strip()
+        pids = [sp.run(['tmux', 'split-window', '-hfP', '-F', '#{pane_id}', '-c', wd, cmd], capture_output=True, text=True).stdout.strip() for _ in range(n)]
+        sp.run(['tmux', 'select-layout', 'even-horizontal'])
+        for pid in pids:
             pid and (sp.run(['tmux', 'split-window', '-v', '-t', pid, '-c', wd, 'sh -c "ls;exec $SHELL"']), sp.run(['tmux', 'select-pane', '-t', pid]))
             pid and send_prefix(pid, an, wd, cfg)
-        sp.run(['tmux', 'select-layout', 'even-horizontal'])
         sys.exit(0)
 
     if arg in _GM and not wda and (g := _ghost_claim(arg, wd)):
