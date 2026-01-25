@@ -7,11 +7,14 @@ if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n'):
     import sqlite3, subprocess as sp; dd = os.path.expanduser("~/.local/share/aios"); db = f"{dd}/aio.db"; os.makedirs(dd, exist_ok=True); os.path.exists(db) and sqlite3.connect(db).execute("PRAGMA wal_checkpoint(TRUNCATE)").connection.close(); (os.path.isdir(f"{dd}/.git") or __import__('shutil').which('gh') and (u:=sp.run(['gh','repo','view','aio-sync','--json','url','-q','.url'],capture_output=True,text=True).stdout.strip() or sp.run(['gh','repo','create','aio-sync','--private','-y'],capture_output=True,text=True).stdout.strip()) and sp.run(f'cd "{dd}"&&git init -b main -q;git remote add origin {u} 2>/dev/null;git fetch origin 2>/dev/null&&git reset --hard origin/main 2>/dev/null||(git add -A&&git commit -m init -q&&git push -u origin main 2>/dev/null)',shell=True,capture_output=True)) and sp.run(f'cd "{dd}" && git fetch -q 2>/dev/null && git reset --hard origin/main 2>/dev/null', shell=True, capture_output=True); c = sqlite3.connect(db); c.execute("CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("INSERT INTO notes(t) VALUES(?)", (' '.join(sys.argv[2:]),)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close(); r = sp.run(f'cd "{dd}" && git add -A && git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -m n && git push origin HEAD:main -q 2>&1', shell=True, capture_output=True, text=True) if os.path.isdir(f"{dd}/.git") else type('R',(),{'returncode':0})(); print("✓" if r.returncode == 0 else f"! {r.stderr.strip()[:40] or 'sync failed'}"); sys.exit(0)
 
 # Fast-path for 'aio i' - show cache instantly, start interactive in background
+# NOTE: Agents should test with `bash -i -c 'aio i'` to replicate user experience
+# (non-interactive shells skip .bashrc which has the fast aio() bash function)
+# Time with: bash -i -c 'time aio i < /dev/null' 2>&1 (< /dev/null exits menus instantly)
 if len(sys.argv) > 1 and sys.argv[1] == 'i':
     c = os.path.expanduser("~/.local/share/aios/i_cache.txt")
-    if os.path.exists(c): print(open(c).read(), end='', flush=True)
+    items = (open(c).read().strip().split('\n')[:8]+['']*8)[:8] if os.path.exists(c) else ['']*8
+    print("Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n>\n > "+items[0]+'\n'+'\n'.join(f"   {m}" for m in items[1:]))
     if not sys.stdin.isatty(): sys.exit(0)
-    # Continue to interactive mode below
 
 # Generate monolith from all modules
 if len(sys.argv) > 1 and sys.argv[1] in ('mono', 'monolith'):

@@ -30,10 +30,8 @@ def run():
     # Rebuild cache in background
     if os.fork() == 0: refresh_cache(); os._exit(0)
 
-    # Clear the pre-printed cache, show interactive UI
-    n = min(len(items), 10) + 2
-    sys.stdout.write(f"\033[{n}A\033[J")  # Move up and clear
-    buf, sel = "", 0
+    # Clear pre-printed cache (11 lines), show UI
+    sys.stdout.write("\033[11A\033[J"); buf, sel = "", 0
     print("Type to filter, Tab=cycle, Enter=run, Esc=quit\n")
 
     while True:
