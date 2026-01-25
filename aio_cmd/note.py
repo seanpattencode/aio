@@ -13,7 +13,9 @@ def run():
         if not notes: print("aio n <text>"); sys.exit()
         if not sys.stdin.isatty(): [print(f"{t}" + (f" @{p}" if p else "")) for _,t,_,p in notes[:10]]; sys.exit()
         print(f"{len(notes)} notes | [a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due")
-        for i,(nid,txt,due,proj) in enumerate(notes):
+        i = 0
+        while i < len(notes):
+            nid,txt,due,proj = notes[i]
             print(f"\n[{i+1}/{len(notes)}] {txt}" + (f" @{proj}" if proj else "") + (f" [{due}]" if due else "")); ch = input("> ").strip().lower()
             if ch == 'a': c.execute("UPDATE notes SET s=1 WHERE id=?", (nid,)); c.commit(); db_sync(); print("✓")
             elif ch == 'e': nv = input("new: "); nv and (c.execute("UPDATE notes SET t=? WHERE id=?", (nv, nid)), c.commit(), db_sync(), print("✓"))
@@ -36,4 +38,5 @@ def run():
                         break
                     c.execute("INSERT OR IGNORE INTO note_projects(name) VALUES(?)", (pc,)); c.commit(); projs.append(pc) if pc not in projs else None; db_sync(); print(f"✓ {pc}")
             elif ch == 'q': sys.exit()
-            elif ch: c.execute("INSERT INTO notes(t) VALUES(?)", (ch,)); c.commit(); db_sync(); print("✓")
+            elif ch: c.execute("INSERT INTO notes(t) VALUES(?)", (ch,)); c.commit(); db_sync(); notes.insert(0,(0,ch,0,0)); print(f"✓ [{len(notes)}]"); continue
+            i += 1
