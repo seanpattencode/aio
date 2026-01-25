@@ -56,16 +56,15 @@ def run():
         return
 
     if wda == 'add':
-        a = sys.argv[3:] + [''] * 3; c, s, n = ' '.join(a[:2]).strip(), a[2], a[3] if len(a) > 3 else ''
+        # One-line: aio hub add <name> <sched> <cmd...>  e.g. aio hub add gdrive-sync '*:0/30' aio gdrive sync
+        a, tty = sys.argv[3:], sys.stdin.isatty(); n, s, c = (a+[''])[0], (a+['',''])[1], ' '.join(a[2:])
         items = [(os.path.basename(p), f"aio {i}") for i, p in enumerate(PROJ)] + [(nm, cmd) for nm, cmd in APPS]
-        if not c: print("Commands:"); [print(f"  {i}. {nm} -> {cmd}") for i, (nm, cmd) in enumerate(items)]; c = input("# or cmd: ").strip()
-        c = items[int(c)][1] if c.isdigit() and int(c) < len(items) else c
-        while not n: n = input("Name: ").strip().replace(' ', '-')
-        while ':' not in s: s = input("Time (9:00am, 14:00): ").strip()
-        s = _pt(s)
+        c = (c or (tty and ([print(f"  {i}. {nm} -> {cmd}") for i, (nm, cmd) in enumerate(items)], input("# or cmd: "))[-1].strip() or '')); c = items[int(c)][1] if c.isdigit() and int(c) < len(items) else c
+        n, s = n or (tty and input("Name: ").strip().replace(' ','-')), s if ':' in s else (tty and input("Time (9:00am, *:0/30): ").strip())
+        if not all([n,s,c]): sys.exit("Usage: aio hub add <name> <sched> <cmd...>")
+        s = _pt(s) if s[0].isdigit() else s
         with db() as cn: cn.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,1)", (n, s, c, DEVICE_ID)); cn.commit()
-        cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ') if c.startswith('aio ') else c
-        _install(n, s, cmd); db_sync(); print(f"✓ {n} @ {s}")
+        cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ') if c.startswith('aio ') else c; _install(n, s, cmd); db_sync(); print(f"✓ {n} @ {s}")
     elif wda == 'sync':
         [_uninstall(j[1]) for j in jobs]; mine = [j for j in jobs if j[4] == DEVICE_ID and j[5]]
         for j in mine:
