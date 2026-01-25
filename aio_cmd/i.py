@@ -15,9 +15,9 @@ def getch():
 
 def refresh_cache():
     from . _common import load_proj, load_apps, init_db
-    init_db(); items = [str(i) for i in range(len(load_proj()) + len(load_apps()))] + CMDS
-    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-    open(CACHE, 'w').write('\n'.join(items))
+    init_db(); p, a = load_proj(), load_apps()
+    items = [f"{i}:{os.path.basename(x)}" for i,x in enumerate(p)] + [f"{len(p)+i}:{n}" for i,(n,_) in enumerate(a)] + CMDS
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True); open(CACHE, 'w').write('\n'.join(items))
 
 def run():
     # Fast path: read from cache
@@ -37,7 +37,7 @@ def run():
     print("Type to filter, Tab=cycle, Enter=run, Esc=quit\n")
 
     while True:
-        matches = [x for x in items if x.startswith(buf)][:8] if buf else items[:8]
+        matches = [x for x in items if buf.replace(' ','').lower() in x.lower()][:8] if buf else items[:8]
         sel = min(sel, len(matches)-1) if matches else 0
 
         # Render
@@ -60,11 +60,11 @@ def run():
         elif ch == '\t': sel = (sel + 1) % len(matches) if matches else 0
         elif ch == '\x7f' and buf: buf, sel = buf[:-1], 0
         elif ch == '\r' and matches:
-            cmd = matches[sel]
+            cmd = matches[sel].split(':')[0] if ':' in matches[sel] else matches[sel]
             print(f"\n\n\033[KRunning: aio {cmd}\n")
             os.execvp(sys.executable, [sys.executable, os.path.dirname(__file__) + '/../aio.py', cmd])
         elif ch in ('\x03', '\x04') or (ch == 'q' and not buf): break  # Ctrl+C, Ctrl+D, q
-        elif ch.isalnum() or ch in '-_': buf, sel = buf + ch, 0
+        elif ch.isalnum() or ch in '-_ ': buf, sel = buf + ch, 0
 
         sys.stdout.write("\033[1B\r")
 
