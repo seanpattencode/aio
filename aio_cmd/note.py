@@ -9,12 +9,12 @@ def run():
     init_db(); db_sync(pull=True)
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     with db() as c:
-        if raw: eid = emit_event("notes", "add", {"t": raw}); c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, raw)); c.commit(); db_sync(); print("✓"); sys.exit()
+        if raw and raw[0]!='?': eid = emit_event("notes", "add", {"t": raw}); c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, raw)); c.commit(); db_sync(); print("✓"); sys.exit()
         projs = [r[0] for r in c.execute("SELECT name FROM note_projects ORDER BY c")]
-        notes = c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 ORDER BY c DESC").fetchall()
+        notes = c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 AND t LIKE ? ORDER BY c DESC", (f'%{raw[1:]}%',)).fetchall() if raw else c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 ORDER BY c DESC").fetchall()
         if not notes: print("aio n <text>"); sys.exit()
         if not sys.stdin.isatty(): [print(f"{t}" + (f" @{p}" if p else "")) for _,t,_,p in notes[:10]]; sys.exit()
-        print(f"{len(notes)} notes | [a]ck [e]dit [p]rojects [m]ore [q]uit | 1/20=due")
+        print(f"{len(notes)} notes | [a]ck [e]dit [s]earch [p]rojects [m]ore [q]uit | 1/20=due")
         i = 0
         while i < len(notes):
             nid,txt,due,proj = notes[i]
@@ -40,5 +40,6 @@ def run():
                         break
                     c.execute("INSERT OR IGNORE INTO note_projects(name) VALUES(?)", (pc,)); c.commit(); projs.append(pc) if pc not in projs else None; db_sync(); print(f"✓ {pc}")
             elif ch == 'q': sys.exit()
+            elif ch == 's': q = input("search: "); notes = c.execute("SELECT id,t,d,proj FROM notes WHERE s=0 AND t LIKE ? ORDER BY c DESC", (f'%{q}%',)).fetchall(); i=0; print(f"{len(notes)} results"); continue
             elif ch: eid = emit_event("notes", "add", {"t": ch}); c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, ch)); c.commit(); db_sync(); notes.insert(0,(eid,ch,None,None)); print(f"✓ [{len(notes)}]"); continue
             i += 1
