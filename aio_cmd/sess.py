@@ -37,7 +37,7 @@ def run():
     # Session handling
     if 'TMUX' in os.environ and arg in sess and len(arg) == 1:
         an, cmd = sess[arg]
-        pid = sp.run(['tmux', 'split-window', '-bvP', '-F', '#{pane_id}', '-c', wd, cmd], capture_output=True, text=True).stdout.strip()
+        pid = sp.run(['tmux', 'split-window', '-hfP', '-F', '#{pane_id}', '-c', wd, cmd], capture_output=True, text=True).stdout.strip()
         pid and (sp.run(['tmux', 'split-window', '-v', '-t', pid, '-c', wd, 'sh -c "ls;exec $SHELL"']), sp.run(['tmux', 'select-pane', '-t', pid]))
         pid and send_prefix(pid, an, wd, cfg)
         sys.exit(0)
