@@ -22,7 +22,7 @@ def run():
     # Determine working directory
     is_wda_prompt = False
     _cmd_kw = {'add', 'remove', 'rm', 'cmd', 'command', 'commands', 'app', 'apps', 'prompt', 'a', 'all', 'review', 'w'}
-    if wda and wda.isdigit() and arg not in _cmd_kw:
+    if wda and wda.isdigit() and arg not in _cmd_kw and not ('TMUX' in os.environ and arg in sess and len(arg) == 1):
         idx = int(wda)
         if 0 <= idx < len(PROJ): wd = PROJ[idx]
         elif 0 <= idx - len(PROJ) < len(APPS):
