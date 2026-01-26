@@ -72,6 +72,35 @@ Friction → avoidance → batching → anxiety
 No friction → habit → safety → confidence → more experiments
 ```
 
+### Instant Feedback Loop
+
+```
+Type message → Enter → ✓ (85ms)
+
+Reward (checkmark) appears immediately after action.
+No delay between writing message and seeing confirmation.
+This is operant conditioning - instant reinforcement.
+```
+
+Delayed reward (1.4s): Brain disconnects action from result
+Instant reward (85ms): Brain reinforces "write message → good feeling"
+
+Result: You write better commit messages because the reward loop is tight.
+
+### Fastest Possible Commit Message
+
+```
+aio push "msg" = type 15 chars + enter + done
+
+No:
+- Staging files manually
+- Opening commit dialog
+- Waiting for push
+- Switching contexts
+
+This is near-optimal UX for "save work with description"
+```
+
 ## Total Value Estimate
 
 | Gain | Estimated Value |
