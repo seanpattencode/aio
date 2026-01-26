@@ -2,6 +2,8 @@
 import sys, os, subprocess as sp
 from . _common import init_db, load_cfg, load_proj, load_apps, load_sess, _ghost_spawn, fmt_cmd, SCRIPT_DIR
 
+_OK = os.path.expanduser('~/.local/share/aios/logs/push.ok')
+
 def run():
     init_db()
     cfg = load_cfg()
@@ -12,9 +14,11 @@ def run():
 
     idx = int(arg)
     if 0 <= idx < len(PROJ):
-        print(f"Opening project {idx}: {PROJ[idx]}")
-        sp.Popen([sys.executable, os.path.join(SCRIPT_DIR, 'aio_new.py'), '_ghost', PROJ[idx]], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        os.chdir(PROJ[idx])
+        p = PROJ[idx]
+        print(f"Opening project {idx}: {p}")
+        sp.Popen([sys.executable, os.path.join(SCRIPT_DIR, 'aio_new.py'), '_ghost', p], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        sp.Popen(f'git -C "{p}" ls-remote --exit-code origin HEAD &>/dev/null && touch "{_OK}"', shell=True)
+        os.chdir(p)
         os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
     elif 0 <= idx - len(PROJ) < len(APPS):
         an, ac = APPS[idx - len(PROJ)]
