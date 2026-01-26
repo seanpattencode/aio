@@ -104,7 +104,8 @@ def init_db():
             if 'device' not in [r[1] for r in c.execute(f"PRAGMA table_info({t})")]: c.execute(f"ALTER TABLE {t} ADD COLUMN device TEXT DEFAULT '*'")
         c.execute("CREATE TABLE IF NOT EXISTS sessions (key TEXT PRIMARY KEY, name TEXT NOT NULL, command_template TEXT NOT NULL)")
         c.execute("CREATE TABLE IF NOT EXISTS multi_runs (id TEXT PRIMARY KEY, repo TEXT NOT NULL, prompt TEXT NOT NULL, agents TEXT NOT NULL, status TEXT DEFAULT 'running', created_at TEXT DEFAULT CURRENT_TIMESTAMP, review_rank TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, t TEXT, s INTEGER DEFAULT 0, d TEXT, c TEXT DEFAULT CURRENT_TIMESTAMP, proj TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, t TEXT, s INTEGER DEFAULT 0, d TEXT, c TEXT DEFAULT CURRENT_TIMESTAMP, proj TEXT, dev TEXT)")
+        if 'dev' not in [r[1] for r in c.execute("PRAGMA table_info(notes)")]: c.execute("ALTER TABLE notes ADD COLUMN dev TEXT")
         c.execute("CREATE TABLE IF NOT EXISTS note_projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE, c TEXT DEFAULT CURRENT_TIMESTAMP)")
         c.execute("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, real_deadline INTEGER NOT NULL, virtual_deadline INTEGER, created_at INTEGER NOT NULL, completed_at INTEGER)")
         c.execute("CREATE TABLE IF NOT EXISTS jobs (name TEXT PRIMARY KEY, step TEXT NOT NULL, status TEXT NOT NULL, path TEXT, session TEXT, updated_at INTEGER NOT NULL)")
@@ -440,8 +441,8 @@ def replay_events(tables=None):
         if t == "ssh": c.execute("DELETE FROM ssh"); [c.execute("INSERT OR REPLACE INTO ssh(name,host)VALUES(?,?)", (v.get("name",k), v.get("host",""))) for k,v in active.items()]
         elif t == "notes":
             c.execute("DELETE FROM notes WHERE id LIKE '________'")  # only delete event-based notes (8-char hex ids)
-            for k,v in active.items(): c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj)VALUES(?,?,0,?,?)", (k, v.get("t",""), v.get("d"), v.get("proj")))
-            for k,v in archived.items(): c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj)VALUES(?,?,1,?,?)", (k, v.get("t",""), v.get("d"), v.get("proj")))
+            for k,v in active.items(): c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj,dev)VALUES(?,?,0,?,?,?)", (k, v.get("t",""), v.get("d"), v.get("proj"), v.get("_dev")))
+            for k,v in archived.items(): c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj,dev)VALUES(?,?,1,?,?,?)", (k, v.get("t",""), v.get("d"), v.get("proj"), v.get("_dev")))
     c.commit(); c.close()
 
 # Append-only sync: only events.jsonl synced (text, auto-merges), aio.db is local cache
