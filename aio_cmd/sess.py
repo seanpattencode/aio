@@ -39,7 +39,6 @@ def run():
         an, cmd = sess[arg]
         n = int(wda) if wda and wda.isdigit() and int(wda) < 10 else 1
         pids = [sp.run(['tmux', 'split-window', '-hfP', '-F', '#{pane_id}', '-c', wd, cmd], capture_output=True, text=True).stdout.strip() for _ in range(n)]
-        sp.run(['tmux', 'select-layout', 'even-horizontal'])
         for pid in pids:
             pid and (sp.run(['tmux', 'split-window', '-v', '-t', pid, '-c', wd, 'sh -c "ls;exec $SHELL"']), sp.run(['tmux', 'select-pane', '-t', pid]))
             pid and send_prefix(pid, an, wd, cfg)
