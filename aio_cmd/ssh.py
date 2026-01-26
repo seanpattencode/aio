@@ -31,5 +31,5 @@ def run():
     if wda == 'add': h=re.sub(r'\s+-p\s*(\d+)',r':\1',input("Host (user@ip): ").strip()); _up(h) or _die(f"x cannot connect to {h}"); n=input("Name: ").strip() or h.split('@')[-1].split(':')[0].split('.')[-1]; pw=input("Password? ").strip() or None; pw and _pw(n,pw); (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host) VALUES(?,?)",(n,h)); c.commit(); emit_event("ssh","add",{"name":n,"host":h}); db_sync(); print(f"✓ Added {n}={h}{' [pw]' if pw else ''}"); return
     nm = hosts[int(wda)][0] if wda.isdigit() and int(wda) < len(hosts) else (_die(f"x No host #{wda}. Run: aio ssh") if wda.isdigit() else wda); shutil.which('ssh') or _die("x ssh not installed"); h=hmap.get(nm,nm); pw=_pw(nm); hp=h.rsplit(':',1); cmd=['ssh','-tt','-o','StrictHostKeyChecking=accept-new']+(['-p',hp[1]] if len(hp)>1 else [])+[hp[0]]
     if 'cmd' in sys.argv or '--cmd' in sys.argv: print(' '.join(cmd)); return
-    if not pw and nm in hmap: pw=input("Password? ").strip()
+    if not pw and nm in hmap: pw=input("Password? ").strip(); pw and _pw(nm,pw)
     pw and not shutil.which('sshpass') and _die("x need sshpass"); print(f"Connecting to {nm}...\n[AI: use 'timeout N aio ssh X' - interactive session needs TTY]", file=sys.stderr, flush=True); os.execvp('sshpass',['sshpass','-p',pw]+cmd) if pw else os.execvp('ssh',cmd)
