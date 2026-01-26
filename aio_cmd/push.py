@@ -1,7 +1,7 @@
 """aio push - Commit and push"""
 import sys, os, subprocess as sp, shutil
 from pathlib import Path
-from . _common import init_db, load_cfg, load_proj, _git, _git_main, _git_push, _env, _die, ensure_git_cfg
+from . _common import init_db, load_cfg, load_proj, _git, _git_main, _git_push, _env, _die, ensure_git_cfg, _in_repo
 
 def run():
     init_db()
@@ -10,7 +10,7 @@ def run():
     WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
     cwd, skip = os.getcwd(), '--yes' in sys.argv or '-y' in sys.argv
 
-    if _git(cwd, 'rev-parse').returncode:
+    if not _in_repo(cwd):
         _git(cwd, 'init', '-b', 'main'); Path(os.path.join(cwd, '.gitignore')).touch(); _git(cwd, 'add', '-A'); _git(cwd, 'commit', '-m', 'Initial commit'); print("✓ Initialized")
         if not shutil.which('gh') or sp.run(['gh', 'auth', 'status'], capture_output=True).returncode != 0:
             print("! gh not installed or not authenticated. Run: brew install gh && gh auth login"); return
