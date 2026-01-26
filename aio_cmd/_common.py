@@ -11,7 +11,13 @@ DB_PATH = os.path.join(DATA_DIR, "aio.db")
 EVENTS_PATH = os.path.join(DATA_DIR, "events.jsonl")
 NOTE_DIR = os.path.join(DATA_DIR, "notebook")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
-DEVICE_ID = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
+def _get_dev():
+    f = os.path.expanduser('~/.local/share/aios/.device')
+    if os.path.exists(f): return open(f).read().strip()
+    d = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
+    os.makedirs(os.path.dirname(f), exist_ok=True); open(f,'w').write(d)
+    return d
+DEVICE_ID = _get_dev()
 _GP, _GT = '_aio_ghost_', 300
 _GM = {'c': 'l', 'l': 'l', 'g': 'g', 'o': 'l', 'co': 'c', 'cp': 'c', 'lp': 'l', 'gp': 'g'}
 _AIO_DIR = os.path.expanduser('~/.aios')
