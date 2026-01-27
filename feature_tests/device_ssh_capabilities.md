@@ -1,5 +1,29 @@
 # Device SSH Capabilities Report
 
+## Why SSH
+
+The minimal path from intent to execution:
+
+```
+Human intent
+    ↓
+Terminal (text in, text out)
+    ↓
+Kernel (syscalls)
+    ↓
+CPU (instructions)
+    ↓
+Physics (electrons)
+```
+
+- Kernel: heart of the system, Turing-complete access to CPU/chips
+- Terminal: direct path to kernel
+- SSH: direct path to kernel over network
+
+Everything else - GUIs, REST APIs, cloud platforms - are abstractions on top. Sometimes useful, often just toll booths. SSH is the raw path to any Turing-complete machine. The capability existed since 1995; we just got distracted by walled gardens.
+
+Multi-device control was inevitable the moment people had more than one PC. We just never normalized it.
+
 ## Current Fleet
 - Linux (Ubuntu) - full support
 - Android (Termux) - full support
