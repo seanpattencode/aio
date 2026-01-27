@@ -13,36 +13,31 @@ if not WIN_IP: sys.exit("x No Windows LAN IP (192.168.1.x) found")
 
 sp.run("pgrep -x sshd >/dev/null || sudo service ssh start", shell=True)
 
-# Check current state
-print("\n=== Checking port forward ===")
-pf = sp.run(["powershell.exe", "-c", "netsh interface portproxy show all"], capture_output=True, text=True).stdout
-print(pf if pf.strip() else "(none)")
-
-# Write and run admin script
-print("\n=== Setting up port forward (check Windows for UAC prompt) ===")
-ps_script = f'''
-netsh interface portproxy delete v4tov4 listenport=2222 listenaddress=0.0.0.0 2>$null
+# Write PS1 script to Windows temp
+ps1 = f'''netsh interface portproxy delete v4tov4 listenport=2222 listenaddress=0.0.0.0 2>$null
 netsh interface portproxy add v4tov4 listenport=2222 listenaddress=0.0.0.0 connectport=22 connectaddress={WSL_IP}
 netsh advfirewall firewall delete rule name="WSL SSH" 2>$null
 netsh advfirewall firewall add rule name="WSL SSH" dir=in action=allow protocol=tcp localport=2222
-echo "=== Result ==="
+Write-Host "=== Port Forward ===" -ForegroundColor Green
 netsh interface portproxy show all
-pause
-'''
-sp.run(["powershell.exe", "-c", f"Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-Command','{ps_script}'"])
-
-input("\nPress Enter after Windows admin window shows 'Result' with port forward...")
+Write-Host "=== Firewall Rule ===" -ForegroundColor Green
+netsh advfirewall firewall show rule name="WSL SSH"
+pause'''
+ps1_path = "/mnt/c/Windows/Temp/wsl_ssh_setup.ps1"
+open(ps1_path, "w").write(ps1)
+print("=== Running admin setup (check Windows for UAC) ===")
+sp.run(["powershell.exe", "-c", "Start-Process powershell -Verb RunAs -ArgumentList '-ExecutionPolicy','Bypass','-File','C:\\Windows\\Temp\\wsl_ssh_setup.ps1'"])
+input("Press Enter after Windows shows 'Firewall Rule' result...")
 
 # Verify
-print("\n=== Verifying ===")
 pf = sp.run(["powershell.exe", "-c", "netsh interface portproxy show all"], capture_output=True, text=True).stdout
-print(pf)
-if "2222" not in pf: sys.exit("x Port forward not set - run admin commands manually")
+if "2222" not in pf: sys.exit("x Port forward not set")
+print("✓ Port forward OK")
 
 # Register
 name = sys.argv[1] if len(sys.argv) > 1 else f"wsl-{os.uname().nodename}"
 host = f"{getpass.getuser()}@{WIN_IP}:2222"
-print(f"\nRegistering: {name} = {host}")
+print(f"Registering: {name} = {host}")
 pw = getpass.getpass("SSH password: ")
 
 sys.path.insert(0, os.path.expanduser("~/aio"))
