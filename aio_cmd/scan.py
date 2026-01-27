@@ -1,14 +1,14 @@
-"""aio scan - Scan/clone repos. Usage: aio scan [gh] [name|#|#-#|all]"""
+"""aio scan - Scan/clone repos. Usage: aio scan [loc] [name|#|#-#|all]"""
 import sys, os, subprocess as sp, json
 from pathlib import Path
 from . _common import init_db, load_proj, add_proj, auto_backup
 
 def run():
-    init_db(); args = sys.argv[2:]; gh = 'gh' in args; args = [a for a in args if a!='gh']
+    init_db(); args = sys.argv[2:]; loc = 'loc'in args; args = [a for a in args if a not in('gh','loc')]
     sel = next((a for a in args if a.isdigit() or a == 'all' or (a.replace('-','').isdigit() and '-' in a)), None)
     name = next((a for a in args if a not in (sel,) and not a.startswith('-') and not a.startswith('/') and not a.startswith('~')), None)
 
-    if gh or name:
+    if not loc:
         r = sp.run(['gh', 'repo', 'list', '-L', '100', '--json', 'name,url,pushedAt'], capture_output=True, text=True)
         repos = sorted(json.loads(r.stdout or '[]'), key=lambda x: x.get('pushedAt',''), reverse=True)
         cloned = {os.path.basename(p) for p in load_proj()}
@@ -23,10 +23,10 @@ def run():
         pg=0
         while True:
             for i,(n,u,d) in enumerate(repos[pg*10:(pg+1)*10],pg*10): print(f"  {i}. {n:<25} {d}")
-            more=pg*10+10<len(repos); print(f"  [{len(repos)} repos] /search m=more" if more else f"  [{len(repos)} repos] /search")
-            if not sel: sel=input("\nClone (#,#-#,all,q): ").strip()if sys.stdin.isatty()else None
+            more=pg*10+10<len(repos); print(f"  [{len(repos)}] m=more" if more else "")
+            if not sel: sel=input("\n#/all/q/search: ").strip()if sys.stdin.isatty()else None
             if sel=='m'and more: pg+=1; sel=None; continue
-            if sel and sel[0]=='/': repos=[(n,u,d)for n,u,d in repos if sel[1:].lower()in n.lower()]; pg=0; sel=None; continue
+            if sel and sel[0]>'9'and sel not in('all','q'): repos=[(n,u,d)for n,u,d in repos if sel.lower()in n.lower()]; pg=0; sel=None; continue
             break
         if not sel or sel=='q': return
         idxs = list(range(len(repos))) if sel == 'all' else [j for x in sel.replace(',', ' ').split() for j in (range(int(x.split('-')[0]), int(x.split('-')[1])+1) if '-' in x else [int(x)]) if 0 <= j < len(repos)]
@@ -41,10 +41,10 @@ def run():
         pg=0
         while True:
             for i,r in enumerate(repos[pg*10:(pg+1)*10],pg*10): print(f"  {i}. {r.name:<25} {str(r)}")
-            more=pg*10+10<len(repos); print(f"  [{len(repos)} repos] gh=GitHub m=more" if more else f"  [{len(repos)} repos] gh=GitHub")
-            if not sel: sel=input("\nAdd (#,#-#,all,gh,q): ").strip()if sys.stdin.isatty()else None
+            more=pg*10+10<len(repos); print(f"  [{len(repos)}] m=more" if more else "")
+            if not sel: sel=input("\n#/all/q/search: ").strip()if sys.stdin.isatty()else None
             if sel=='m'and more: pg+=1; sel=None; continue
-            if sel=='gh': sys.argv.insert(2,'gh'); return run()
+            if sel and sel[0]>'9'and sel not in('all','q'): repos=[r for r in repos if sel.lower()in r.name.lower()]; pg=0; sel=None; continue
             break
         if not sel or sel=='q': return
         idxs = list(range(len(repos)))if sel=='all'else[j for x in sel.replace(',',' ').split()for j in(range(int(x.split('-')[0]),int(x.split('-')[1])+1)if'-'in x else[int(x)])if 0<=j<len(repos)]
