@@ -1,0 +1,78 @@
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio wsl_ssh_setup.py
+WSL: 172.17.175.25  Windows: 192.168.56.1
+192.168.1.184
+9494
+Registering: wsl-HPOmen = seanpattenwslomen@192.168.56.1
+192.168.1.184:2222
+SSH password:
+✓ wsl-HPOmen = seanpattenwslomen@192.168.56.1
+192.168.1.184:2222
+Test: aio ssh wsl-HPOmen
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio ssh wsl-HPOmen
+Connecting to wsl-HPOmen...
+hostname contains invalid characters
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ ls
+agents                   digital_nervous_system.md  test_fw_realtime.py          typing_dispatch_bench.py
+aioUITemplate.py         filter_check.py            test_interactive.py          typing_dispatch_demo.py
+aio_analysis_email.py    fuzzy_match_bench.py       test_interactive_latency.py  typing_dispatch_simulate.py
+android                  known_issues               test_screenshot.py           webUI
+backfill_hub_events.py   sandbox_benchmark          test_session_detect.py       wsl_ssh_setup.py
+claude_parameters.md     scan_gh_report.md          test_voice.py                wsl_windows
+claude_test.py           server_manager.py          tests
+claude_write_test.py     sync_simulation            timing
+db_sync_multi_device.md  test                       turso
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio ssh
+SSH ✓ ON  →  ssh seanpattenwslomen@? -p 22
+  start/stop/status  server control
+  setup              install & configure
+  self [name]        add this device
+  add/rm/mv/pw <#>   manage hosts
+  all "cmd"          run cmd on all hosts
+Hosts:
+Traceback (most recent call last):
+  File "/home/seanpattenwslomen/.local/bin/aio", line 80, in <module>
+    main()
+  File "/home/seanpattenwslomen/.local/bin/aio", line 62, in main
+    mod.run()
+  File "/home/seanpattenwslomen/aio/aio_cmd/ssh.py", line 28, in run
+    if not wda: u, ip, p = os.environ.get('USER', 'u0_a'), _sshd_ip(), _sshd_port(); shutil.which('ssh') or print("! pkg install openssh"); print(f"SSH {'✓ ON' if _sshd_running() else 'x OFF'}  →  ssh {u}@{ip} -p {p}\n  start/stop/status  server control\n  setup              install & configure\n  self [name]        add this device\n  add/rm/mv/pw <#>   manage hosts\n  all \"cmd\"          run cmd on all hosts\nHosts:"); up=list(TP(8).map(_up,[h for _,h in hosts])); [print(f"  {i}. {'✓x'[not up[i]]} {n}: {h}{' [pw]' if pwmap.get(n) else ''}") for i,(n,h) in enumerate(hosts)] or print("  (none)"); (any(not x for x in up) and not sp.run("ping -c1 -W1 $(ip route|awk '/default/{print $3}')",shell=True,capture_output=True).returncode) and print("! Unreachable hosts - check AP isolation (wired↔wifi blocked)"); print(f"\nAI: aio ssh <#|name> cmd"); return
+                                                                                                                                                                                                                                                                                                                                                                                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/usr/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seanpattenwslomen/aio/aio_cmd/_common.py", line 36, in _up
+    def _up(h): return not (lambda s,hp: s.settimeout(0.5) or s.connect_ex((hp[0].split('@')[-1], int(hp[1]) if len(hp)>1 else 22)))(socket.socket(), h.rsplit(':',1))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seanpattenwslomen/aio/aio_cmd/_common.py", line 36, in <lambda>
+    def _up(h): return not (lambda s,hp: s.settimeout(0.5) or s.connect_ex((hp[0].split('@')[-1], int(hp[1]) if len(hp)>1 else 22)))(socket.socket(), h.rsplit(':',1))
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio copy
+Traceback (most recent call last):
+  File "/home/seanpattenwslomen/.local/bin/aio", line 80, in <module>
+    main()
+  File "/home/seanpattenwslomen/.local/bin/aio", line 62, in main
+    mod.run()
+  File "/home/seanpattenwslomen/aio/aio_cmd/copy.py", line 11, in run
+    sp.run(_clip(), shell=True, input=full, text=True)
+  File "/usr/lib/python3.12/subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/usr/lib/python3.12/subprocess.py", line 1810, in _execute_child
+    args = list(args)
+           ^^^^^^^^^^
+TypeError: 'NoneType' object is not iterable
+seanpattenwslomen@HPOmen:~/aio/feature_tests$
