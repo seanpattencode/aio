@@ -449,8 +449,7 @@ def replay_events(tables=None):
 def db_sync(pull=False):
     if not os.path.isdir(f"{DATA_DIR}/.git") and not (shutil.which('gh') and (u:=sp.run(['gh','repo','view','aio-sync','--json','url','-q','.url'],capture_output=True,text=True).stdout.strip() or sp.run(['gh','repo','create','aio-sync','--private','-y'],capture_output=True,text=True).stdout.strip()) and sp.run(f'cd "{DATA_DIR}"&&git init -b main -q;git remote add origin {u} 2>/dev/null;git fetch origin 2>/dev/null&&git reset --hard origin/main 2>/dev/null||(git add -A&&git commit -m init -q&&git push -u origin main 2>/dev/null)',shell=True,capture_output=True) and os.path.isdir(f"{DATA_DIR}/.git")): return True
     gi = f"{DATA_DIR}/.gitignore"; gic = Path(gi).read_text() if os.path.exists(gi) else ""; "aio.db\n" not in gic and Path(gi).write_text(gic.rstrip('\n') + "\naio.db\n")
-    pull and sp.run(f'cd "{DATA_DIR}" && git fetch -q && git merge origin/main --no-edit -q 2>/dev/null', shell=True, capture_output=True)
-    sp.run(f'cd "{DATA_DIR}" && git add events.jsonl .gitignore 2>/dev/null; git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -m sync -q && git push origin HEAD:main -q 2>/dev/null', shell=True, capture_output=True)
+    sp.run(f'cd "{DATA_DIR}" && git fetch -q && git merge origin/main --no-edit -q 2>/dev/null; git add events.jsonl .gitignore 2>/dev/null; git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -m sync -q && git push origin HEAD:main -q 2>/dev/null', shell=True, capture_output=True)
     pull and replay_events(['ssh', 'notes']); return True
 
 def auto_backup():
