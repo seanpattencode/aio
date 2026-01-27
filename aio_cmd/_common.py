@@ -291,7 +291,7 @@ bind-key -n C-x confirm-before -p "Kill session? (y/n)" kill-session
 bind-key -n C-e split-window "nvim ."
 bind-key -T root MouseDown1Status if -F '#{{==:#{{mouse_status_range}},window}}' {{ select-window }} {{ run-shell 'r="#{{mouse_status_range}}"; case "$r" in sess) tmux new-window;; new) tmux split-window;; close) tmux kill-pane;; edit) tmux split-window nvim;; kill) tmux confirm-before -p "Kill?" kill-session;; detach) tmux detach;; esc) tmux send-keys Escape;; kbd) tmux set -g mouse off; tmux display-message "Tap terminal - mouse restores in 3s"; (sleep 3; tmux set -g mouse on) &;; esac' }}
 '''
-    if cc: conf += f'set -s copy-command "{cc}"\nbind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel\nbind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel\n'
+    if cc: conf += f'set -s copy-command "{cc}"\nbind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel "{cc}"\nbind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel "{cc}"\n'
     if tm.ver >= '3.6': conf += 'set -g pane-scrollbars on\nset -g pane-scrollbars-position right\n'
     os.makedirs(_AIO_DIR, exist_ok=True)
     with open(_AIO_CONF, 'w') as f: f.write(conf)
