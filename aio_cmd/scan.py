@@ -38,9 +38,15 @@ def run():
         existing = set(load_proj())
         repos = sorted([p.parent for p in Path(d).rglob('.git') if p.exists() and str(p.parent) not in existing and '/.' not in str(p.parent)], key=lambda x: x.name.lower())[:50]
         if not repos: print(f"No new repos in {d}"); return
-        for i, r in enumerate(repos): print(f"  {i}. {r.name:<25} {str(r)}")
-        if not sel: sel = input("\nAdd (#,#-#,all,gh,q): ").strip() if sys.stdin.isatty() else None
-        if not sel or sel == 'q': return
-        idxs = []if sel=='gh'and(sys.argv.insert(2,'gh'),run())else list(range(len(repos)))if sel=='all'else[j for x in sel.replace(',',' ').split()for j in(range(int(x.split('-')[0]),int(x.split('-')[1])+1)if'-'in x else[int(x)])if 0<=j<len(repos)]
+        pg=0
+        while True:
+            for i,r in enumerate(repos[pg*10:(pg+1)*10],pg*10): print(f"  {i}. {r.name:<25} {str(r)}")
+            more=pg*10+10<len(repos); print(f"  [{len(repos)} repos] gh=GitHub m=more" if more else f"  [{len(repos)} repos] gh=GitHub")
+            if not sel: sel=input("\nAdd (#,#-#,all,gh,q): ").strip()if sys.stdin.isatty()else None
+            if sel=='m'and more: pg+=1; sel=None; continue
+            if sel=='gh': sys.argv.insert(2,'gh'); return run()
+            break
+        if not sel or sel=='q': return
+        idxs = list(range(len(repos)))if sel=='all'else[j for x in sel.replace(',',' ').split()for j in(range(int(x.split('-')[0]),int(x.split('-')[1])+1)if'-'in x else[int(x)])if 0<=j<len(repos)]
         for i in idxs: ok, _ = add_proj(str(repos[i])); print(f"{'✓' if ok else 'x'} {repos[i].name}")
         auto_backup() if idxs else None
