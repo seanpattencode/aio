@@ -26,3 +26,4 @@ def run():
     for i, j in enumerate(jobs):
         st = '●' if j['a'] else '○'; ctd = f" {j['ctd']}" if j['ctd'] else ''
         print(f"  {i}  {st} {j['n'][:40]}{ctd}")
+    print("\nSelect:\n  aio jobs 0")

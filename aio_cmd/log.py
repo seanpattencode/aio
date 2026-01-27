@@ -16,3 +16,4 @@ def run():
     for i, f in enumerate(logs[:20]):
         sz, nm, mt = f.stat().st_size/1024, f.stem, f.stat().st_mtime; parts = nm.split('__'); dev, sn = (parts[0][:10], '__'.join(parts[1:])) if len(parts) > 1 else ('-', nm)
         print(f"  {i}  {datetime.fromtimestamp(mt).strftime('%m/%d %H:%M')}  {dev:<10} {sn:<25} {sz:>5.0f}KB")
+    print("\nSelect:\n  aio log 0")

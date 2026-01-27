@@ -10,3 +10,4 @@ def run():
     for i, s in enumerate(sl):
         p = sp.run(['tmux', 'display-message', '-p', '-t', s, '#{pane_current_path}'], capture_output=True, text=True)
         print(f"  {i}  {s}: {p.stdout.strip() if p.returncode == 0 else ''}")
+    print("\nSelect:\n  aio ls 0")

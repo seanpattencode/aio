@@ -10,3 +10,4 @@ def run():
     if not runs: print("No sessions"); return
     if sel and sel.isdigit() and (i := int(sel)) < len(runs): tm.go(f"{os.path.basename(runs[i][1])}-{runs[i][0]}")
     for i, (rid, repo) in enumerate(runs): print(f"  {i}  {'●' if tm.has(f'{os.path.basename(repo)}-{rid}') else '○'} {os.path.basename(repo)}-{rid}")
+    print("\nSelect:\n  aio attach 0")

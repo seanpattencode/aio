@@ -9,3 +9,4 @@ def run():
     if sel == 'all': sp.run(['tmux', 'kill-server']); print("✓"); return
     if sel and sel.isdigit() and (i := int(sel)) < len(sl): sp.run(['tmux', 'kill-session', '-t', sl[i]]); print(f"✓ {sl[i]}"); return
     for i, s in enumerate(sl): print(f"  {i}  {s}")
+    print("\nSelect:\n  aio kill 0")
