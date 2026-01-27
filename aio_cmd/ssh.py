@@ -31,9 +31,33 @@ def run():
     if wda == 'auth': d = Path.home()/'.ssh'; d.mkdir(exist_ok=True); af = d/'authorized_keys'; k = input("Paste public key: ").strip(); af.open('a').write(f"\n{k}\n"); af.chmod(0o600); print("✓ Added"); return
     if wda == 'self':
         wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
-        if wsl: ip = re.search(r'192\.168\.1\.\d+', sp.run(["powershell.exe","-c","ipconfig"],capture_output=True,text=True).stdout); ip = ip.group() if ip else _die("x No Windows LAN IP"); p = 2222; print(f"WSL detected: {ip}:{p}\nRun feature_tests/wsl_ssh_setup.py first for port forward")
-        else: sys.platform=='darwin' and sp.run(['nc','-z','localhost','22'],capture_output=True).returncode and (input("Remote Login off. Enable? (y/n): ").lower() in ['y','yes'] and sp.run(['sudo','systemsetup','-setremotelogin','on']) or _die("x enable Remote Login")); ip = sp.run("hostname -I 2>/dev/null | awk '{print $1}'", shell=True, capture_output=True, text=True).stdout.strip() or _sshd_ip(); p = _sshd_port()
-        u = os.environ.get('USER','user'); h = f"{u}@{ip}" + (f":{p}" if p != 22 else ""); n = (sys.argv[3:] or [u])[0]; pw=input("Pw: ").strip(); sp.run(['sshpass','-p',pw,'ssh','-o','StrictHostKeyChecking=no','localhost','exit'],capture_output=True).returncode and _die("x pw"); (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)",(n,h,_enc(pw))); c.commit(); emit_event("ssh","add",{"name":n,"host":h,"pw":_enc(pw)}); db_sync(); print(f"✓ {n}={h}"); return
+        # === WSL: needs Windows port forward (2222->22) to be reachable from LAN ===
+        if wsl:
+            wsl_ip = sp.run("hostname -I", shell=True, capture_output=True, text=True).stdout.split()[0]
+            win_ip = re.search(r'192\.168\.1\.\d+', sp.run(["powershell.exe","-c","ipconfig"],capture_output=True,text=True).stdout)
+            if not win_ip: _die("x No Windows LAN IP (192.168.1.x) found")
+            ip, p = win_ip.group(), 2222; print(f"WSL: {wsl_ip} → Windows: {ip}:{p}")
+            sp.run("pgrep -x sshd >/dev/null || sudo service ssh start", shell=True)
+            # Check/setup port forward
+            pf = sp.run(["powershell.exe","-c","netsh interface portproxy show all"], capture_output=True, text=True).stdout
+            if "2222" not in pf:
+                print("Setting up Windows port forward (UAC prompt)...")
+                ps1 = f'netsh interface portproxy delete v4tov4 listenport=2222 listenaddress=0.0.0.0 2>$null\nnetsh interface portproxy add v4tov4 listenport=2222 listenaddress=0.0.0.0 connectport=22 connectaddress={wsl_ip}\nnetsh advfirewall firewall delete rule name="WSL SSH" 2>$null\nnetsh advfirewall firewall add rule name="WSL SSH" dir=in action=allow protocol=tcp localport=2222\nWrite-Host "Done" -ForegroundColor Green; netsh interface portproxy show all; pause'
+                open("/mnt/c/Windows/Temp/wsl_ssh.ps1","w").write(ps1)
+                sp.run(["powershell.exe","-c","Start-Process powershell -Verb RunAs -ArgumentList '-ExecutionPolicy','Bypass','-File','C:\\Windows\\Temp\\wsl_ssh.ps1'"])
+                input("Press Enter after Windows admin window shows 'Done'...")
+                if "2222" not in sp.run(["powershell.exe","-c","netsh interface portproxy show all"], capture_output=True, text=True).stdout: _die("x Port forward failed")
+            print("✓ Port forward OK")
+        # === macOS: may need to enable Remote Login ===
+        elif sys.platform=='darwin':
+            sp.run(['nc','-z','localhost','22'],capture_output=True).returncode and (input("Remote Login off. Enable? (y/n): ").lower() in ['y','yes'] and sp.run(['sudo','systemsetup','-setremotelogin','on']) or _die("x enable Remote Login"))
+            ip, p = sp.run("ipconfig getifaddr en0", shell=True, capture_output=True, text=True).stdout.strip() or _sshd_ip(), _sshd_port()
+        # === Linux/Termux: use local IP ===
+        else: ip, p = sp.run("hostname -I 2>/dev/null | awk '{print $1}'", shell=True, capture_output=True, text=True).stdout.strip() or _sshd_ip(), _sshd_port()
+        # Register
+        u = os.environ.get('USER','user'); h = f"{u}@{ip}" + (f":{p}" if p != 22 else ""); n = (sys.argv[3:] or [u])[0]; pw=input("Pw: ").strip()
+        sp.run(['sshpass','-p',pw,'ssh','-o','StrictHostKeyChecking=no','localhost','exit'],capture_output=True).returncode and _die("x bad pw")
+        (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)",(n,h,_enc(pw))); c.commit(); emit_event("ssh","add",{"name":n,"host":h,"pw":_enc(pw)}); db_sync(); print(f"✓ {n}={h}"); return
     if wda in ('info','i'): [print(f"{n}: ssh {'-p '+hp[1]+' ' if len(hp:=h.rsplit(':',1))>1 else ''}{hp[0]}") for n,h in hosts]; return
     if wda in ('all','*') and len(sys.argv)>3:
         cmd='bash -ic '+repr(' '.join(sys.argv[3:]));
