@@ -195,6 +195,34 @@ When events.sql grows too large:
 - `replay_events()` - rebuild db from events
 - `db_sync()` - git sync events.jsonl only
 
+## Git History Restore
+
+Since `events.jsonl` is plain text in git, full history restore is trivial:
+
+```bash
+# View history
+git log --oneline events.jsonl
+
+# See any commit's state
+git show abc123:events.jsonl
+
+# Restore to any point in time
+git checkout abc123 -- events.jsonl
+replay_events(['notes','ssh'])  # rebuild db
+
+# See when each event was added
+git blame events.jsonl
+
+# Recover accidentally acked note
+git revert <commit-with-ack>  # or manually remove the ack line
+```
+
+This is a direct benefit of requirement #2 (git versioned) + #4 (append-only):
+- Every event ever created exists in git history
+- Can recover any deleted/archived data by reverting
+- Full audit trail across all devices
+- No special backup system needed - git IS the backup
+
 ---
 
 *Author: Claude + Sean*
