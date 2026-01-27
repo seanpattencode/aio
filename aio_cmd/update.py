@@ -10,6 +10,6 @@ def run():
     changed = _sg('diff', '--name-only', f'{before}..origin/HEAD').stdout
     print("Downloading..."); _sg('pull', '--ff-only')
     after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
-    # Only run install.sh if it changed (new deps/bash function)
-    if 'install.sh' in changed: sp.run(['bash', f'{SCRIPT_DIR}/install.sh'], capture_output=True)
-    list_all(); print("Run: source ~/.bashrc" if 'install.sh' in changed else "")
+    # Always update shell functions; full install only if deps changed
+    sp.run(['bash', f'{SCRIPT_DIR}/install.sh', '--shell'], capture_output=True)
+    list_all(); print("Run: source ~/.bashrc or ~/.zshrc")

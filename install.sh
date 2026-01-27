@@ -10,6 +10,32 @@ die() { echo "✗ $1"; exit 1; }
 BIN="$HOME/.local/bin"
 mkdir -p "$BIN"
 export PATH="$BIN:$PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+
+# --shell flag: only update shell functions, skip deps
+[[ "$1" == "--shell" ]] && {
+    for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+        [[ -f "$RC" ]] || continue
+        grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
+        sed -i '' -e '/^aio() {/,/^}/d' -e '/^a() { aio/d' -e '/^ai() { aio/d' "$RC" 2>/dev/null
+        cat >> "$RC" << 'AIOFUNC'
+aio() {
+    local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt icache=~/.local/share/aios/i_cache.txt
+    [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/aio "$@"; return; }
+    if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
+    local d="${1/#~/$HOME}"; [[ "$1" == /projects/* ]] && d="$HOME$1"; [[ -d "$d" ]] && { echo "📂 $d"; cd "$d"; ls; return; }
+    [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"; return; }
+    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; head -8 "$icache" 2>/dev/null | awk 'NR==1{print " > "$0}NR>1{print "   "$0}'; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/aio "$@"; printf '\033[?25h'; return; }
+    [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/aios/timing.jsonl; return $r; }
+    command python3 ~/.local/bin/aio "$@"
+}
+a() { aio "$@"; }
+ai() { aio "$@"; }
+AIOFUNC
+    done
+    ok "shell functions (bash + zsh)"
+    exit 0
+}
 
 # Detect OS and root access
 if [[ "$OSTYPE" == darwin* ]]; then OS=mac
@@ -38,10 +64,8 @@ install_node() {
     [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] && ARCH="arm64"
 
     if [[ "$OSTYPE" == darwin* ]]; then
-        # macOS
         curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-$ARCH.tar.gz" | tar -xzf - -C "$HOME/.local" --strip-components=1
     else
-        # Linux
         curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-$ARCH.tar.xz" | tar -xJf - -C "$HOME/.local" --strip-components=1
     fi
     command -v node &>/dev/null && ok "node $(node -v)" || warn "node install failed"
@@ -73,8 +97,7 @@ case $OS in
     *) install_node; warn "Unknown OS - install tmux manually" ;;
 esac
 
-# aio itself (install early, before slow npm installs)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+# aio itself
 AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/aio.py"
 if [[ -f "$SCRIPT_DIR/aio.py" ]]; then
     ln -sf "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (local)"
@@ -84,13 +107,12 @@ else
     curl -fsSL "${AIO_URL%aio.py}aio-i" -o "$BIN/aio-i" && chmod +x "$BIN/aio-i" && ok "aio-i installed (remote)"
 fi
 
-# PATH setup in shell rc (do early so aio works immediately)
-RC="$HOME/.bashrc"; [[ -f "$HOME/.zshrc" ]] && RC="$HOME/.zshrc"
-grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
-
-# Fast aio bash function (2ms startup vs 25ms python)
-sed -i '/^aio() {/,/^}/d' "$RC" 2>/dev/null  # Remove old function
-cat >> "$RC" << 'AIOFUNC'
+# PATH + aio function in both shells
+for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [[ -f "$RC" ]] || continue
+    grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
+    sed -i '' -e '/^aio() {/,/^}/d' -e '/^a() { aio/d' -e '/^ai() { aio/d' "$RC" 2>/dev/null
+    cat >> "$RC" << 'AIOFUNC'
 aio() {
     local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt icache=~/.local/share/aios/i_cache.txt
     [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/aio "$@"; return; }
@@ -104,7 +126,8 @@ aio() {
 a() { aio "$@"; }
 ai() { aio "$@"; }
 AIOFUNC
-ok "bash function"
+done
+ok "shell functions (bash + zsh)"
 
 # Node CLIs (may take a few minutes)
 install_cli() {
@@ -150,8 +173,8 @@ echo -e "${Y}⚠  IMPORTANT: To use the 'aio' command, you must either:${R}"
 echo ""
 echo -e "   ${C}1.${R} Open a ${G}new terminal window${R}  (recommended)"
 echo ""
-echo -e "   ${C}2.${R} Or run this command in your current terminal:"
-echo -e "      ${C}source $RC${R}"
+echo -e "   ${C}2.${R} Or source your shell rc:"
+echo -e "      ${C}source ~/.bashrc${R}  or  ${C}source ~/.zshrc${R}"
 echo ""
 echo -e "Then type ${G}aio${R} to get started!"
 echo ""
