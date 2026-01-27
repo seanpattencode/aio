@@ -4,11 +4,9 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor as TP
 from . _common import init_db, db, _up, _die, emit_event, db_sync, DATA_DIR
 
-_kf = Path(DATA_DIR) / '.sshkey'
-def _k(): return _kf.read_bytes() if _kf.exists() else (_kf.write_bytes(k := os.urandom(32)) or k)
-def _enc(t): k = _k(); return base64.b64encode(bytes(a ^ k[i % 32] for i, a in enumerate(t.encode()))).decode() if t else None
+def _enc(t): return base64.b64encode(t.encode()).decode() if t else None
 def _dec(e):
-    try: k = _k(); return bytes(a ^ k[i % 32] for i, a in enumerate(base64.b64decode(e))).decode() if e else None
+    try: return base64.b64decode(e).decode() if e else None
     except: return None
 
 def run():
