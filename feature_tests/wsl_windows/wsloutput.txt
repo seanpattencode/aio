@@ -1,49 +1,168 @@
-seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio wsl_ssh_setup.py
+
+
+
+A specified value is not valid.
+
+Usage: delete rule name=<string>
+      [dir=in|out]
+      [profile=public|private|domain|any[,...]]
+      [program=<program path>]
+      [service=<service short name>|any]
+      [localip=any|<IPv4 address>|<IPv6 address>|<subnet>|<range>|<list>]
+      [remoteip=any|localsubnet|dns|dhcp|wins|defaultgateway|
+         <IPv4 address>|<IPv6 address>|<subnet>|<range>|<list>]
+      [localport=0-65535|<port range>[,...]|RPC|RPC-EPMap|any]
+      [remoteport=0-65535|<port range>[,...]|any]
+      [protocol=0-255|icmpv4|icmpv6|icmpv4:type,code|icmpv6:type,code|
+         tcp|udp|any]
+
+Remarks:
+
+      - Deletes a rule identified by name and optionally by endpoints, ports,
+        protocol, and type.
+      - If multiple matches are found, all matching rules are deleted.
+      - If name=all is specified all rules are deleted from the specified
+        type and profile.
+
+Examples:
+
+      Delete all rules for local port 80:
+      netsh advfirewall firewall delete rule name=all protocol=tcp localport=80
+
+      Delete a rule called "allow80":
+      netsh advfirewall firewall delete rule name="allow80"
+
+A specified value is not valid.
+
+Usage: add rule name=<string>
+      dir=in|out
+      action=allow|block|bypass
+      [program=<program path>]
+      [service=<service short name>|any]
+      [description=<string>]
+      [enable=yes|no (default=yes)]
+      [profile=public|private|domain|any[,...]]
+      [localip=any|<IPv4 address>|<IPv6 address>|<subnet>|<range>|<list>]
+      [remoteip=any|localsubnet|dns|dhcp|wins|defaultgateway|
+         <IPv4 address>|<IPv6 address>|<subnet>|<range>|<list>]
+      [localport=0-65535|<port range>[,...]|RPC|RPC-EPMap|IPHTTPS|any (default=any)]
+      [remoteport=0-65535|<port range>[,...]|any (default=any)]
+      [protocol=0-255|icmpv4|icmpv6|icmpv4:type,code|icmpv6:type,code|
+         tcp|udp|any (default=any)]
+      [interfacetype=wireless|lan|ras|any]
+      [rmtcomputergrp=<SDDL string>]
+      [rmtusrgrp=<SDDL string>]
+      [edge=yes|deferapp|deferuser|no (default=no)]
+      [security=authenticate|authenc|authdynenc|authnoencap|notrequired
+         (default=notrequired)]
+
+Remarks:
+
+      - Add a new inbound or outbound rule to the firewall policy.
+      - Rule name should be unique and cannot be "all".
+      - If a remote computer or user group is specified, security must be
+        authenticate, authenc, authdynenc, or authnoencap.
+      - Setting security to authdynenc allows systems to dynamically
+        negotiate the use of encryption for traffic that matches
+        a given Windows Defender Firewall rule. Encryption is negotiated based on
+        existing connection security rule properties. This option
+        enables the ability of a machine to accept the first TCP
+        or UDP packet of an inbound IPsec connection as long as
+        it is secured, but not encrypted, using IPsec.
+        Once the first packet is processed, the server will
+        re-negotiate the connection and upgrade it so that
+        all subsequent communications are fully encrypted.
+      - If action=bypass, the remote computer group must be specified when dir=in.
+      - If service=any, the rule applies only to services.
+      - ICMP type or code can be "any".
+      - Edge can only be specified for inbound rules.
+      - AuthEnc and authnoencap cannot be used together.
+      - Authdynenc is valid only when dir=in.
+      - When authnoencap is set, the security=authenticate option becomes an
+        optional parameter.
+
+Examples:
+
+      Add an inbound rule with no encapsulation security for browser.exe:
+      netsh advfirewall firewall add rule name="allow browser"
+      dir=in program="c:\programfiles\browser\browser.exe"
+      security=authnoencap action=allow
+
+      Add an outbound rule for port 80:
+      netsh advfirewall firewall add rule name="allow80"
+      protocol=TCP dir=out localport=80 action=block
+
+      Add an inbound rule requiring security and encryption
+      for TCP port 80 traffic:
+      netsh advfirewall firewall add rule
+      name="Require Encryption for Inbound TCP/80"
+      protocol=TCP dir=in localport=80 security=authdynenc
+      action=allow
+
+      Add an inbound rule for browser.exe and require security
+      netsh advfirewall firewall add rule name="allow browser"
+      dir=in program="c:\program files\browser\browser.exe"
+      security=authenticate action=allow
+
+      Add an authenticated firewall bypass rule for group
+      acmedomain\scanners identified by a SDDL string:
+      netsh advfirewall firewall add rule name="allow scanners"
+      dir=in rmtcomputergrp=<SDDL string> action=bypass
+      security=authenticate
+
+      Add an outbound allow rule for local ports 5000-5010 for udp-
+      Add rule name="Allow port range" dir=out protocol=udp localport=5000-5010 action=allow
+===
+Result
+===
+
+Listen on ipv4:             Connect to ipv4:
+
+Address         Port        Address         Port
+--------------- ----------  --------------- ----------
+0.0.0.0         22          172.17.175.25   22
+0.0.0.0         2222        172.17.175.25   22
+
+Press Enter to continue...:
+
+
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio update
+Checking...
+Downloading...
+✓ 813b580f -> 29c0bf82
+PROJECTS:
+  0. + /home/seanpattenwslomen/aio
+Run: source ~/.bashrc or ~/.zshrc
+seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio wsl_ssh_setup.py wslhpomen
 WSL: 172.17.175.25  Windows: 192.168.1.184
-9494
-Registering: wsl-HPOmen = seanpattenwslomen@192.168.1.184:2222
+
+=== Checking port forward ===
+
+Listen on ipv4:             Connect to ipv4:
+
+Address         Port        Address         Port
+--------------- ----------  --------------- ----------
+0.0.0.0         22          172.17.175.25   22
+0.0.0.0         2222        172.17.175.25   22
+
+
+
+=== Setting up port forward (check Windows for UAC prompt) ===
+
+Press Enter after Windows admin window shows 'Result' with port forward...
+
+=== Verifying ===
+
+Listen on ipv4:             Connect to ipv4:
+
+Address         Port        Address         Port
+--------------- ----------  --------------- ----------
+0.0.0.0         22          172.17.175.25   22
+0.0.0.0         2222        172.17.175.25   22
+
+
+
+Registering: wslhpomen = seanpattenwslomen@192.168.1.184:2222
 SSH password:
-✓ wsl-HPOmen = seanpattenwslomen@192.168.1.184:2222
-Test: aio ssh wsl-HPOmen
-seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio ssh
-SSH ✓ ON  →  ssh seanpattenwslomen@? -p 22
-  start/stop/status  server control
-  setup              install & configure
-  self [name]        add this device
-  add/rm/mv/pw <#>   manage hosts
-  all "cmd"          run cmd on all hosts
-Hosts:
-  0. x ubuntuSSD: seanpatten@192.168.1.184 [pw]
-  1. ✓ termux: user@192.168.1.154:8022 [pw]
-  2. ✓ hsu: sean@141.155.170.66 [pw]
-  3. ✓ ubuntuSSD4Tb: seanpatten@192.168.1.183 [pw]
-  4. ✓ wslhpomen: seanpattenwslomen@172.17.175.25 [pw]
-  5. x wsl-HPOmen: seanpattenwslomen@192.168.1.184:2222 [pw]
-aio
-AI: aio ssh <#|name> cmd
-seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio ssh 4
-Connecting to wslhpomen...
-Welcome to Ubuntu 24.04.1 LTS (GNU/Linux 6.6.114.1-microsoft-standard-WSL2 x86_64)
-
- * Documentation:  https://help.ubuntu.com
- * Management:     https://landscape.canonical.com
- * Support:        https://ubuntu.com/pro
-
- System information as of Tue Jan 27 16:38:16 EST 2026
-
-  System load:  1.37                Processes:             59
-  Usage of /:   0.7% of 1006.85GB   Users logged in:       1
-  Memory usage: 25%                 IPv4 address for eth0: 172.17.175.25
-  Swap usage:   0%
-
- * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
-   just raised the bar for easy, resilient and secure K8s cluster deployment.
-
-   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
-Last login: Tue Jan 27 02:56:53 2026 from 172.17.175.25
-seanpattenwslomen@HPOmen:~$ exit
-logout
-Connection to 172.17.175.25 closed.
-seanpattenwslomen@HPOmen:~/aio/feature_tests$ aio ssh 5
-Connecting to wsl-HPOmen...
-(timing out almost certainly)
+✓ wslhpomen = seanpattenwslomen@192.168.1.184:2222
+Test: aio ssh wslhpomen
