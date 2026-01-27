@@ -19,9 +19,10 @@ def run():
         return
 
     # Real push (first time or expired)
+    sp.run(['git', 'remote'], cwd=cwd, capture_output=True, text=True).stdout.strip() or sp.run(['gh', 'repo', 'create', os.path.basename(cwd), '--private', '--source', '.', '--remote', 'origin', '--push'], cwd=cwd, capture_output=True).returncode == 0 or sp.run(f'git remote add origin $(gh repo view {os.path.basename(cwd)} --json url -q .url) 2>/dev/null', shell=True, cwd=cwd)
     sp.run(['git', 'add', '-A'], cwd=cwd)
     sp.run(['git', 'commit', '-m', msg, '--allow-empty'], cwd=cwd, capture_output=True)
-    r = sp.run(['git', 'push'], cwd=cwd, capture_output=True, text=True)
+    r = sp.run(['git', 'push', '-u', 'origin', 'HEAD'], cwd=cwd, capture_output=True, text=True)
     if r.returncode == 0 or 'up-to-date' in r.stderr:
         open(_OK, 'w').close()
         print(f"{tag} {msg}")
