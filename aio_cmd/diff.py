@@ -31,9 +31,8 @@ def run():
         elif L.startswith('@@'): m = re.search(r'\+(\d+)', L); print(f"\n{f} line {m.group(1)}:" if m else "")
         elif L.startswith('+') and not L.startswith('+++'): print(f"  {G}+ {L[1:]}{X}"); fstats.get(f, {}).get('add', []).append(L[1:])
         elif L.startswith('-') and not L.startswith('---'): print(f"  {R}- {L[1:]}{X}"); fstats.get(f, {}).get('del', []).append(L[1:])
-    ut = {f: open(f).read() for f in untracked.split() if f and os.path.isfile(f)} if untracked else {}
+    ut = {f: open(f, errors='ignore').read() for f in untracked.split() if f and os.path.isfile(f)} if untracked else {}
     if untracked: print(f"\nUntracked:\n" + '\n'.join(f"  {G}+ {u}{X}" for u in untracked.split('\n')))
-    # Per-file stats
     print(f"\n{'─'*60}")
     for fn, st in fstats.items():
         a, d = '\n'.join(st['add']), '\n'.join(st['del'])
@@ -41,7 +40,6 @@ def run():
     for fn, content in ut.items():
         lines = content.count('\n') + 1
         print(f"{os.path.basename(fn)}: +{lines} lines, +{tok(content)} tokens (untracked)")
-    # Total
     ins = sum(len(s['add']) for s in fstats.values()) + sum(c.count('\n')+1 for c in ut.values())
     dels = sum(len(s['del']) for s in fstats.values())
     added = '\n'.join('\n'.join(s['add']) for s in fstats.values()) + '\n'.join(ut.values())
