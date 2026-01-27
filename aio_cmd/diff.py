@@ -48,4 +48,4 @@ def run():
     files = list(fstats.keys()) + list(ut.keys())
     flist = ' '.join(os.path.basename(f) for f in files[:5]) + (' ...' if len(files) > 5 else '')
     unt = f" (incl. {len(ut)} untracked)" if ut else ""
-    print(f"{'─'*60}\n{len(files)} file{'s' if len(files)!=1 else ''} ({flist}), +{ins}/-{dels} lines{unt} | Net: {ins-dels:+} lines, {ta-tr:+} tokens\n\naio diff # for commit history")
+    print(f"{'─'*60}\n{len(files)} file{'s' if len(files)!=1 else ''} ({flist}), +{ins}/-{dels} lines{unt} | Net: {ins-dels:+} lines, {ta-tr:+} tokens\n\naio diff 5 = last 5 commits")
