@@ -20,9 +20,8 @@ def refresh_cache():
     os.makedirs(os.path.dirname(CACHE), exist_ok=True); open(CACHE, 'w').write('\n'.join(items))
 
 def run():
-    # Fast path: read from cache
     try: items = open(CACHE).read().strip().split('\n')
-    except: items = CMDS; refresh_cache()
+    except: refresh_cache(); items = open(CACHE).read().strip().split('\n')
 
     if not sys.stdin.isatty():
         print('\n'.join(items)); sys.exit(0)
