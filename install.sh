@@ -154,6 +154,12 @@ if command -v pip3 &>/dev/null; then pip3 install --user $PIP_FLAGS -q $PIP_PKGS
 elif command -v pip &>/dev/null; then pip install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras"
 elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/null; python3 -m pip install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras" || warn "pip not available"; fi
 
+# Ollama (local LLMs)
+if ! command -v ollama &>/dev/null; then
+    info "Installing ollama..."
+    curl -fsSL https://ollama.com/install.sh | sh && ok "ollama" || warn "ollama install failed"
+else ok "ollama (exists)"; fi
+
 # Enable aio tmux config if no existing tmux.conf (adds mouse support, status bar)
 [[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/aio" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
 
