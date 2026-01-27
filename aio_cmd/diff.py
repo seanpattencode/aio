@@ -17,12 +17,15 @@ def run():
         elif L.startswith('@@'): m = re.search(r'\+(\d+)', L); print(f"\n{f} line {m.group(1)}:" if m else "")
         elif L.startswith('+') and not L.startswith('+++'): print(f"  {G}+ {L[1:]}{X}")
         elif L.startswith('-') and not L.startswith('---'): print(f"  {R}- {L[1:]}{X}")
+    ut = [open(f).read() for f in untracked.split() if f and os.path.isfile(f)] if untracked else []
     if untracked: print(f"\nUntracked:\n" + '\n'.join(f"  {G}+ {u}{X}" for u in untracked.split('\n')))
-    ins = len([L for L in diff.split('\n') if L.startswith('+') and not L.startswith('+++')])
+    ins = len([L for L in diff.split('\n') if L.startswith('+') and not L.startswith('+++')]) + sum(c.count('\n')+1 for c in ut)
     dels = len([L for L in diff.split('\n') if L.startswith('-') and not L.startswith('---')])
-    nfiles = len(set(re.findall(r'diff --git a/\S+ b/(\S+)', diff)))
-    added = '\n'.join(L[1:] for L in diff.split('\n') if L.startswith('+') and not L.startswith('+++'))
+    files = sp.run(['git', 'diff', '--name-only', target, 'HEAD'], capture_output=True, text=True).stdout.split() + sp.run(['git', 'diff', '--name-only', 'HEAD'], capture_output=True, text=True).stdout.split() + untracked.split()
+    files = list(dict.fromkeys(f for f in files if f)); flist = ' '.join(os.path.basename(f) for f in files[:5]) + (' ...' if len(files) > 5 else '')
+    added = '\n'.join(L[1:] for L in diff.split('\n') if L.startswith('+') and not L.startswith('+++')) + '\n'.join(ut)
     removed = '\n'.join(L[1:] for L in diff.split('\n') if L.startswith('-') and not L.startswith('---'))
     try: enc = __import__('tiktoken').get_encoding('cl100k_base').encode; ta, tr = len(enc(added)), len(enc(removed))
     except: ta, tr = len(added) // 4, len(removed) // 4
-    diff and print(f"\n{nfiles} files, +{ins}/-{dels} lines | Net: {ins-dels:+} lines, {ta-tr:+} tokens")
+    unt = f" +{len(ut)} untracked" if ut else ""
+    print(f"\n{len(files)} file{'s' if len(files)!=1 else ''} ({flist}), +{ins}/-{dels} lines{unt} | Net: {ins-dels:+} lines, {ta-tr:+} tokens")
