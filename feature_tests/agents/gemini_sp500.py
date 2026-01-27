@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import subprocess,shutil,os,re,sys
-sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))+'/agents')
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from agent_base import send
 
 gemini=shutil.which('gemini')or os.path.expanduser('~/.local/bin/gemini')
