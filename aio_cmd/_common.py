@@ -123,7 +123,7 @@ def init_db():
                 if os.path.isdir(p) and os.path.isdir(os.path.join(p, ".git")): c.execute("INSERT INTO projects (path, display_order, device) VALUES (?, ?, ?)", (p, 0, DEVICE_ID)); break
         if c.execute("SELECT COUNT(*) FROM apps").fetchone()[0] == 0:
             ui = next((p for p in [os.path.join(SCRIPT_DIR, "aioUI.py"), os.path.expanduser("~/aio/aioUI.py"), os.path.expanduser("~/.local/bin/aioUI.py")] if os.path.exists(p)), None)
-            if ui: c.execute("INSERT INTO apps (name, command, display_order) VALUES (?, ?, ?)", ("aioUI", f"python3 {ui}", 0))
+            if ui: c.execute("INSERT INTO apps (name, command, display_order, device) VALUES (?, ?, ?, ?)", ("aioUI", f"python3 {ui}", 0, DEVICE_ID))
         if c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0:
             cdx, cld = 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox', 'claude --dangerously-skip-permissions'
             for k, n, t in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gemini','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','claude',cld),('claude','claude',cld),('cp','claude-p',f'{cld} "{{CLAUDE_PROMPT}}"'),('l','claude',cld),('lp','claude-p',f'{cld} "{{CLAUDE_PROMPT}}"'),('o','claude',cld),('co','codex',cdx),('codex','codex',cdx),('cop','codex-p',f'{cdx} "{{CODEX_PROMPT}}"'),('a','aider','OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')]:
@@ -162,7 +162,7 @@ def add_proj(p):
         if c.execute("SELECT 1 FROM projects WHERE path=? AND device IN (?, '*')", (p, DEVICE_ID)).fetchone(): return False, f"Exists: {p}"
         m = c.execute("SELECT MAX(display_order) FROM projects").fetchone()[0]
         c.execute("INSERT INTO projects (path, display_order, device) VALUES (?, ?, ?)", (p, 0 if m is None else m+1, DEVICE_ID)); c.commit()
-    _refresh_cache(); return True, f"Added: {p}"
+    emit_event("projects", "add", {"path": p}, sync=True); _refresh_cache(); return True, f"Added: {p}"
 
 def rm_proj(i):
     with db() as c:
@@ -171,7 +171,7 @@ def rm_proj(i):
         c.execute("DELETE FROM projects WHERE id=?", (rows[i][0],))
         for j, r in enumerate(c.execute("SELECT id FROM projects WHERE device=? ORDER BY display_order", (DEVICE_ID,))): c.execute("UPDATE projects SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
-    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
+    emit_event("projects", "archive", {"path": rows[i][1]}, sync=True); _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
 def add_app(n, cmd):
     if not n or not cmd: return False, "Name and command required"
@@ -179,7 +179,7 @@ def add_app(n, cmd):
         if c.execute("SELECT 1 FROM apps WHERE name=? AND device IN (?, '*')", (n, DEVICE_ID)).fetchone(): return False, f"Exists: {n}"
         m = c.execute("SELECT MAX(display_order) FROM apps").fetchone()[0]
         c.execute("INSERT INTO apps (name, command, display_order, device) VALUES (?, ?, ?, ?)", (n, cmd, 0 if m is None else m+1, DEVICE_ID)); c.commit()
-    _refresh_cache(); return True, f"Added: {n}"
+    emit_event("apps", "add", {"name": n, "cmd": cmd}, sync=True); _refresh_cache(); return True, f"Added: {n}"
 
 def rm_app(i):
     with db() as c:
@@ -188,7 +188,7 @@ def rm_app(i):
         c.execute("DELETE FROM apps WHERE id=?", (rows[i][0],))
         for j, r in enumerate(c.execute("SELECT id FROM apps WHERE device=? ORDER BY display_order", (DEVICE_ID,))): c.execute("UPDATE apps SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
-    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
+    emit_event("apps", "archive", {"name": rows[i][1]}, sync=True); _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
 def fmt_cmd(c, mx=60):
     d = c.replace(os.path.expanduser('~'), '~')
@@ -413,12 +413,12 @@ def launch_dir(d, term=None):
 # Any device can emit events (add/ack/update/archive). State rebuilt by replaying all events.
 # This avoids merge conflicts: git auto-merges append-only text, then replay rebuilds SQLite.
 # Tables using events: ssh (add/archive/rename), notes (add/ack/update)
-def emit_event(table, op, data, device=None):
+def emit_event(table, op, data, device=None, sync=False):
     """Append event to events.jsonl. Events are immutable - archive instead of delete."""
     import hashlib; eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]
     event = {"ts": time.time(), "id": eid, "dev": device or DEVICE_ID, "op": f"{table}.{op}", "d": data}
     with open(EVENTS_PATH, "a") as f: f.write(json.dumps(event) + "\n")
-    return eid
+    sync and db_sync(); return eid
 
 def replay_events(tables=None):
     """Rebuild state from events.jsonl. Tables: ssh, notes, hub."""
@@ -452,7 +452,7 @@ def replay_events(tables=None):
 # Append-only sync: only events.jsonl synced (text, auto-merges), aio.db is local cache
 def db_sync(pull=False):
     if not os.path.isdir(f"{DATA_DIR}/.git") and not (shutil.which('gh') and (u:=sp.run(['gh','repo','view','aio-sync','--json','url','-q','.url'],capture_output=True,text=True).stdout.strip() or sp.run(['gh','repo','create','aio-sync','--private','-y'],capture_output=True,text=True).stdout.strip()) and sp.run(f'cd "{DATA_DIR}"&&git init -b main -q;git remote add origin {u} 2>/dev/null;git fetch origin 2>/dev/null&&git reset --hard origin/main 2>/dev/null||(git add -A&&git commit -m init -q&&git push -u origin main 2>/dev/null)',shell=True,capture_output=True) and os.path.isdir(f"{DATA_DIR}/.git")): return True
-    gi = f"{DATA_DIR}/.gitignore"; "timing" not in (Path(gi).read_text() if os.path.exists(gi) else "") and Path(gi).write_text("*.db*\n*.log\nlogs/\n*cache*\ntiming.jsonl\nnotebook/\n")
+    gi = f"{DATA_DIR}/.gitignore"; ".device" not in (Path(gi).read_text() if os.path.exists(gi) else "") and Path(gi).write_text("*.db*\n*.log\nlogs/\n*cache*\ntiming.jsonl\nnotebook/\n.device\n")
     sp.run(f'cd "{DATA_DIR}" && git checkout -- . 2>/dev/null; git fetch -q && git merge -q origin/main --no-edit; git add -A; git diff --cached --quiet || git -c user.name=aio -c user.email=a@a commit -qm sync && git push -q', shell=True, capture_output=True)
     pull and replay_events(['ssh', 'notes', 'hub']); return True
 
