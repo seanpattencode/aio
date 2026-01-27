@@ -1,7 +1,17 @@
-"""aio diff - Show git changes"""
+"""aio diff [#] - Show git changes or token history"""
 import sys, os, subprocess as sp, re
 
+def _tok(d):
+    try: enc = __import__('tiktoken').get_encoding('cl100k_base').encode; t = lambda s: len(enc(s))
+    except: t = lambda s: len(s) // 4
+    return t(''.join(L[1:] for L in d.split('\n') if L[:1]=='+' and L[1:2]!='+')) - t(''.join(L[1:] for L in d.split('\n') if L[:1]=='-' and L[1:2]!='-'))
+
 def run():
+    sel = sys.argv[2] if len(sys.argv) > 2 else None
+    if sel and sel.isdigit():
+        for i, L in enumerate(sp.run(['git', 'log', f'-{sel}', '--pretty=%H %s'], capture_output=True, text=True).stdout.strip().split('\n')):
+            h, m = L.split(' ', 1); print(f"  {i}  {_tok(sp.run(['git', 'show', h, '--pretty='], capture_output=True, text=True).stdout):>+6}  {m[:55]}")
+        return
     sp.run(['git', 'fetch', 'origin'], capture_output=True); cwd = os.getcwd()
     b = sp.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True, text=True).stdout.strip()
     target = 'origin/main' if b.startswith('wt-') else f'origin/{b}'
