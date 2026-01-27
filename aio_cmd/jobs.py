@@ -1,10 +1,12 @@
-"""aio jobs [#|-r] - List/attach active sessions"""
-import sys, os, subprocess as sp, re
+"""aio jobs [#|rm #] - List/attach/remove agent worktrees"""
+import sys, os, subprocess as sp, re, shutil
 from datetime import datetime
 from . _common import init_db, load_cfg, is_active, tm
 
 def run():
-    init_db(); cfg = load_cfg(); sel = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] not in ('-r', '--running') else None
+    init_db(); cfg = load_cfg()
+    sel = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] not in ('-r', '--running', 'rm') else None
+    rm = sys.argv[3] if len(sys.argv) > 3 and sys.argv[2] == 'rm' else None
     WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
     running = '-r' in sys.argv or '--running' in sys.argv
     r = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True); jbp = {}
@@ -22,9 +24,12 @@ def run():
         td = (datetime.now() - ct).total_seconds() if ct else 0; ctd = f"{int(td/60)}m" if td < 3600 else f"{int(td/3600)}h" if td < 86400 else f"{int(td/86400)}d" if ct else ""
         jobs.append({'p': jp, 'n': os.path.basename(jp), 's': ss, 'wt': jp.startswith(WT_DIR), 'a': active, 'ct': ct, 'ctd': ctd})
     jobs = sorted(jobs, key=lambda x: x['ct'] or datetime.min)[-10:]
+    if rm and rm.isdigit() and (i := int(rm)) < len(jobs):
+        j = jobs[i]; [sp.run(['tmux', 'kill-session', '-t', s], capture_output=True) for s in j['s']]
+        j['wt'] and shutil.rmtree(j['p'], ignore_errors=True); print(f"✓ {j['n']}"); return
     if sel and sel.isdigit() and (i := int(sel)) < len(jobs) and jobs[i]['s']: tm.go(jobs[i]['s'][0])
     print("Agent worktrees with sessions\n")
     for i, j in enumerate(jobs):
         st = '●' if j['a'] else '○'; ctd = f" {j['ctd']}" if j['ctd'] else ''
         print(f"  {i}  {st} {j['n'][:40]}{ctd}")
-    print("\nSelect:\n  aio jobs 0")
+    print("\nSelect:\n  aio jobs 0\n  aio jobs rm 0")
