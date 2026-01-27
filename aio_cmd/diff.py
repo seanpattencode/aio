@@ -20,7 +20,7 @@ def run():
     diff = committed + uncommitted
     untracked = sp.run(['git', 'ls-files', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.strip()
     print(f"{cwd}\n{b} -> {target}")
-    if not diff and not untracked: print("No changes"); sys.exit(0)
+    if not diff and not untracked: print("No changes\n\naio diff 5 = last 5 commits"); return
     try: enc = __import__('tiktoken').get_encoding('cl100k_base').encode; tok = lambda s: len(enc(s))
     except: tok = lambda s: len(s) // 4
     G, R, X, f, fstats = '\033[48;2;26;84;42m', '\033[48;2;117;34;27m', '\033[0m', '', {}
