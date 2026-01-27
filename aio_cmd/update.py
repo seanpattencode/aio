@@ -6,6 +6,10 @@ def run():
     if _sg('rev-parse', '--git-dir').returncode != 0: print("x Not in git repo"); return
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return
-    if 'behind' in _sg('status', '-uno').stdout: print("Downloading..."); _sg('pull', '--ff-only'); print(f"✓ {before} -> {_sg('rev-parse', 'HEAD').stdout.strip()[:8]}")
-    else: print(f"✓ Up to date ({before})")
-    i = os.path.join(SCRIPT_DIR, 'install.sh'); os.path.exists(i) and sp.run(['bash', i]); list_all()
+    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); list_all(); return
+    changed = _sg('diff', '--name-only', f'{before}..origin/HEAD').stdout
+    print("Downloading..."); _sg('pull', '--ff-only')
+    after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
+    # Only run install.sh if it changed (new deps/bash function)
+    if 'install.sh' in changed: sp.run(['bash', f'{SCRIPT_DIR}/install.sh'], capture_output=True)
+    list_all(); print("Run: source ~/.bashrc" if 'install.sh' in changed else "")

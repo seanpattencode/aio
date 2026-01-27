@@ -104,7 +104,7 @@ def init_db():
             if 'device' not in [r[1] for r in c.execute(f"PRAGMA table_info({t})")]: c.execute(f"ALTER TABLE {t} ADD COLUMN device TEXT DEFAULT '*'")
         c.execute("CREATE TABLE IF NOT EXISTS sessions (key TEXT PRIMARY KEY, name TEXT NOT NULL, command_template TEXT NOT NULL)")
         c.execute("CREATE TABLE IF NOT EXISTS multi_runs (id TEXT PRIMARY KEY, repo TEXT NOT NULL, prompt TEXT NOT NULL, agents TEXT NOT NULL, status TEXT DEFAULT 'running', created_at TEXT DEFAULT CURRENT_TIMESTAMP, review_rank TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, t TEXT, s INTEGER DEFAULT 0, d TEXT, c TEXT DEFAULT CURRENT_TIMESTAMP, proj TEXT, dev TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, t TEXT, s INTEGER DEFAULT 0, d TEXT, c TEXT DEFAULT CURRENT_TIMESTAMP, proj TEXT, dev TEXT)")
         if 'dev' not in [r[1] for r in c.execute("PRAGMA table_info(notes)")]: c.execute("ALTER TABLE notes ADD COLUMN dev TEXT")
         c.execute("CREATE TABLE IF NOT EXISTS note_projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE, c TEXT DEFAULT CURRENT_TIMESTAMP)")
         c.execute("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, real_deadline INTEGER NOT NULL, virtual_deadline INTEGER, created_at INTEGER NOT NULL, completed_at INTEGER)")
@@ -435,6 +435,7 @@ def replay_events(tables=None):
         elif op == "rename" and d.get("old") in state.get(t, {}): state[t][d["old"]]["_archived"] = e["ts"]; state[t][d["new"]] = {**{x:y for x,y in state[t][d["old"]].items() if not x.startswith("_")}, "name": d["new"], "_ts": e["ts"], "_id": e["id"]}
     # Apply to db
     c = sqlite3.connect(DB_PATH)
+    c.execute("CREATE TABLE IF NOT EXISTS ssh(name TEXT PRIMARY KEY,host TEXT,pw TEXT)")
     for t, items in state.items():
         active = {k: v for k, v in items.items() if not v.get("_archived")}
         archived = {k: v for k, v in items.items() if v.get("_archived")}
