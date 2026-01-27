@@ -125,9 +125,10 @@ install_cli "@openai/codex" "codex"
 install_cli "@google/gemini-cli" "gemini"
 
 # Python extras (optional)
-if command -v pip3 &>/dev/null; then pip3 install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras"
-elif command -v pip &>/dev/null; then pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras"
-elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/null; python3 -m pip install --user -q pexpect prompt_toolkit 2>/dev/null && ok "python extras" || warn "pip not available"; fi
+PIP_PKGS="pexpect prompt_toolkit keyring"; [[ "$OS" == mac ]] && PIP_FLAGS="--break-system-packages" || PIP_FLAGS=""
+if command -v pip3 &>/dev/null; then pip3 install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras"
+elif command -v pip &>/dev/null; then pip install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras"
+elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/null; python3 -m pip install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras" || warn "pip not available"; fi
 
 # Enable aio tmux config if no existing tmux.conf (adds mouse support, status bar)
 [[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/aio" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
