@@ -453,7 +453,7 @@ def db_sync(pull=False):
     if not os.path.isdir(f"{DATA_DIR}/.git") or not shutil.which('gh') or sp.run(['gh','auth','status'],capture_output=True).returncode!=0:
         pull and replay_events(); return True
     gi, df = f"{DATA_DIR}/.gitignore", f"{DATA_DIR}/.device"; ".device" not in (Path(gi).read_text() if os.path.exists(gi) else "") and Path(gi).write_text("*.db*\n*.log\nlogs/\n*cache*\ntiming.jsonl\nnotebook/\n.device\n"); dev = Path(df).read_text() if os.path.exists(df) else None
-    sp.run(f'cd "{DATA_DIR}"&&git add -A;git -c user.name=aio -c user.email=a@a commit -qm sync 2>/dev/null;git fetch -q&&git -c user.name=aio -c user.email=a@a merge -q --no-edit origin/main 2>/dev/null;git push -q 2>/dev/null',shell=True,capture_output=True); dev and Path(df).write_text(dev)
+    sp.run(f'cd "{DATA_DIR}"&&git rm --cached -f *.db timing.jsonl 2>/dev/null;git add -A;git -c user.name=aio -c user.email=a@a commit -qm sync 2>/dev/null;git fetch -q&&git -c user.name=aio -c user.email=a@a merge -q -X theirs --no-edit origin/main 2>/dev/null||git checkout --theirs . 2>/dev/null&&git add -A&&git -c user.name=aio -c user.email=a@a commit -qm merge 2>/dev/null;git push -q 2>/dev/null',shell=True,capture_output=True); dev and Path(df).write_text(dev)
     pull and replay_events(); return True
 
 def auto_backup():
