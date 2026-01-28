@@ -1,7 +1,7 @@
 """aio backup - Backup sync status"""
 import sys, os, subprocess as sp, shutil, time, json
 from pathlib import Path
-from . _common import init_db, DATA_DIR, LOG_DIR, NOTE_DIR, EVENTS_PATH, DB_PATH, _die, cloud_configured, cloud_account, RCLONE_BACKUP_PATH, RCLONE_REMOTES, get_rclone, _configured_remotes
+from . _common import init_db, DATA_DIR, LOG_DIR, EVENTS_PATH, DB_PATH, _die, cloud_configured, cloud_account, RCLONE_BACKUP_PATH, RCLONE_REMOTES, get_rclone, _configured_remotes
 
 def _ago(ts): d=int(time.time()-ts); return f"{d//86400}d" if d>=86400 else f"{d//3600}h" if d>=3600 else f"{d//60}m" if d>=60 else f"{d}s"
 def _sz(b): return f"{b/1024/1024:.1f}MB" if b>=1024*1024 else f"{b/1024:.0f}KB" if b>=1024 else f"{b}B"
@@ -23,12 +23,10 @@ def run():
     db_sz = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
     log_sz = sum(f.stat().st_size for f in Path(LOG_DIR).glob('*.log')) if os.path.isdir(LOG_DIR) else 0
     log_n = len(list(Path(LOG_DIR).glob('*.log'))) if os.path.isdir(LOG_DIR) else 0
-    note_sz = sum(f.stat().st_size for f in Path(NOTE_DIR).rglob('*') if f.is_file()) if os.path.isdir(NOTE_DIR) else 0
     print("DATA")
     print(f"  events.jsonl  {_sz(ev_sz):>8}  → git + gdrive")
     print(f"  aio.db        {_sz(db_sz):>8}  → local only (rebuilt from events)")
     print(f"  logs/         {_sz(log_sz):>8}  → gdrive ({log_n} files)")
-    print(f"  notebook/     {_sz(note_sz):>8}  → gdrive")
     print(f"\nSYNC")
     print(f"  Git:    {'✓ '+gu+' ('+_ago(int(gt))+')' if gu and gt else 'x (aio backup setup)'}")
     remotes = _configured_remotes()

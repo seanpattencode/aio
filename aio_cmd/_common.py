@@ -9,7 +9,6 @@ PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
 DATA_DIR = os.path.expanduser("~/.local/share/aios")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
 EVENTS_PATH = os.path.join(DATA_DIR, "events.jsonl")
-NOTE_DIR = os.path.join(DATA_DIR, "notebook")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 def _get_dev():
     f = os.path.expanduser('~/.local/share/aios/.device')
@@ -226,14 +225,11 @@ def cloud_sync(wait=False):
         for rem in remotes:
             r = sp.run([rc, 'sync', DATA_DIR, f'{rem}:{RCLONE_BACKUP_PATH}', '-q', '--exclude', '*.db*', '--exclude', '*cache*', '--exclude', 'timing.jsonl', '--exclude', '.device', '--exclude', '.git/**', '--exclude', 'logs/**'], capture_output=True, text=True)
             sp.run([rc, 'sync', LOG_DIR, f'{rem}:{RCLONE_BACKUP_PATH}/logs/{DEVICE_ID}', '-q'], capture_output=True)
+            for f in ['~/.config/gh/hosts.yml', '~/.config/rclone/rclone.conf']:  # auth: rclone bootstraps, circular dep = low risk
+                p = os.path.expanduser(f); os.path.exists(p) and sp.run([rc, 'copy', p, f'{rem}:{RCLONE_BACKUP_PATH}/auth/', '-q'], capture_output=True)
             ok = ok and r.returncode == 0
         Path(DATA_DIR, '.gdrive_sync').touch() if ok else None; return ok
     return (True, _sync()) if wait else (__import__('threading').Thread(target=_sync, daemon=True).start(), (True, None))[1]
-def cloud_pull_notes():
-    rc, remotes = get_rclone(), _configured_remotes()
-    if not rc or not remotes: return False
-    sp.run([rc, 'sync', f'{remotes[0]}:{RCLONE_BACKUP_PATH}/notebook', NOTE_DIR, '-q'], capture_output=True)
-    return True
 def cloud_install():
     import platform
     bd, arch = os.path.expanduser('~/.local/bin'), 'amd64' if platform.machine() in ('x86_64', 'AMD64') else 'arm64'
