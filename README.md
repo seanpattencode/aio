@@ -43,9 +43,12 @@ Installs: tmux, node, claude, codex, gemini, aio. Prompts for sudo if needed. Wo
 
 ## Simple start
 Type in terminal
+
 aio g      
 sign in
+
 ask
+
 "Run aio help and explore codebase and explain how to use it for the project I want to do."
 
 ## Core Commands
