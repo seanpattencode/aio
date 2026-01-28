@@ -1,6 +1,6 @@
 """aio update - Update aio"""
 import os, subprocess as sp, shutil
-from . _common import _sg, list_all, SCRIPT_DIR, DATA_DIR
+from . _common import _sg, list_all, init_db, SCRIPT_DIR, DATA_DIR
 
 def _setup_sync():
     if not shutil.which('gh') or sp.run(['gh','auth','status'],capture_output=True).returncode!=0: return
@@ -14,6 +14,6 @@ def run():
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return
     _sh=f'bash {SCRIPT_DIR}/install.sh --shell>/dev/null'
-    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); list_all(); _setup_sync(); return
+    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); _setup_sync(); return
     print("Downloading..."); _sg('pull', '--ff-only'); after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
-    os.system(_sh); list_all(); print("Run: source ~/.bashrc"); _setup_sync()
+    os.system(_sh); init_db(); list_all(); print("Run: source ~/.bashrc"); _setup_sync()
