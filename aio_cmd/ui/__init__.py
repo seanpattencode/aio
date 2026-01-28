@@ -52,6 +52,3 @@ app = web.Application(); app.add_routes([web.get('/', page), web.post('/exec', e
 def run():
     if '--install' in sys.argv: os.makedirs(os.path.expanduser('~/.config/autostart'), exist_ok=True); open(os.path.expanduser('~/.config/autostart/aioUI.desktop'),'w').write(f'[Desktop Entry]\nType=Application\nExec=python3 {os.path.abspath(__file__)}\nName=aioUI'); sys.exit()
     a=sys.argv[2:];p=int(a[0])if a and a[0].isdigit()else 8080;u=f'http://localhost:{p}/'+a[-1]if a and not a[-1].isdigit()else f'http://localhost:{p}';(subprocess.run(['termux-open-url',u])if os.environ.get('TERMUX_VERSION')else webbrowser.open(u));web.run_app(app,port=p)
-
-if __name__ == '__main__':
-    sys.argv = ['aio', 'ui'] + sys.argv[1:]; run()
