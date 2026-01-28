@@ -421,31 +421,39 @@ def emit_event(table, op, data, device=None, sync=False):
     with open(EVENTS_PATH, "a") as f: f.write(json.dumps(event) + "\n")
     sync and db_sync(); return eid
 
-def replay_events(tables=None):
-    """Rebuild state from events.jsonl. Tables: ssh, notes, hub, projects, apps."""
+def replay_events(tables=None, full=False):
+    """Incremental replay from events.jsonl. Only processes new events since last offset."""
     if not os.path.exists(EVENTS_PATH): return
-    state = {}; tables = tables or ['ssh', 'notes', 'hub', 'projects', 'apps']
-    for line in open(EVENTS_PATH):
-        try: e = json.loads(line)
-        except: continue
-        t, op = e["op"].split("."); d = e["d"]
-        if t not in tables: continue
-        if t not in state: state[t] = {}
-        k = d.get("path") or d.get("name") or d.get("id") or e["id"]
-        if op == "add": state[t][k] = {**d, "_ts": e["ts"], "_id": e["id"], "_dev": e.get("dev")}
-        elif op == "update" and k in state[t]: state[t][k].update({**d, "_ts": e["ts"]})
-        elif op in ("archive", "ack") and k in state[t]: state[t][k]["_archived"] = e["ts"]
-        elif op == "rename" and d.get("old") in state.get(t, {}): state[t][d["old"]]["_archived"] = e["ts"]; state[t][d["new"]] = {**{x:y for x,y in state[t][d["old"]].items() if not x.startswith("_")}, "name": d["new"], "_ts": e["ts"], "_id": e["id"]}
-    c = sqlite3.connect(DB_PATH)
-    for t, items in state.items():
-        active = {k: v for k, v in items.items() if not v.get("_archived")}
-        if t == "ssh": c.execute("CREATE TABLE IF NOT EXISTS ssh(name PRIMARY KEY,host,pw)"); c.execute("DELETE FROM ssh"); [c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)", (v.get("name",k), v.get("host",""), v.get("pw"))) for k,v in active.items()]
-        elif t == "notes":
-            try: c.execute("DELETE FROM notes WHERE id LIKE '________'"); [c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj,dev)VALUES(?,?,?,?,?,?)", (k, v.get("t",""), 1 if v.get("_archived") else 0, v.get("d"), v.get("proj"), v.get("_dev"))) for k,v in items.items()]
-            except: pass
-        elif t == "hub": c.execute("DELETE FROM hub_jobs WHERE name IN (SELECT name FROM hub_jobs)"); [c.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,?)", (v.get("name",k), v.get("schedule",""), v.get("prompt",""), v.get("device",""), v.get("enabled",1))) for k,v in active.items()]
-        elif t == "projects": [c.execute("DELETE FROM projects WHERE path=?", (k,)) for k in items]; [c.execute("INSERT INTO projects(path,display_order,device)VALUES(?,?,?)", (v["path"], int(v.get("_ts",0))%1000, v.get("_dev","*"))) for v in active.values() if v.get("path")]
-        elif t == "apps": [c.execute("DELETE FROM apps WHERE name=?", (k,)) for k in items]; [c.execute("INSERT INTO apps(name,command,display_order,device)VALUES(?,?,?,?)", (v["name"], v.get("cmd",""), int(v.get("_ts",0))%1000, v.get("_dev","*"))) for v in active.values() if v.get("name")]
+    tables = tables or ['ssh', 'notes', 'hub', 'projects', 'apps']
+    c = sqlite3.connect(DB_PATH); c.execute("CREATE TABLE IF NOT EXISTS sync_state(key TEXT PRIMARY KEY,val INT)")
+    offset = 0 if full else (c.execute("SELECT val FROM sync_state WHERE key='offset'").fetchone() or [0])[0]
+    with open(EVENTS_PATH) as f:
+        f.seek(offset)
+        for line in f:
+            if not line.strip().startswith('{'): continue
+            try: e = json.loads(line)
+            except: continue
+            t, op = e["op"].split("."); d = e["d"]; k = d.get("path") or d.get("name") or d.get("id") or e["id"]
+            if t not in tables: continue
+            if t == "ssh":
+                if op == "add": c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)", (d.get("name",k), d.get("host",""), d.get("pw")))
+                elif op == "update": c.execute("UPDATE ssh SET host=COALESCE(?,host),pw=COALESCE(?,pw) WHERE name=?", (d.get("host"), d.get("pw"), k))
+                elif op == "archive": c.execute("DELETE FROM ssh WHERE name=?", (k,))
+                elif op == "rename": c.execute("DELETE FROM ssh WHERE name=?", (d.get("old"),)); c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)", (d["new"], d.get("host",""), d.get("pw")))
+            elif t == "notes":
+                if op == "add": c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj,dev)VALUES(?,?,0,?,?,?)", (k, d.get("t",""), d.get("d"), d.get("proj"), e.get("dev")))
+                elif op in ("archive","ack"): c.execute("UPDATE notes SET s=1 WHERE id=?", (k,))
+                elif op == "update": c.execute("UPDATE notes SET t=COALESCE(?,t),d=COALESCE(?,d),proj=COALESCE(?,proj) WHERE id=?", (d.get("t"), d.get("d"), d.get("proj"), k))
+            elif t == "hub":
+                if op == "add": c.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,?)", (d.get("name",k), d.get("schedule",""), d.get("prompt",""), d.get("device",""), d.get("enabled",1)))
+                elif op == "archive": c.execute("DELETE FROM hub_jobs WHERE name=?", (k,))
+            elif t == "projects":
+                if op == "add": c.execute("INSERT OR IGNORE INTO projects(path,display_order,device)VALUES(?,?,?)", (d["path"], int(e.get("ts",0))%1000, e.get("dev","*")))
+                elif op == "archive": c.execute("DELETE FROM projects WHERE path=?", (k,))
+            elif t == "apps":
+                if op == "add": c.execute("INSERT OR IGNORE INTO apps(name,command,display_order,device)VALUES(?,?,?,?)", (d["name"], d.get("cmd",""), int(e.get("ts",0))%1000, e.get("dev","*")))
+                elif op == "archive": c.execute("DELETE FROM apps WHERE name=?", (k,))
+        c.execute("INSERT OR REPLACE INTO sync_state(key,val)VALUES('offset',?)", (f.tell(),))
     c.commit(); c.close()
 
 # Append-only sync: only events.jsonl synced (text, auto-merges), aio.db is local cache
