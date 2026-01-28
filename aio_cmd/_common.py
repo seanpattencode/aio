@@ -421,6 +421,34 @@ def emit_event(table, op, data, device=None, sync=False):
     with open(EVENTS_PATH, "a") as f: f.write(json.dumps(event) + "\n")
     sync and db_sync(); return eid
 
+def check_sync_consensus():
+    """Compare sync backends, alert on conflict."""
+    results = {}
+    try:
+        # Git state
+        import hashlib
+        ef = Path(EVENTS_PATH)
+        results['git'] = hashlib.md5(ef.read_bytes()).hexdigest()[:8] if ef.exists() else 'empty'
+
+        # DB state (ssh table as sample)
+        with db() as c:
+            rows = sorted(c.execute("SELECT name,host FROM ssh").fetchall())
+            results['db'] = hashlib.md5(str(rows).encode()).hexdigest()[:8]
+
+        # Future: add crsqlite, http backends here
+        # results['crsqlite'] = crsqlite_hash()
+        # results['http'] = http_backend_hash()
+
+    except Exception as e:
+        results['error'] = str(e)
+
+    # Check consensus
+    unique = set(results.values())
+    if len(unique) > 1:
+        print(f"⚠ SYNC CONFLICT: {results}")
+        return False
+    return True
+
 def replay_events(tables=None):
     """Rebuild state from events.jsonl. Tables: ssh, notes, hub, projects, apps."""
     if not os.path.exists(EVENTS_PATH): return
