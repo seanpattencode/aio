@@ -2,6 +2,14 @@
 import os, subprocess as sp, shutil
 from . _common import _sg, list_all, init_db, SCRIPT_DIR, DATA_DIR
 
+def _link_aio_cmd():
+    """Ensure aio_cmd is linked to ~/.local/bin"""
+    src = os.path.join(SCRIPT_DIR, "aio_cmd")
+    dst = os.path.expanduser("~/.local/bin/aio_cmd")
+    if os.path.isdir(src) and not os.path.exists(dst):
+        try: os.symlink(src, dst); print("✓ aio_cmd linked")
+        except: pass
+
 def _setup_sync():
     if not shutil.which('gh') or sp.run(['gh','auth','status'],capture_output=True).returncode!=0: return
     sp.run('hp=~/.local/bin/git-credential-gh;mkdir -p $(dirname $hp);echo "#!/bin/sh\nexec $(which gh) auth git-credential \\\"\\$@\\\"">$hp;chmod +x $hp;git config --global credential.helper $hp',shell=True,capture_output=True)
@@ -14,6 +22,6 @@ def run():
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return
     _sh=f'bash {SCRIPT_DIR}/install.sh --shell>/dev/null'
-    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); _setup_sync(); return
+    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); _link_aio_cmd(); init_db(); list_all(); _setup_sync(); return
     print("Downloading..."); _sg('pull', '--ff-only'); after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
-    os.system(_sh); init_db(); list_all(); print("Run: source ~/.bashrc"); _setup_sync()
+    os.system(_sh); _link_aio_cmd(); init_db(); list_all(); print("Run: source ~/.bashrc"); _setup_sync()
