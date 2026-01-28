@@ -50,6 +50,7 @@ aio pull           # Nuke local: reset to remote
 aio revert         # Interactive: pick commit to restore
 aio <#>            # cd to project by number
 aio prompt         # Set default prompt for all agents
+aio ui             # Open user interface selection
 ```
 
 ## More Commands
