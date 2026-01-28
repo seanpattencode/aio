@@ -7,16 +7,7 @@ from agent_base import send
 gemini=shutil.which('gemini')or os.path.expanduser('~/.local/bin/gemini')
 claude=shutil.which('claude')or os.path.expanduser('~/.local/bin/claude')
 
-import sqlite3
-_ndb=sqlite3.connect(os.path.expanduser("~/.local/share/aios/aio.db"))
-_notes=_ndb.execute("SELECT t FROM notes WHERE s=0 AND length(t)>20 AND t NOT GLOB '[A-Z][0-9]*' ORDER BY c DESC LIMIT 15").fetchall()
-_ndb.close()
-NOTES="\n".join(f"- {n[0][:150]}" for n in _notes) if _notes else "(no notes)"
-
-CONTEXT=f"""Sean's goals: 1) Build AIOS - AI workflow manager CLI 2) First billion-dollar solo startup 3) Help align AGI 4) Learn optimally from top experts 5) Maximize value from actions. Be direct, no needless praise, challenge wrong directions.
-
-Recent notes from Sean:
-{NOTES}"""
+CONTEXT="""Sean's goals: 1) Build AIOS - AI workflow manager CLI 2) First billion-dollar solo startup 3) Help align AGI 4) Learn optimally from top experts 5) Maximize value from actions. Be direct, no needless praise, challenge wrong directions."""
 
 convo=[]
 
