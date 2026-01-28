@@ -67,7 +67,7 @@ aio n "text"       # Quick note
 
 This isn't a tool you just use. It's a tool you **evolve**.
 
-- Single file, ~1200 lines - you can read all of it
+- Simple code - you can read all of it
 - AI-native - ask your agent to modify aio itself
 - Hackable - fork it, change it, make it yours
 
