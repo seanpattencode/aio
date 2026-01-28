@@ -168,10 +168,10 @@ def add_proj(p):
 
 def rm_proj(i):
     with db() as c:
-        rows = c.execute("SELECT id, path FROM projects WHERE device IN (?, '*') ORDER BY display_order", (DEVICE_ID,)).fetchall()
+        rows = c.execute("SELECT id, path FROM projects ORDER BY display_order").fetchall()
         if i < 0 or i >= len(rows): return False, f"Invalid index: {i}"
         c.execute("DELETE FROM projects WHERE id=?", (rows[i][0],))
-        for j, r in enumerate(c.execute("SELECT id FROM projects WHERE device=? ORDER BY display_order", (DEVICE_ID,))): c.execute("UPDATE projects SET display_order=? WHERE id=?", (j, r[0]))
+        for j, r in enumerate(c.execute("SELECT id FROM projects ORDER BY display_order")): c.execute("UPDATE projects SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
     emit_event("projects", "archive", {"path": rows[i][1]}, sync=True); _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
@@ -185,10 +185,10 @@ def add_app(n, cmd):
 
 def rm_app(i):
     with db() as c:
-        rows = c.execute("SELECT id, name FROM apps WHERE device IN (?, '*') ORDER BY display_order", (DEVICE_ID,)).fetchall()
+        rows = c.execute("SELECT id, name FROM apps ORDER BY display_order").fetchall()
         if i < 0 or i >= len(rows): return False, f"Invalid index: {i}"
         c.execute("DELETE FROM apps WHERE id=?", (rows[i][0],))
-        for j, r in enumerate(c.execute("SELECT id FROM apps WHERE device=? ORDER BY display_order", (DEVICE_ID,))): c.execute("UPDATE apps SET display_order=? WHERE id=?", (j, r[0]))
+        for j, r in enumerate(c.execute("SELECT id FROM apps ORDER BY display_order")): c.execute("UPDATE apps SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
     emit_event("apps", "archive", {"name": rows[i][1]}, sync=True); _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
