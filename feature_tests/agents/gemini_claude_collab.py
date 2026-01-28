@@ -48,7 +48,7 @@ action=re.search(r'<action>([^<]+)</action>',c2)
 why=re.search(r'<why>([^<]+)</why>',c2)
 outcome=re.search(r'<outcome>([^<]+)</outcome>',c2)
 
-summary=f"Gemini x Claude Collab\n\n{chr(10).join(convo[:3])}\n\n{'='*40}\nFINAL ACTION: {action[1] if action else 'See above'}\nWHY: {why[1] if why else ''}\nOUTCOME: {outcome[1] if outcome else ''}"
+summary=f"Gemini x Claude Collab\n\n{chr(10).join(convo)}\n\n{'='*40}\nFINAL ACTION: {action[1] if action else 'See above'}\nWHY: {why[1] if why else ''}\nOUTCOME: {outcome[1] if outcome else ''}"
 
 print(f"\n{'='*40}\n{summary}")
 if "--send" in sys.argv: send("🧠 Gemini x Claude: Today's Focus",summary)
