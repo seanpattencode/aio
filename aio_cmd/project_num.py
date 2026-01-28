@@ -9,11 +9,10 @@ def run():
     if 0 <= idx < len(PROJ):
         p, repo = PROJ[idx]
         if not os.path.exists(p) and repo:
-            p = os.path.expanduser(f"~/projects/{os.path.basename(p)}"); os.makedirs(os.path.dirname(p), exist_ok=True)
-            print(f"Cloning {repo} -> {p}"); sp.run(['git','clone',repo,p]).returncode == 0 or sys.exit(1)
+            p = os.path.expanduser(f"~/projects/{os.path.basename(p)}"); os.path.isdir(p) or (print(f"Cloning {repo}"),sp.run(['git','clone',repo,p]).returncode==0 or sys.exit(1))
         print(f"Opening project {idx}: {p}")
         sp.Popen([sys.executable, os.path.join(SCRIPT_DIR, 'aio_new.py'), '_ghost', p], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        sp.Popen(f'git -C "{p}" ls-remote --exit-code origin HEAD &>/dev/null && touch "{_OK}"', shell=True)
+        sp.Popen(f'git -C "{p}" ls-remote --exit-code origin HEAD>/dev/null 2>&1&&touch "{_OK}"', shell=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
         os.chdir(p)
         os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
     elif 0 <= idx - len(PROJ) < len(APPS):
