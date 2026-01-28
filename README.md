@@ -51,6 +51,8 @@ ask
 
 "Run aio help and explore codebase and explain how to use it for the project I want to do."
 
+"Explain how i can build and run my own aio ui"
+
 ## Core Commands
 
 ```bash
