@@ -102,20 +102,9 @@ AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/aio.py"
 if [[ -f "$SCRIPT_DIR/aio.py" ]]; then
     ln -sf "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (local)"
     ln -sf "$SCRIPT_DIR/aio-i" "$BIN/aio-i" && chmod +x "$BIN/aio-i" && ok "aio-i installed (local)"
-    # Link aio_cmd module
-    ln -sfn "$SCRIPT_DIR/aio_cmd" "$BIN/aio_cmd" && ok "aio_cmd linked"
 else
     curl -fsSL "$AIO_URL" -o "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (remote)"
     curl -fsSL "${AIO_URL%aio.py}aio-i" -o "$BIN/aio-i" && chmod +x "$BIN/aio-i" && ok "aio-i installed (remote)"
-    # Download aio_cmd module
-    mkdir -p "$BIN/aio_cmd/sync"
-    for f in _common ssh note help help_full update install; do
-        curl -fsSL "${AIO_URL%aio.py}aio_cmd/${f}.py" -o "$BIN/aio_cmd/${f}.py" 2>/dev/null
-    done
-    curl -fsSL "${AIO_URL%aio.py}aio_cmd/__init__.py" -o "$BIN/aio_cmd/__init__.py" 2>/dev/null
-    curl -fsSL "${AIO_URL%aio.py}aio_cmd/sync/__init__.py" -o "$BIN/aio_cmd/sync/__init__.py" 2>/dev/null
-    curl -fsSL "${AIO_URL%aio.py}aio_cmd/sync/store.py" -o "$BIN/aio_cmd/sync/store.py" 2>/dev/null
-    ok "aio_cmd downloaded"
 fi
 
 # PATH + aio function in both shells
