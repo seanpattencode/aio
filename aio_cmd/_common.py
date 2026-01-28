@@ -217,10 +217,10 @@ def cloud_account():
     except: return None
 def cloud_sync(wait=False):
     if not (rc := get_rclone()) or not cloud_configured(): return False, None
-    local, remote = str(Path(SCRIPT_DIR) / 'data'), f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}'
+    local, remote = DATA_DIR, f'{RCLONE_REMOTE}:{RCLONE_BACKUP_PATH}'
     def _sync():
-        r = sp.run([rc, 'sync', local, remote, '-q'], capture_output=True, text=True)
-        ef = Path(DATA_DIR) / '.rclone_err'; ef.write_text(r.stderr) if r.returncode != 0 else ef.unlink(missing_ok=True); return r.returncode == 0
+        r = sp.run([rc, 'sync', local, remote, '-q', '--exclude', '*.db*', '--exclude', '*.log', '--exclude', 'logs/**', '--exclude', '*cache*', '--exclude', 'timing.jsonl', '--exclude', '.device', '--exclude', '.git/**'], capture_output=True, text=True)
+        ef = Path(DATA_DIR) / '.rclone_err'; ef.write_text(r.stderr) if r.returncode != 0 else (ef.unlink(missing_ok=True), Path(DATA_DIR, '.gdrive_sync').touch()); return r.returncode == 0
     return (True, _sync()) if wait else (__import__('threading').Thread(target=_sync, daemon=True).start(), (True, None))[1]
 def cloud_pull_notes():
     if not (rc := get_rclone()) or not cloud_configured(): return False

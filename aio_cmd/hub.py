@@ -45,16 +45,16 @@ def run():
         jobs = c.execute("SELECT id,name,schedule,prompt,device,enabled,last_run FROM hub_jobs ORDER BY device,name").fetchall()
 
     if not wda:
-        from datetime import datetime as dt
+        from datetime import datetime as dt; w = os.get_terminal_size().columns - 50 if sys.stdout.isatty() else 60
         _lr = lambda t: dt.strptime(t, '%Y-%m-%d %H:%M').strftime('%m/%d %I:%M%p').lower() if t else '-'
-        _pj = lambda jobs: [print(f"{i:<3}{j[1]:<12}{j[2]:<7}{_lr(j[6]):<14}{j[4]:<10}{'✓' if j[5] else 'x':<4}{(j[3] or '')}") for i, j in enumerate(jobs)] or print("  (none)")
-        print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Last Run':<14}{'Device':<10}{'On':<4}{'Command'}"); _pj(jobs)
+        _pj = lambda jobs: [print(f"{i:<3}{j[1][:11]:<12}{j[2][:6]:<7}{_lr(j[6]):<14}{j[4][:9]:<10}{'✓' if j[5] else ' '} {(s:=j[3]or'') if len(s:=j[3]or'')<=w else s[:w//2-1]+'...'+s[-(w//2-2):]}") for i, j in enumerate(jobs)] or print("  (none)")
+        print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Last Run':<14}{'Device':<10}On Command"); _pj(jobs)
         if not sys.stdin.isatty(): return
-        while (c := input("\n<#>|add|rm|ed <#>|sync|log|q\n> ").strip()) and c != 'q':
+        while (c := input("\n<#> run | on/off <#> | add|rm|ed <#> | q\n> ").strip()) and c != 'q':
             args = ['run', c] if c.isdigit() else c.split()
             sp.run([sys.executable, __file__.replace('hub.py', '../aio.py'), 'hub'] + args)
             jobs = db().execute("SELECT id,name,schedule,prompt,device,enabled,last_run FROM hub_jobs ORDER BY device,name").fetchall()
-            print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Last Run':<14}{'Device':<10}{'On':<4}{'Command'}"); _pj(jobs)
+            print(f"{'#':<3}{'Name':<12}{'Time':<7}{'Last Run':<14}{'Device':<10}On Command"); _pj(jobs)
         return
 
     if wda == 'add':
@@ -84,10 +84,17 @@ def run():
         if not j or not new: return print(f"x {n}?") if not j else None
         _uninstall(j[1]); c = db(); c.execute("UPDATE hub_jobs SET name=? WHERE id=?", (new, j[0])); c.commit()
         emit_event('hub', 'rename', {'old': j[1], 'new': new}); db_sync(); print(f"✓ {new} (run 'sync' to update timer)")
-    elif wda in ('rm', 'run'):
-        n = sys.argv[3] if len(sys.argv) > 3 else ''
-        j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else next((x for x in jobs if x[1] == n), None)
+    elif wda in ('on', 'off', 'rm', 'run'):
+        n = sys.argv[3] if len(sys.argv) > 3 else ''; j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else next((x for x in jobs if x[1] == n), None)
         if not j: print(f"x {n}?"); return
+        if wda in ('on', 'off'):
+            if j[4].lower() != DEVICE_ID.lower():
+                hosts = {r[0].lower(): r[0] for r in db().execute("SELECT name FROM ssh")}
+                if j[4].lower() not in hosts: print(f"x {j[4]} not in ssh hosts"); return
+                r = sp.run([sys.executable, __file__.replace('hub.py','../aio.py'), 'ssh', hosts[j[4].lower()], 'aio', 'hub', wda, j[1]], capture_output=True, text=True)
+                print(r.stdout.strip() or f"x {j[4]} failed"); return
+            en = wda == 'on'; c = db(); c.execute("UPDATE hub_jobs SET enabled=? WHERE id=?", (en, j[0])); c.commit(); c.close()
+            _install(j[1], j[2], j[3]) if en else _uninstall(j[1]); db_sync(); print(f"✓ {j[1]} {wda}"); return
         if wda == 'rm':
             _uninstall(j[1]); c = db(); c.execute("DELETE FROM hub_jobs WHERE id=?", (j[0],)); c.commit(); c.close()
             emit_event('hub', 'archive', {'name': j[1]}); db_sync(); print(f"✓ rm {j[1]}")
