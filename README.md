@@ -1,32 +1,8 @@
 # aio
 
-**Claude Code is down. You have deadlines. You need options.**
-
-## Why
-
-1. **Vendor lock-in** - Today it's Claude. Tomorrow it's OpenAI. Next week it's Google. `aio c`, `aio g`, and `aio co` all feel the same. Switch instantly.
-
-2. **Typing paragraphs** - Switching projects and starting agents shouldn't require memorizing flags and paths.
-
-3. **High variance** - AI agents write brilliant code or garbage. You need to checkpoint constantly and nuke bad runs fast.
-
-```bash
-# Without aio
-claude --dangerously-skip-permissions
-cd ~/projects/my-company/apps/frontend-dashboard
-git add -A && git commit -m "checkpoint" && git push
-git fetch origin && git reset --hard origin/main && git clean -fd
-
-# With aio
-aio c
-aio 3
-aio push "checkpoint"
-aio pull
-```
-
 ## What is aio
 
-A ~1200-line Python script that manages AI coding agents. Runs on macOS, Linux, Windows (WSL), and Android (Termux). Small enough to understand, modify, and make yours.
+An ai agent manager.
 
 ## Prerequisites
 
