@@ -1,20 +1,16 @@
 """aio <#> - Open project by number"""
 import sys, os, subprocess as sp
-from . _common import init_db, load_cfg, load_proj, load_apps, load_sess, _ghost_spawn, fmt_cmd, SCRIPT_DIR
+from . _common import init_db, load_proj, load_apps, fmt_cmd, SCRIPT_DIR
 
 _OK = os.path.expanduser('~/.local/share/aios/logs/push.ok')
 
 def run():
-    init_db()
-    cfg = load_cfg()
-    PROJ = load_proj()
-    APPS = load_apps()
-    sess = load_sess(cfg)
-    arg = sys.argv[1] if len(sys.argv) > 1 else None
-
-    idx = int(arg)
+    init_db(); PROJ = load_proj(); APPS = load_apps(); idx = int(sys.argv[1])
     if 0 <= idx < len(PROJ):
-        p = PROJ[idx]
+        p, repo = PROJ[idx]
+        if not os.path.exists(p) and repo:
+            os.makedirs(os.path.dirname(p), exist_ok=True); print(f"Cloning {repo}...")
+            sp.run(['git','clone',repo,p]).returncode == 0 or sys.exit(1)
         print(f"Opening project {idx}: {p}")
         sp.Popen([sys.executable, os.path.join(SCRIPT_DIR, 'aio_new.py'), '_ghost', p], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
         sp.Popen(f'git -C "{p}" ls-remote --exit-code origin HEAD &>/dev/null && touch "{_OK}"', shell=True)

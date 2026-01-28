@@ -120,12 +120,13 @@ def init_db():
             for k, v in [('claude_prompt', dp), ('codex_prompt', dp), ('gemini_prompt', dp), ('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees")), ('multi_default', 'l:3')]: c.execute("INSERT INTO config VALUES (?, ?)", (k, v))
         c.execute("INSERT OR IGNORE INTO config VALUES ('multi_default', 'l:3')")
         c.execute("INSERT OR IGNORE INTO config VALUES ('claude_prefix', 'Ultrathink. ')")
-        if c.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
+        np = not c.execute("SELECT 1 FROM projects").fetchone()
+        if np:
             for p in [SCRIPT_DIR, os.path.expanduser("~/aio"), os.path.expanduser("~/projects/aio")]:
-                if os.path.isdir(p) and os.path.isdir(os.path.join(p, ".git")): c.execute("INSERT INTO projects (path, display_order, device) VALUES (?, ?, ?)", (p, 0, DEVICE_ID)); break
-        if c.execute("SELECT COUNT(*) FROM apps").fetchone()[0] == 0:
+                if os.path.isdir(p) and os.path.isdir(os.path.join(p, ".git")): emit_event("projects", "add", {"path": p}); break
+        if np or not c.execute("SELECT 1 FROM apps").fetchone():
             ui = next((p for p in [os.path.join(SCRIPT_DIR, "aioUI.py"), os.path.expanduser("~/aio/aioUI.py"), os.path.expanduser("~/.local/bin/aioUI.py")] if os.path.exists(p)), None)
-            if ui: c.execute("INSERT INTO apps (name, command, display_order, device) VALUES (?, ?, ?, ?)", ("aioUI", f"python3 {ui}", 0, DEVICE_ID))
+            if ui: emit_event("apps", "add", {"name": "aioUI", "cmd": f"python3 {ui}"})
         if c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0:
             cdx, cld = 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox', 'claude --dangerously-skip-permissions'
             for k, n, t in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gemini','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','claude',cld),('claude','claude',cld),('cp','claude-p',f'{cld} "{{CLAUDE_PROMPT}}"'),('l','claude',cld),('lp','claude-p',f'{cld} "{{CLAUDE_PROMPT}}"'),('o','claude',cld),('co','codex',cdx),('codex','codex',cdx),('cop','codex-p',f'{cdx} "{{CODEX_PROMPT}}"'),('a','aider','OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')]:
@@ -138,7 +139,9 @@ def load_cfg():
     with db() as c: return dict(c.execute("SELECT key, value FROM config").fetchall())
 
 def load_proj():
-    with db() as c: return [r[0] for r in c.execute("SELECT path FROM projects ORDER BY display_order").fetchall()]
+    with db() as c:
+        if 'repo' not in [r[1] for r in c.execute("PRAGMA table_info(projects)")]: c.execute("ALTER TABLE projects ADD COLUMN repo TEXT")
+        return [(r[0],r[1]) for r in c.execute("SELECT path,repo FROM projects ORDER BY display_order")]
 
 def load_apps():
     with db() as c: return [(r[0], r[1]) for r in c.execute("SELECT name, command FROM apps ORDER BY display_order")]
@@ -151,20 +154,22 @@ def load_sess(cfg):
         s[k] = (n, t.replace(' "{CLAUDE_PROMPT}"', '').replace(' "{CODEX_PROMPT}"', '').replace(' "{GEMINI_PROMPT}"', '') if k in ['cp','lp','gp'] else t.format(CLAUDE_PROMPT=esc('claude_prompt'), CODEX_PROMPT=esc('codex_prompt'), GEMINI_PROMPT=esc('gemini_prompt')))
     return s
 
+def _pmark(p,r): return '+' if os.path.exists(p) else ('~' if r else 'x')
 def _refresh_cache():
     p, a = load_proj(), load_apps()
-    out = [f"PROJECTS:"] + [f"  {i}. {'+' if os.path.exists(x) else 'x'} {x}" for i, x in enumerate(p)]
+    out = [f"PROJECTS:"] + [f"  {i}. {_pmark(x,r)} {x}" for i,(x,r) in enumerate(p)]
     out += [f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {c.replace(os.path.expanduser('~'), '~')[:60]}" for i, (n, c) in enumerate(a)] if a else []
     Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + '\n'.join(out) + '\n')
 
 def add_proj(p):
     p = os.path.abspath(os.path.expanduser(p))
     if not os.path.isdir(p): return False, f"Not a directory: {p}"
+    repo = sp.run(['git','-C',p,'remote','get-url','origin'],capture_output=True,text=True).stdout.strip() or None
     with db() as c:
-        if c.execute("SELECT 1 FROM projects WHERE path=? AND device IN (?, '*')", (p, DEVICE_ID)).fetchone(): return False, f"Exists: {p}"
+        if c.execute("SELECT 1 FROM projects WHERE repo=? OR path=?", (repo,p)).fetchone(): return False, f"Exists: {p}"
         m = c.execute("SELECT MAX(display_order) FROM projects").fetchone()[0]
-        c.execute("INSERT INTO projects (path, display_order, device) VALUES (?, ?, ?)", (p, 0 if m is None else m+1, DEVICE_ID)); c.commit()
-    emit_event("projects", "add", {"path": p}, sync=True); _refresh_cache(); return True, f"Added: {p}"
+        c.execute("INSERT INTO projects (path,display_order,device,repo) VALUES (?,?,?,?)", (p, 0 if m is None else m+1, DEVICE_ID, repo)); c.commit()
+    emit_event("projects", "add", {"path": p, "repo": repo}, sync=True); _refresh_cache(); return True, f"Added: {p}"
 
 def rm_proj(i):
     with db() as c:
@@ -425,7 +430,10 @@ def replay_events(tables=None, full=False):
     """Incremental replay from events.jsonl. Only processes new events since last offset."""
     if not os.path.exists(EVENTS_PATH): return
     tables = tables or ['ssh', 'notes', 'hub', 'projects', 'apps']
-    c = sqlite3.connect(DB_PATH); c.execute("CREATE TABLE IF NOT EXISTS sync_state(key TEXT PRIMARY KEY,val INT)")
+    c = sqlite3.connect(DB_PATH)
+    for t in ["sync_state(key TEXT PRIMARY KEY,val INT)","ssh(name PRIMARY KEY,host,pw)","notes(id PRIMARY KEY,t,s DEFAULT 0,d,c,proj,dev)","hub_jobs(id INTEGER PRIMARY KEY,name,schedule,prompt,device,enabled DEFAULT 1)","projects(id INTEGER PRIMARY KEY,path,display_order,device,repo)","apps(id INTEGER PRIMARY KEY,name,command,display_order,device)"]:
+        c.execute(f"CREATE TABLE IF NOT EXISTS {t}")
+    if 'repo' not in [r[1] for r in c.execute("PRAGMA table_info(projects)")]: c.execute("ALTER TABLE projects ADD COLUMN repo TEXT")
     offset = 0 if full else (c.execute("SELECT val FROM sync_state WHERE key='offset'").fetchone() or [0])[0]
     with open(EVENTS_PATH) as f:
         f.seek(offset)
@@ -448,10 +456,10 @@ def replay_events(tables=None, full=False):
                 if op == "add": c.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,?)", (d.get("name",k), d.get("schedule",""), d.get("prompt",""), d.get("device",""), d.get("enabled",1)))
                 elif op == "archive": c.execute("DELETE FROM hub_jobs WHERE name=?", (k,))
             elif t == "projects":
-                if op == "add": c.execute("INSERT OR IGNORE INTO projects(path,display_order,device)VALUES(?,?,?)", (d["path"], int(e.get("ts",0))%1000, e.get("dev","*")))
+                if op == "add": c.execute("SELECT 1 FROM projects WHERE repo=? OR path=?",(d.get("repo"),d["path"])).fetchone() or c.execute("INSERT INTO projects(path,display_order,device,repo)VALUES(?,?,?,?)", (d["path"], int(e.get("ts",0))%1000, e.get("dev","*"), d.get("repo")))
                 elif op == "archive": c.execute("DELETE FROM projects WHERE path=?", (k,))
             elif t == "apps":
-                if op == "add": c.execute("INSERT OR IGNORE INTO apps(name,command,display_order,device)VALUES(?,?,?,?)", (d["name"], d.get("cmd",""), int(e.get("ts",0))%1000, e.get("dev","*")))
+                if op == "add": c.execute("SELECT 1 FROM apps WHERE name=?",(d["name"],)).fetchone() or c.execute("INSERT INTO apps(name,command,display_order,device)VALUES(?,?,?,?)", (d["name"], d.get("cmd",""), int(e.get("ts",0))%1000, e.get("dev","*")))
                 elif op == "archive": c.execute("DELETE FROM apps WHERE name=?", (k,))
         c.execute("INSERT OR REPLACE INTO sync_state(key,val)VALUES('offset',?)", (f.tell(),))
     c.commit(); c.close()
@@ -566,8 +574,8 @@ EXPERIMENTAL
   aio gdrive          Cloud sync (Google Drive)"""
 
 def list_all(cache=True, quiet=False):
-    p, a = load_proj(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(p) + '\n')
-    out = ([f"PROJECTS:"] + [f"  {i}. {'+' if os.path.exists(x) else 'x'} {x}" for i, x in enumerate(p)] if p else [])
+    p, a = load_proj(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(x for x,_ in p) + '\n')
+    out = ([f"PROJECTS:"] + [f"  {i}. {_pmark(x,r)} {x}" for i,(x,r) in enumerate(p)] if p else [])
     out += ([f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {fmt_cmd(c)}" for i, (n, c) in enumerate(a)] if a else [])
     txt = '\n'.join(out); not quiet and out and print(txt); cache and Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
     return p, a
