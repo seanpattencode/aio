@@ -138,10 +138,10 @@ def load_cfg():
     with db() as c: return dict(c.execute("SELECT key, value FROM config").fetchall())
 
 def load_proj():
-    with db() as c: return [r[0] for r in c.execute("SELECT path FROM projects WHERE device IN (?, '*') ORDER BY display_order", (DEVICE_ID,)).fetchall()]
+    with db() as c: return [r[0] for r in c.execute("SELECT path FROM projects ORDER BY display_order").fetchall()]
 
 def load_apps():
-    with db() as c: return [(r[0], r[1]) for r in c.execute("SELECT name, command FROM apps WHERE device IN (?, '*') ORDER BY display_order", (DEVICE_ID,))]
+    with db() as c: return [(r[0], r[1]) for r in c.execute("SELECT name, command FROM apps ORDER BY display_order")]
 
 def load_sess(cfg):
     with db() as c: data = c.execute("SELECT key, name, command_template FROM sessions").fetchall()
