@@ -15,11 +15,12 @@ An ai agent manager.
 1. Press Windows key, type `powershell`, right-click → "Run as administrator"
 2. Run: `wsl --install -d Ubuntu`
 3. Restart PC, Ubuntu opens—create username (lowercase) and password (won't show as you type)
-4. In Ubuntu, run the install below
+3.1.  Troubleshooting: To reopen Ubuntu, press Windows key and search "Ubuntu". To reset: `wsl --unregister Ubuntu` then `wsl --install -d Ubuntu`
+5. In Ubuntu, run the install below
 
 Other distros: `wsl --list --online` to see options, `wsl --install -d <distro>`
 
-Troubleshooting: To reopen Ubuntu, press Windows key and search "Ubuntu". To reset: `wsl --unregister Ubuntu` then `wsl --install -d Ubuntu`
+
 
 **Termux (Android):**
 ```bash
