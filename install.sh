@@ -169,7 +169,7 @@ else ok "ollama (exists)"; fi
 python3 "$BIN/aio" >/dev/null 2>&1 && ok "cache generated"
 
 # Setup sync (prompt gh login if needed)
-command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login; }; gh auth status &>/dev/null && python3 "$BIN/aio" backup setup 2>/dev/null && ok "sync configured"; }
+command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && python3 "$BIN/aio" backup setup 2>/dev/null && ok "sync configured"; }
 
 # Final message
 echo ""
