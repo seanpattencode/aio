@@ -37,12 +37,17 @@ A ~1200-line Python script that manages AI coding agents. Runs on macOS, Linux, 
 
 **Windows:** Install [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) first, then follow Linux instructions.
 
-**Termux:**
+**Termux (Android):**
 ```bash
-pkg install git python
+pkg update -y && pkg install -y git gh python
+gh auth login
+gh auth setup-git
+git clone https://github.com/seanpattencode/aio ~/aio && cd ~/aio && bash install.sh
+source ~/.bashrc
+aio update
 ```
 
-## Install
+## Install (Mac/Linux/WSL)
 
 ```bash
 git clone https://github.com/seanpattencode/aio.git && cd aio && ./install.sh
