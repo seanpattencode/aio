@@ -158,17 +158,15 @@ def sync(pull=True):
     df = f"{DATA_DIR}/.device"
     dev = open(df).read() if os.path.exists(df) else None
 
-    # Git sync
+    # Git sync - commit, pull, push
     cmd = f'''cd "{DATA_DIR}" && \
-        git rm --cached -f *.db timing.jsonl 2>/dev/null; \
-        git add -A && \
+        git checkout -- *.db 2>/dev/null; \
+        git add events.jsonl .gitignore 2>/dev/null && \
         git -c user.name=aio -c user.email=a@a commit -qm sync 2>/dev/null; \
-        git fetch -q && \
-        git -c user.name=aio -c user.email=a@a merge -q -X theirs --no-edit origin/main 2>/dev/null || \
-        git checkout --theirs . 2>/dev/null && \
-        git add -A && \
-        git -c user.name=aio -c user.email=a@a commit -qm merge 2>/dev/null; \
-        git push -q 2>/dev/null'''
+        git fetch -q origin main && \
+        git -c user.name=aio -c user.email=a@a rebase origin/main 2>/dev/null || \
+        (git rebase --abort 2>/dev/null; git reset --hard origin/main); \
+        git push -q origin HEAD:main 2>/dev/null'''
 
     sp.run(cmd, shell=True, capture_output=True)
 
