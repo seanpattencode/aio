@@ -6,7 +6,7 @@ def run():
     init_db()
     cfg = load_cfg()
     PROJ = load_proj()
-    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
+    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aWorktrees"))
     wts = _wt_items(WT_DIR)
     with db() as c: cnt = c.execute("SELECT COUNT(*) FROM multi_runs").fetchone()[0]
     if not wts and not cnt: print("Nothing to clean"); sys.exit(0)

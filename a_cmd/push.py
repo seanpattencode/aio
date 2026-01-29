@@ -1,7 +1,7 @@
 """aio push - first real, then instant for 10min"""
 import sys, os, subprocess as sp, time
 
-_DIR = os.path.expanduser('~/.local/share/aios/logs')
+_DIR = os.path.expanduser('~/.local/share/a/logs')
 _LOG, _OK = f'{_DIR}/push.log', f'{_DIR}/push.ok'
 _TTL = 600  # 10 min
 

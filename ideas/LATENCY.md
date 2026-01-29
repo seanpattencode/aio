@@ -30,25 +30,27 @@ The difference isn't 2 characters. It's the difference between "typing a command
 
 One hour isn't much. But it's one hour of pure friction - the worst kind of time.
 
-## LLM generation savings
+## LLM token & binary savings
 
-LLMs generate tokens sequentially. Fewer characters = faster output.
+Tokenization varies by model. "a" is always 1 token. "aio" might be 1-2 tokens depending on the tokenizer's vocabulary. "ai" vs "aio" can tokenize differently even though the absolute difference is small - tokenizers have cliffs where adding one character creates a new token.
 
-```
-"aio" = 3 chars, ~50ms to generate
-"a"   = 1 char,  ~20ms to generate
-Savings: ~30ms per invocation
-```
-
-Sounds trivial. Now multiply:
+Even when token count is equal, fewer characters = fewer bytes everywhere:
 
 ```
-30ms × 1 billion agent calls/day = 347 days of GPU time saved daily
+"aio" = 3 bytes per occurrence
+"a"   = 1 byte per occurrence
+Savings: 2 bytes × every log line, script, prompt, response
 ```
 
-At $2/GPU-hour, that's **$16,000/day** in compute savings industry-wide. Per year: **$6M**.
+At scale:
 
-The rename from `aio` to `a` isn't just UX. It's infrastructure.
+```
+2 bytes × 1 billion agent invocations/day × 365 = 730 GB/year
+```
+
+That's 730 GB less storage, bandwidth, and context window consumed annually - just from the command name. Multiply across every agent framework adopting short names and the savings compound.
+
+The rename from `aio` to `a` isn't just UX. It's infrastructure efficiency.
 
 ## Mobile error probability
 
@@ -89,6 +91,19 @@ Every design decision that seems like micro-optimization for a power user is acc
 
 And you don't need to know English to type `a`. It's just a letter - universal, no vocabulary required. `aio` means nothing unless you know it stands for "all-in-one." `a` means nothing, and that's the point.
 
+## Assistive technology
+
+For users with motor disabilities, every character is costly:
+
+- **Single switch** - 1 char vs 3 is 3× the selections
+- **Eye gaze** - fewer dwell targets, fewer saccades
+- **Voice control** - "a" is one phoneme, "aio" is three syllables
+- **Tremors** - fewer keys to hit means fewer misses
+- **Sip-and-puff** - each character is a breath
+- **Morse input** - `a` is `·−`, `aio` is `·−/··/−−−`
+
+For someone using assistive tech, `aio` → `a` isn't 1 hour/year. It's the difference between usable and not.
+
 ## Why this matters
 
 Friction shapes behavior. Every millisecond of latency between thought and action is a chance for distraction, hesitation, context switch.
@@ -97,9 +112,25 @@ At sub-20ms, the tool becomes an extension of the nervous system. Above it, the 
 
 The goal isn't saving time. The goal is removing the gap between thinking and doing.
 
+## Dominance
+
+`a` strictly dominates `aio`. In every state where you can type `aio`, you can type `a`. `a` is never worse. `a` is often strictly better (speed, errors, accessibility, prewarming, bytes).
+
+No tradeoff. No "it depends." The only costs are one-time: migration pain, discoverability, communication awkwardness. Transition costs, not ongoing. Once paid, `a` dominates forever.
+
+Remapping to a different command name? Will add when someone yells at me to do it.
+
+## Prewarming
+
+Single character = unambiguous intent signal. Eye tracking sees gaze move to `a`, system starts prewarming before the keystroke lands. Longer commands can't do this - "ai" could become "aim", "aio" could become "aioli". But `a` followed by nothing is `a`.
+
+Predictive systems need short, unambiguous tokens. `a` is as short as it gets.
+
 ## The end state
 
 Today: `a` + Enter. Two actions, ~40ms.
+
+Tomorrow: Eye gaze hits `a`, system prewarms. Keystroke confirms. Latency hidden.
 
 Eventually: single key (caps lock or similar). One action, ~15ms.
 

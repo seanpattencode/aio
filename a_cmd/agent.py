@@ -18,7 +18,7 @@ def run():
         agent = wda if wda in sess else 'g'; task = ' '.join(sys.argv[3:]) if wda in sess else ' '.join(sys.argv[2:])
         if not task:
             if existing: print("Active agents:"); [print(f"  {i}. {s}") for i,s in enumerate(existing)]
-            _die("Usage: aio agent [g|c|l|#|name] <task>")
+            _die("Usage: a agent [g|c|l|#|name] <task>")
         sn = f"agent-{agent}-{int(time.time())}"; _, cmd = sess[agent]
         parent = sp.run(['tmux', 'display-message', '-p', '#S'], capture_output=True, text=True).stdout.strip(); parent = parent if parent.startswith('agent-') else None
         print(f"Agent: {agent} | Task: {task[:50]}..."); tm.new(sn, os.getcwd(), cmd or '', None); _start_log(sn, parent)
@@ -32,7 +32,7 @@ def run():
             last_out = out
 
     timeout, done_file = 300, Path(f"{DATA_DIR}/.done"); done_file.unlink(missing_ok=True)
-    prompt = f'{task}\n\nCommands: "aio agent g <task>" spawns gemini subagent, "aio agent l <task>" spawns claude subagent. Subagents auto-signal when done. When YOUR task is fully complete, run: aio done'
+    prompt = f'{task}\n\nCommands: "a agent g <task>" spawns gemini subagent, "a agent l <task>" spawns claude subagent. Subagents auto-signal when done. When YOUR task is fully complete, run: a done'
     print(f"Sending to {sn}..."); tm.send(sn, prompt); time.sleep(0.3); sp.run(['tmux', 'send-keys', '-t', sn, 'Enter'])
     print("Waiting for completion..."); start = time.time()
     while not done_file.exists():

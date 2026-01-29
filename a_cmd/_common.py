@@ -6,12 +6,12 @@ from pathlib import Path
 # Constants
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
-DATA_DIR = os.path.expanduser("~/.local/share/aios")
+DATA_DIR = os.path.expanduser("~/.local/share/a")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
 EVENTS_PATH = os.path.join(DATA_DIR, "events.jsonl")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 def _get_dev():
-    f = os.path.expanduser('~/.local/share/aios/.device')
+    f = os.path.expanduser('~/.local/share/a/.device')
     if os.path.exists(f): return open(f).read().strip()
     d = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
     os.makedirs(os.path.dirname(f), exist_ok=True); open(f,'w').write(d)
@@ -19,10 +19,10 @@ def _get_dev():
 DEVICE_ID = _get_dev()
 _GP, _GT = '_aio_ghost_', 300
 _GM = {'c': 'l', 'l': 'l', 'g': 'g', 'o': 'l', 'co': 'c', 'cp': 'c', 'lp': 'l', 'gp': 'g'}
-_AIO_DIR = os.path.expanduser('~/.aios')
+_AIO_DIR = os.path.expanduser('~/.a')
 _AIO_CONF = os.path.join(_AIO_DIR, 'tmux.conf')
 _USER_CONF = os.path.expanduser('~/.tmux.conf')
-_SRC_LINE = 'source-file ~/.aios/tmux.conf  # aio'
+_SRC_LINE = 'source-file ~/.a/tmux.conf  # a'
 RCLONE_REMOTES, RCLONE_BACKUP_PATH = ('aio-gdrive', 'aio-gdrive2'), 'aio-backup'
 
 # Basic helpers
@@ -116,7 +116,7 @@ def init_db():
         if 'device' not in [r[1] for r in c.execute("PRAGMA table_info(agent_logs)")]: c.execute("ALTER TABLE agent_logs ADD COLUMN device TEXT")
         if c.execute("SELECT COUNT(*) FROM config").fetchone()[0] == 0:
             dp = get_prompt('default') or ''
-            for k, v in [('claude_prompt', dp), ('codex_prompt', dp), ('gemini_prompt', dp), ('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees")), ('multi_default', 'l:3')]: c.execute("INSERT INTO config VALUES (?, ?)", (k, v))
+            for k, v in [('claude_prompt', dp), ('codex_prompt', dp), ('gemini_prompt', dp), ('worktrees_dir', os.path.expanduser("~/projects/aWorktrees")), ('multi_default', 'l:3')]: c.execute("INSERT INTO config VALUES (?, ?)", (k, v))
         c.execute("INSERT OR IGNORE INTO config VALUES ('multi_default', 'l:3')")
         c.execute("INSERT OR IGNORE INTO config VALUES ('claude_prefix', 'Ultrathink. ')")
         np = not c.execute("SELECT 1 FROM projects").fetchone()
@@ -241,7 +241,7 @@ def cloud_login(remote=None):
     rc = get_rclone() or cloud_install()
     if not rc: print("✗ rclone install failed"); return False
     rem = remote or next((r for r in RCLONE_REMOTES if r not in _configured_remotes()), None)
-    if not rem: print("✗ All slots full. Run: aio gdrive logout"); return False
+    if not rem: print("✗ All slots full. Run: a gdrive logout"); return False
     sp.run([rc, 'config', 'create', rem, 'drive'])
     if rem not in _configured_remotes(): print("✗ Login failed - try again"); return False
     print(f"✓ Logged in {rem} as {cloud_account(rem) or 'unknown'}"); cloud_sync(wait=True)
@@ -322,7 +322,7 @@ bind-key -T root MouseDown1Status if -F '#{{==:#{{mouse_status_range}},window}}'
     os.makedirs(_AIO_DIR, exist_ok=True)
     with open(_AIO_CONF, 'w') as f: f.write(conf)
     uc = Path(_USER_CONF).read_text() if os.path.exists(_USER_CONF) else ''
-    if _SRC_LINE not in uc and '~/.aios/tmux.conf' not in uc:
+    if _SRC_LINE not in uc and '~/.a/tmux.conf' not in uc:
         with open(_USER_CONF, 'a') as f: f.write(f'\n{_SRC_LINE}\n')
     return True
 
@@ -540,57 +540,57 @@ def check_updates():
 def show_update():
     m = os.path.join(DATA_DIR, '.update_available')
     if os.path.exists(m):
-        if 'behind' in _sg('status', '-uno').stdout: print("! Update available! Run 'aio update'")
+        if 'behind' in _sg('status', '-uno').stdout: print("! Update available! Run 'a update'")
         else: os.path.exists(m) and os.remove(m)
 
 # Help text
-HELP_SHORT = """aio c|co|g|a    Start claude/codex/gemini/aider
-aio <#>         Open project by number
-aio prompt      Manage default prompt
-aio help        All commands"""
+HELP_SHORT = """a c|co|g|ai     Start claude/codex/gemini/aider
+a <#>           Open project by number
+a prompt        Manage default prompt
+a help          All commands"""
 
-HELP_FULL = """aio - AI agent session manager
+HELP_FULL = """a - AI agent session manager
 
-AGENTS          c=claude  co=codex  g=gemini  a=aider
-  aio <key>           Start agent in current dir
-  aio <key> <#>       Start agent in project #
-  aio <key>++         Start agent in new worktree
+AGENTS          c=claude  co=codex  g=gemini  ai=aider
+  a <key>             Start agent in current dir
+  a <key> <#>         Start agent in project #
+  a <key>++           Start agent in new worktree
 
 PROJECTS
-  aio <#>             cd to project #
-  aio add             Add current dir as project
-  aio remove <#>      Remove project
-  aio move <#> <#>    Reorder project
-  aio scan            Add your repos fast
+  a <#>               cd to project #
+  a add               Add current dir as project
+  a remove <#>        Remove project
+  a move <#> <#>      Reorder project
+  a scan              Add your repos fast
 
 GIT
-  aio push [msg]      Commit and push
-  aio pull            Sync with remote
-  aio diff            Show changes
-  aio revert          Select commit to revert to
+  a push [msg]        Commit and push
+  a pull              Sync with remote
+  a diff              Show changes
+  a revert            Select commit to revert to
 
 REMOTE
-  aio ssh             List hosts
-  aio ssh <#>         Connect to host
-  aio run <#> "task"  Run task on remote
+  a ssh               List hosts
+  a ssh <#>           Connect to host
+  a run <#> "task"    Run task on remote
 
 OTHER
-  aio jobs            Active sessions
-  aio ls              List tmux sessions
-  aio attach          Reconnect to session
-  aio kill            Kill all sessions
-  aio n "text"        Quick note
-  aio log             View agent logs
-  aio config          View/set settings
-  aio update          Update aio
-  aio mono            Generate monolith for reading
+  a jobs              Active sessions
+  a ls                List tmux sessions
+  a attach            Reconnect to session
+  a kill              Kill all sessions
+  a n "text"          Quick note
+  a log               View agent logs
+  a config            View/set settings
+  a update            Update a
+  a mono              Generate monolith for reading
 
 EXPERIMENTAL
-  aio agent "task"    Spawn autonomous subagent
-  aio hub             Scheduled jobs (systemd)
-  aio all             Multi-agent parallel runs
-  aio tree            Create git worktree
-  aio gdrive          Cloud sync (Google Drive)"""
+  a agent "task"      Spawn autonomous subagent
+  a hub               Scheduled jobs (systemd)
+  a all               Multi-agent parallel runs
+  a tree              Create git worktree
+  a gdrive            Cloud sync (Google Drive)"""
 
 def list_all(cache=True, quiet=False):
     p, a = load_proj(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(x for x,_ in p) + '\n')

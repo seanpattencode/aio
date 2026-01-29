@@ -7,7 +7,7 @@ def run():
     init_db(); cfg = load_cfg()
     sel = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] not in ('-r', '--running', 'rm') else None
     rm = sys.argv[3] if len(sys.argv) > 3 and sys.argv[2] == 'rm' else None
-    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
+    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aWorktrees"))
     running = '-r' in sys.argv or '--running' in sys.argv
     r = sp.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True); jbp = {}
     for s in (r.stdout.strip().split('\n') if r.returncode == 0 else []):

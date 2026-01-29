@@ -5,7 +5,7 @@ import sys, os
 # Fast-path for 'aio n <text>' - append-only event + sqlite insert
 # SYNC: Emits notes.add event to events.jsonl. Never delete - ack to archive. Any device can ack.
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n') and sys.argv[2][0] != '?':
-    import sqlite3, subprocess as sp, json, time, hashlib, socket, shutil; dd = os.path.expanduser("~/.local/share/aios"); db = f"{dd}/aio.db"; ef = f"{dd}/events.jsonl"; os.makedirs(dd, exist_ok=True); dev = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
+    import sqlite3, subprocess as sp, json, time, hashlib, socket, shutil; dd = os.path.expanduser("~/.local/share/a"); db = f"{dd}/aio.db"; ef = f"{dd}/events.jsonl"; os.makedirs(dd, exist_ok=True); dev = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
     eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]; txt = ' '.join(sys.argv[2:]); ev = json.dumps({"ts": time.time(), "id": eid, "dev": dev, "op": "notes.add", "d": {"t": txt}})
     open(ef, "a").write(ev + "\n"); c = sqlite3.connect(db); c.execute("CREATE TABLE IF NOT EXISTS notes(id,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)"); c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close()
     if os.path.isdir(f"{dd}/.git") and shutil.which('gh') and sp.run(['gh','auth','status'],capture_output=True).returncode==0:
@@ -17,13 +17,13 @@ if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n') and sys.argv[2][0] != '?':
 # Fast-path for 'aio i' - show cache instantly, start interactive in background
 # NOTE: Agents test with `bash -i -c 'aio i'`, time with `bash -i -c 'time aio i < /dev/null' 2>&1`
 if len(sys.argv) > 1 and sys.argv[1] == 'i':
-    c = os.path.expanduser("~/.local/share/aios/i_cache.txt")
+    c = os.path.expanduser("~/.local/share/a/i_cache.txt")
     if not sys.stdin.isatty(): print(open(c).read() if os.path.exists(c) else '', end=''); sys.exit(0)
     if not os.environ.get('_AIO_I'): items = (open(c).read().strip().split('\n')[:8]+['']*8)[:8] if os.path.exists(c) else ['']*8; print("Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n > "+items[0]+'\n'+'\n'.join(f"   {m}" for m in items[1:]))
 
 # Generate monolith from all modules
 if len(sys.argv) > 1 and sys.argv[1] in ('mono', 'monolith'):
-    p = os.path.expanduser("~/.local/share/aios/aio_mono.py"); open(p, 'w').write('\n\n'.join(f"# === {f} ===\n" + open(f).read() for f in sorted(__import__('glob').glob(os.path.dirname(__file__) + '/aio_cmd/*.py')))); print(p); sys.exit(0)
+    p = os.path.expanduser("~/.local/share/a/aio_mono.py"); open(p, 'w').write('\n\n'.join(f"# === {f} ===\n" + open(f).read() for f in sorted(__import__('glob').glob(os.path.dirname(__file__) + '/a_cmd/*.py')))); print(p); sys.exit(0)
 
 # Command dispatch table (like git's cmd_struct)
 # NOTE: Shell function a() defined in install.sh. aio renamed to a.
@@ -52,7 +52,7 @@ def main():
     from datetime import datetime
     _CMD = ' '.join(sys.argv[1:3]) if len(sys.argv) > 1 else 'help'
     def _save_timing():
-        try: d = os.path.expanduser("~/.local/share/aios"); os.makedirs(d, exist_ok=True); open(f"{d}/timing.jsonl", "a").write(json.dumps({"cmd": _CMD, "ms": int((time.time() - _START) * 1000), "ts": datetime.now().isoformat()}) + "\n")
+        try: d = os.path.expanduser("~/.local/share/a"); os.makedirs(d, exist_ok=True); open(f"{d}/timing.jsonl", "a").write(json.dumps({"cmd": _CMD, "ms": int((time.time() - _START) * 1000), "ts": datetime.now().isoformat()}) + "\n")
         except: pass
     atexit.register(_save_timing)
 
@@ -61,23 +61,23 @@ def main():
 
     if cmd_name:
         # Lazy import command module
-        mod = __import__(f'aio_cmd.{cmd_name}', fromlist=[cmd_name])
+        mod = __import__(f'a_cmd.{cmd_name}', fromlist=[cmd_name])
         mod.run()
     elif arg and arg.endswith('++') and not arg.startswith('w'):
         # Worktree++ command
-        from aio_cmd import wt_plus; wt_plus.run()
+        from a_cmd import wt_plus; wt_plus.run()
     elif arg and arg.startswith('w') and arg not in ('watch', 'web') and not os.path.isfile(arg):
         # Worktree command
-        from aio_cmd import wt; wt.run()
+        from a_cmd import wt; wt.run()
     elif arg and (os.path.isdir(os.path.expanduser(arg)) or os.path.isfile(arg) or (arg.startswith('/projects/') and os.path.isdir(os.path.expanduser('~' + arg)))):
         # Directory/file command
-        from aio_cmd import dir_file; dir_file.run()
+        from a_cmd import dir_file; dir_file.run()
     elif arg and arg.isdigit():
         # Project number shortcut
-        from aio_cmd import project_num; project_num.run()
+        from a_cmd import project_num; project_num.run()
     else:
         # Session command (fallback)
-        from aio_cmd import sess; sess.run()
+        from a_cmd import sess; sess.run()
 
 if __name__ == '__main__':
     main()

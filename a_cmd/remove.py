@@ -5,7 +5,7 @@ from . _common import init_db, load_proj, load_apps, rm_proj, rm_app, auto_backu
 def run():
     init_db()
     wda = sys.argv[2] if len(sys.argv) > 2 else None
-    if not wda: print("Usage: aio remove <#|name>\n"); list_all(); sys.exit(0)
+    if not wda: print("Usage: a remove <#|name>\n"); list_all(); sys.exit(0)
     projs, apps = load_proj(), load_apps()
     if wda.isdigit():
         idx = int(wda)

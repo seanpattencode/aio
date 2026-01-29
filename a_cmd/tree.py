@@ -7,7 +7,7 @@ def run():
     init_db()
     cfg = load_cfg()
     PROJ = load_proj()
-    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aiosWorktrees"))
+    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aWorktrees"))
     wda = sys.argv[2] if len(sys.argv) > 2 else None
     proj = PROJ[int(wda)] if wda and wda.isdigit() and int(wda) < len(PROJ) else os.getcwd()
     _git(proj, 'rev-parse', '--git-dir').returncode == 0 or _die("x Not a git repo")

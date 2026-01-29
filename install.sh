@@ -20,16 +20,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
         sed -i '' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
         cat >> "$RC" << 'AFUNC'
 a() {
-    local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt icache=~/.local/share/aios/i_cache.txt
-    [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/aio "$@"; return; }
+    local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt icache=~/.local/share/a/i_cache.txt
+    [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/a "$@"; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
     local d="${1/#~/$HOME}"; [[ "$1" == /projects/* ]] && d="$HOME$1"; [[ -d "$d" ]] && { echo "📂 $d"; cd "$d"; ls; return; }
-    [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"; return; }
-    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; head -8 "$icache" 2>/dev/null | awk 'NR==1{print " > "$0}NR>1{print "   "$0}'; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/aio "$@"; printf '\033[?25h'; return; }
-    [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/aios/timing.jsonl; return $r; }
-    command python3 ~/.local/bin/aio "$@"
+    [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/a "$@"; return; }
+    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; head -8 "$icache" 2>/dev/null | awk 'NR==1{print " > "$0}NR>1{print "   "$0}'; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/a "$@"; printf '\033[?25h'; return; }
+    [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/a/timing.jsonl; return $r; }
+    command python3 ~/.local/bin/a "$@"
 }
-aio() { echo "'a' saves 2 chars×0.4s×50/day×365=2h/year. See ideas/LATENCY.md"; a "$@"; }
+aio() { echo "aio has been renamed a. Yeah i know it sucks but its faster in the long term. 2.9× fewer errors on mobile, don't need English to type a. See ideas/LATENCY.md"; a "$@"; }
 AFUNC
     done
     ok "shell functions (bash + zsh)"
@@ -97,13 +97,13 @@ case $OS in
 esac
 
 # aio itself
-AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/aio.py"
-if [[ -f "$SCRIPT_DIR/aio.py" ]]; then
-    ln -sf "$SCRIPT_DIR/aio.py" "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (local)"
-    ln -sf "$SCRIPT_DIR/aio-i" "$BIN/aio-i" && chmod +x "$BIN/aio-i" && ok "aio-i installed (local)"
+AIO_URL="https://raw.githubusercontent.com/seanpattencode/aio/main/a.py"
+if [[ -f "$SCRIPT_DIR/a.py" ]]; then
+    ln -sf "$SCRIPT_DIR/a.py" "$BIN/a" && chmod +x "$BIN/a" && ok "a installed (local)"
+    ln -sf "$SCRIPT_DIR/a-i" "$BIN/a-i" && chmod +x "$BIN/a-i" && ok "a-i installed (local)"
 else
-    curl -fsSL "$AIO_URL" -o "$BIN/aio" && chmod +x "$BIN/aio" && ok "aio installed (remote)"
-    curl -fsSL "${AIO_URL%aio.py}aio-i" -o "$BIN/aio-i" && chmod +x "$BIN/aio-i" && ok "aio-i installed (remote)"
+    curl -fsSL "$AIO_URL" -o "$BIN/a" && chmod +x "$BIN/a" && ok "a installed (remote)"
+    curl -fsSL "${AIO_URL%a.py}a-i" -o "$BIN/a-i" && chmod +x "$BIN/a-i" && ok "a-i installed (remote)"
 fi
 
 # PATH + aio function in both shells
@@ -113,16 +113,16 @@ for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     sed -i '' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
     cat >> "$RC" << 'AFUNC'
 a() {
-    local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt icache=~/.local/share/aios/i_cache.txt
-    [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/aio "$@"; return; }
+    local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt icache=~/.local/share/a/i_cache.txt
+    [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/a "$@"; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
     local d="${1/#~/$HOME}"; [[ "$1" == /projects/* ]] && d="$HOME$1"; [[ -d "$d" ]] && { echo "📂 $d"; cd "$d"; ls; return; }
-    [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/aio "$@"; return; }
-    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; head -8 "$icache" 2>/dev/null | awk 'NR==1{print " > "$0}NR>1{print "   "$0}'; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/aio "$@"; printf '\033[?25h'; return; }
-    [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/aios/timing.jsonl; return $r; }
-    command python3 ~/.local/bin/aio "$@"
+    [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/a "$@"; return; }
+    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; head -8 "$icache" 2>/dev/null | awk 'NR==1{print " > "$0}NR>1{print "   "$0}'; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/a "$@"; printf '\033[?25h'; return; }
+    [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/a/timing.jsonl; return $r; }
+    command python3 ~/.local/bin/a "$@"
 }
-aio() { echo "'a' saves 2 chars×0.4s×50/day×365=2h/year. See ideas/LATENCY.md"; a "$@"; }
+aio() { echo "aio has been renamed a. Yeah i know it sucks but its faster in the long term. 2.9× fewer errors on mobile, don't need English to type a. See ideas/LATENCY.md"; a "$@"; }
 AFUNC
 done
 ok "shell functions (bash + zsh)"
@@ -161,13 +161,13 @@ if ! command -v ollama &>/dev/null; then
 else ok "ollama (exists)"; fi
 
 # Enable aio tmux config if no existing tmux.conf (adds mouse support, status bar)
-[[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/aio" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
+[[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/a" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
 
 # Generate cache
-python3 "$BIN/aio" >/dev/null 2>&1 && ok "cache generated"
+python3 "$BIN/a" >/dev/null 2>&1 && ok "cache generated"
 
 # Setup sync (prompt gh login if needed)
-command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && python3 "$BIN/aio" backup setup 2>/dev/null && ok "sync configured"; }
+command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && python3 "$BIN/a" backup setup 2>/dev/null && ok "sync configured"; }
 
 # Final message
 echo ""

@@ -2,7 +2,7 @@
 import sys, os, subprocess as sp
 from . _common import init_db, load_proj, load_apps, fmt_cmd, SCRIPT_DIR
 
-_OK = os.path.expanduser('~/.local/share/aios/logs/push.ok')
+_OK = os.path.expanduser('~/.local/share/a/logs/push.ok')
 
 def run():
     init_db(); PROJ = load_proj(); APPS = load_apps(); idx = int(sys.argv[1])

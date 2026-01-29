@@ -14,7 +14,7 @@ def run():
         devs = [r[0] for r in c.execute("SELECT DISTINCT dev FROM notes WHERE dev IS NOT NULL")]
         notes = c.execute("SELECT id,t,d,proj,dev FROM notes WHERE s=0 AND t LIKE ? ORDER BY c DESC", (f'%{raw[1:]}%',)).fetchall() if raw else c.execute("SELECT id,t,d,proj,dev FROM notes WHERE s=0 ORDER BY c DESC").fetchall()
         filt = None  # current device filter
-        if not notes: print("aio n <text>"); sys.exit()
+        if not notes: print("a n <text>"); sys.exit()
         if not sys.stdin.isatty(): [print(f"{t}" + (f" @{p}" if p else "")) for _,t,_,p,_ in notes[:10]]; sys.exit()
         print(f"{len(notes)} notes | [a]ck [e]dit [s]earch [d]evice [p]rojects [m]ore [q]uit | 1/20=due")
         i = 0

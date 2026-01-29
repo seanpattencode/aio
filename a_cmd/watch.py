@@ -4,7 +4,7 @@ from . _common import _die
 
 def run():
     wda = sys.argv[2] if len(sys.argv) > 2 else None
-    wda or _die("Usage: aio watch <session> [duration]")
+    wda or _die("Usage: a watch <session> [duration]")
     dur = int(sys.argv[3]) if len(sys.argv) > 3 else None
     print(f"Watching '{wda}'" + (f" for {dur}s" if dur else " (once)"))
     patterns = {re.compile(p): r for p, r in [(r'Are you sure\?', 'y'), (r'Continue\?', 'yes'), (r'\[y/N\]', 'y'), (r'\[Y/n\]', 'y')]}
