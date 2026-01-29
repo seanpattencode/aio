@@ -14,9 +14,9 @@ def getch():
     finally: termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 def refresh_cache():
-    from . _common import load_proj, load_apps, init_db
+    from ._common import load_proj, load_apps, init_db
     init_db(); p, a = load_proj(), load_apps()
-    items = [f"{i}:{os.path.basename(x)}" for i,x in enumerate(p)] + [f"{len(p)+i}:{n}" for i,(n,_) in enumerate(a)] + CMDS
+    items = [f"{i}:{os.path.basename(x[0])}" for i,x in enumerate(p)] + [f"{len(p)+i}:{n}" for i,(n,_) in enumerate(a)] + CMDS
     os.makedirs(os.path.dirname(CACHE), exist_ok=True); open(CACHE, 'w').write('\n'.join(items))
 
 def run():
@@ -53,7 +53,7 @@ def run():
         elif ch == '\r' and matches:
             cmd = matches[sel].split(':')[0] if ':' in matches[sel] else matches[sel]
             print(f"\n\n\033[KRunning: a {cmd}\n")
-            os.execvp(sys.executable, [sys.executable, os.path.dirname(__file__) + '/../aio.py', cmd])
+            os.execvp(sys.executable, [sys.executable, os.path.dirname(__file__) + '/../a.py', cmd])
         elif ch in ('\x03', '\x04') or (ch == 'q' and not buf): break  # Ctrl+C, Ctrl+D, q
         elif ch.isalnum() or ch in '-_ ': buf, sel = buf + ch, 0
 

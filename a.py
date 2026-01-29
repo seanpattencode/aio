@@ -2,27 +2,22 @@
 """a - AI agent session manager"""
 import sys, os
 
-# Fast-path: 'a n <text>' - append event + sqlite insert
+# Fast-path: 'a n <text>' - insert + sync full log to both gdrives
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n') and sys.argv[2][0] != '?':
-    import sqlite3, subprocess as sp, json, time, hashlib, socket, shutil
+    import sqlite3, json, time, hashlib, shutil
     dd = os.path.expanduser("~/.local/share/a"); os.makedirs(dd, exist_ok=True)
-    dev = (sp.run(['getprop','ro.product.model'],capture_output=True,text=True).stdout.strip().replace(' ','-') or socket.gethostname()) if os.path.exists('/data/data/com.termux') else socket.gethostname()
     eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]; txt = ' '.join(sys.argv[2:])
-    ev = json.dumps({"ts": time.time(), "id": eid, "dev": dev, "op": "notes.add", "d": {"t": txt}})
-    ef = f"{dd}/events.jsonl"; open(ef, "a").write(ev + "\n")
     c = sqlite3.connect(f"{dd}/aio.db"); c.execute("CREATE TABLE IF NOT EXISTS notes(id,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)")
-    c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close()
-    if os.path.isdir(f"{dd}/.git") and shutil.which('gh') and sp.run(['gh','auth','status'],capture_output=True).returncode==0:
-        g = f'cd "{dd}"&&git add -A&&git diff --cached --quiet||git -c user.name=a -c user.email=a@a commit -m n -q'
-        sp.run(f'{g};git fetch -q&&git -c user.name=a -c user.email=a@a merge -q -X theirs --no-edit origin/main 2>/dev/null',shell=True,capture_output=True)
-        eid in open(ef).read() or open(ef,"a").write(ev+"\n"); r=sp.run(f'{g};git push origin HEAD:main -q',shell=True,capture_output=True,text=True)
-        print("✓" if r.returncode==0 else f"✓({r.stderr.strip()[:20]})")
-    else: print("✓")
-    sys.exit(0)
+    c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    log = '\n'.join(json.dumps({"id":r[0],"t":r[1],"s":r[2],"c":r[3]}) for r in c.execute("SELECT id,t,s,c FROM notes ORDER BY c")); c.close()
+    for gd in [os.path.expanduser("~/gdrive/a"), os.path.expanduser("~/gdrive2/a")]:
+        if os.path.isdir(os.path.dirname(gd)): os.makedirs(gd, exist_ok=True); open(f"{gd}/notes.jsonl", "w").write(log + "\n")
+    print("✓"); sys.exit(0)
 
 # Fast-path: 'a i' - pipe mode only
 if len(sys.argv) > 1 and sys.argv[1] == 'i' and not sys.stdin.isatty():
-    c = os.path.expanduser("~/.local/share/a/i_cache.txt"); print(open(c).read() if os.path.exists(c) else '', end=''); sys.exit(0)
+    c = os.path.expanduser("~/.local/share/a/i_cache.txt")
+    print('\n'.join(x for x in open(c).read().split('\n') if x and x[0] not in '<=>') if os.path.exists(c) else ''); sys.exit(0)
 
 # Generate monolith
 if len(sys.argv) > 1 and sys.argv[1] in ('mono', 'monolith'):

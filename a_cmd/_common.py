@@ -208,15 +208,15 @@ def _configured_remotes():
     return [rem for rem in RCLONE_REMOTES if r.returncode == 0 and f'{rem}:' in r.stdout]
 def cloud_configured(): return bool(_configured_remotes())
 def cloud_account(remote=None):
-    if not (rc := get_rclone()): return None
+    if not (rc := get_rclone()): return "(no rclone)"
     try:
         rem = remote or _configured_remotes()[0]
         token = json.loads(json.loads(sp.run([rc, 'config', 'dump'], capture_output=True, text=True).stdout).get(rem, {}).get('token', '{}')).get('access_token')
-        if not token: return None
+        if not token: return "(no token)"
         import urllib.request
         u = json.loads(urllib.request.urlopen(urllib.request.Request('https://www.googleapis.com/drive/v3/about?fields=user', headers={'Authorization': f'Bearer {token}'}), timeout=5).read()).get('user', {})
         return f"{u.get('displayName', '')} <{u.get('emailAddress', 'unknown')}>"
-    except: return None
+    except Exception as e: return f"(offline)" if 'urlopen' in str(e.__traceback__.tb_frame.f_code.co_name) else "(token expired)"
 def cloud_sync(wait=False):
     rc, remotes = get_rclone(), _configured_remotes()
     if not rc or not remotes: return False, None
@@ -257,7 +257,7 @@ def cloud_logout(remote=None):
 def cloud_status():
     remotes, slots = _configured_remotes(), len(RCLONE_REMOTES)
     if remotes:
-        for rem in remotes: print(f"✓ {rem}: {cloud_account(rem) or '?'}")
+        for rem in remotes: print(f"✓ {rem}: {cloud_account(rem)}")
         free = slots - len(remotes)
         free and print(f"\n{free} slot{'s' if free > 1 else ''} available. Add another account: aio gdrive login")
         return True
