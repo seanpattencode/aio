@@ -1,6 +1,6 @@
 """aio add - Add project or command"""
 import sys, os
-from . _common import init_db, add_proj, add_app, auto_backup, list_all
+from . _common import init_db, add_proj, add_app, list_all
 
 def run():
     init_db()
@@ -16,9 +16,9 @@ def run():
         cwd, home = os.getcwd(), os.path.expanduser('~')
         if not ig and cwd != home and not cv.startswith('cd '): cv = f"cd {cwd.replace(home, '~')} && {cv}"
         ok, msg = add_app(cn, cv); print(f"{'✓' if ok else 'x'} {msg}")
-        if ok: auto_backup(); list_all()
+        if ok: list_all()
         sys.exit(0 if ok else 1)
     path = os.path.abspath(os.path.expanduser(args[0])) if args else os.getcwd()
     ok, msg = add_proj(path); print(f"{'✓' if ok else 'x'} {msg}")
-    if ok: auto_backup(); list_all()
+    if ok: list_all()
     sys.exit(0 if ok else 1)

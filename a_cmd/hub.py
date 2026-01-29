@@ -1,7 +1,7 @@
 """aio hub - Scheduled jobs"""
 import sys, os, subprocess as sp, shutil, re
 from pathlib import Path
-from . _common import init_db, load_cfg, load_proj, load_apps, db, db_sync, emit_event, DEVICE_ID, DATA_DIR
+from . _common import init_db, load_cfg, load_proj, load_apps, db, DEVICE_ID, DATA_DIR
 
 def run():
     init_db()
@@ -11,12 +11,10 @@ def run():
     wda = sys.argv[2] if len(sys.argv) > 2 else None
     _tx = os.path.exists('/data/data/com.termux')
     LOG = f"{DATA_DIR}/hub.log"
-    db_sync(pull=True)
-
+    
     if _tx:
         c = db(); c.execute("UPDATE hub_jobs SET device=? WHERE device='localhost'", (DEVICE_ID,)); c.commit(); c.close()
-        db_sync()
-
+        
     _pt = lambda s: (lambda m: f"{int(m[1])+(12 if m[3]=='pm' and int(m[1])!=12 else (-int(m[1]) if m[3]=='am' and int(m[1])==12 else 0))}:{m[2]}" if m else s)(re.match(r'^(\d{1,2}):(\d{2})\s*(am|pm)?$', s.lower().strip()))
 
     def _install(nm, sched, cmd):
@@ -66,8 +64,7 @@ def run():
         (e := "Missing name" if not n else "Bad sched (need : e.g. 9:00, *:0/30)" if ':' not in (s or '') else "Missing cmd" if not c else "") and sys.exit(f"✗ {e}")
         s = _pt(s) if s[0].isdigit() else s
         with db() as cn: cn.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,1)", (n, s, c, DEVICE_ID)); cn.commit()
-        emit_event('hub', 'add', {'name': n, 'schedule': s, 'prompt': c, 'device': DEVICE_ID, 'enabled': 1})
-        cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ').replace('python ', f'{sys.executable} '); _install(n, s, cmd); db_sync(); print(f"✓ {n} @ {s}")
+        cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ').replace('python ', f'{sys.executable} '); _install(n, s, cmd); print(f"✓ {n} @ {s}")
     elif wda == 'sync':
         [_uninstall(j[1]) for j in jobs]; mine = [j for j in jobs if j[4] == DEVICE_ID and j[5]]
         for j in mine:
@@ -83,7 +80,7 @@ def run():
         new = sys.argv[4] if len(sys.argv) > 4 else (sys.stdin.isatty() and input(f"Name [{j[1]}]: ").strip() if j else '')
         if not j or not new: return print(f"x {n}?") if not j else None
         _uninstall(j[1]); c = db(); c.execute("UPDATE hub_jobs SET name=? WHERE id=?", (new, j[0])); c.commit()
-        emit_event('hub', 'rename', {'old': j[1], 'new': new}); db_sync(); print(f"✓ {new} (run 'sync' to update timer)")
+        print(f"✓ {new} (run 'sync' to update timer)")
     elif wda in ('on', 'off', 'rm', 'run'):
         n = sys.argv[3] if len(sys.argv) > 3 else ''; j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else next((x for x in jobs if x[1] == n), None)
         if not j: print(f"x {n}?"); return
@@ -94,13 +91,13 @@ def run():
                 r = sp.run([sys.executable, __file__.replace('hub.py','../aio.py'), 'ssh', hosts[j[4].lower()], 'aio', 'hub', wda, j[1]], capture_output=True, text=True)
                 print(r.stdout.strip() or f"x {j[4]} failed"); return
             en = wda == 'on'; c = db(); c.execute("UPDATE hub_jobs SET enabled=? WHERE id=?", (en, j[0])); c.commit(); c.close()
-            _install(j[1], j[2], j[3]) if en else _uninstall(j[1]); db_sync(); print(f"✓ {j[1]} {wda}"); return
+            _install(j[1], j[2], j[3]) if en else _uninstall(j[1]); print(f"✓ {j[1]} {wda}"); return
         if wda == 'rm':
             _uninstall(j[1]); c = db(); c.execute("DELETE FROM hub_jobs WHERE id=?", (j[0],)); c.commit(); c.close()
-            emit_event('hub', 'archive', {'name': j[1]}); db_sync(); print(f"✓ rm {j[1]}")
+            print(f"✓ rm {j[1]}")
         else:
             from datetime import datetime
             cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../aio.py")} ').replace('python ', f'{sys.executable} ')
             print(f"Running {j[1]}...", flush=True); r = sp.run(cmd, shell=True, capture_output=True, text=True); out = r.stdout + r.stderr
             print(out) if out else None; open(LOG, 'a').write(f"\n[{datetime.now():%Y-%m-%d %I:%M:%S%p}] {j[1]}\n{out}")
-            c = db(); c.execute("UPDATE hub_jobs SET last_run=? WHERE id=?", (datetime.now().strftime('%Y-%m-%d %H:%M'), j[0])); c.commit(); c.close(); db_sync(); print(f"✓")
+            c = db(); c.execute("UPDATE hub_jobs SET last_run=? WHERE id=?", (datetime.now().strftime('%Y-%m-%d %H:%M'), j[0])); c.commit(); c.close(); print(f"✓")

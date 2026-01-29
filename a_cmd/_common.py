@@ -8,7 +8,6 @@ SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
 DATA_DIR = os.path.expanduser("~/.local/share/a")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
-EVENTS_PATH = os.path.join(DATA_DIR, "events.jsonl")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 def _get_dev():
     f = os.path.expanduser('~/.local/share/a/.device')
@@ -122,10 +121,10 @@ def init_db():
         np = not c.execute("SELECT 1 FROM projects").fetchone()
         if np:
             for p in [SCRIPT_DIR, os.path.expanduser("~/aio"), os.path.expanduser("~/projects/aio")]:
-                if os.path.isdir(p) and os.path.isdir(os.path.join(p, ".git")): emit_event("projects", "add", {"path": p}); break
+                if os.path.isdir(p) and os.path.isdir(os.path.join(p, ".git")): c.execute("INSERT INTO projects(path,display_order,device)VALUES(?,0,'*')",(p,)); break
         if np or not c.execute("SELECT 1 FROM apps").fetchone():
             ui = next((p for p in [os.path.join(SCRIPT_DIR, "aioUI.py"), os.path.expanduser("~/aio/aioUI.py"), os.path.expanduser("~/.local/bin/aioUI.py")] if os.path.exists(p)), None)
-            if ui: emit_event("apps", "add", {"name": "aioUI", "cmd": f"python3 {ui}"})
+            if ui: c.execute("INSERT INTO apps(name,command,display_order,device)VALUES(?,?,0,'*')",("aioUI",f"python3 {ui}"))
         if c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0:
             cdx, cld = 'codex -c model_reasoning_effort="high" --model gpt-5-codex --dangerously-bypass-approvals-and-sandbox', 'claude --dangerously-skip-permissions'
             for k, n, t in [('h','htop','htop'),('t','top','top'),('g','gemini','gemini --yolo'),('gemini','gemini','gemini --yolo'),('gp','gemini-p','gemini --yolo "{GEMINI_PROMPT}"'),('c','claude',cld),('claude','claude',cld),('cp','claude-p',f'{cld} "{{CLAUDE_PROMPT}}"'),('l','claude',cld),('lp','claude-p',f'{cld} "{{CLAUDE_PROMPT}}"'),('o','claude',cld),('co','codex',cdx),('codex','codex',cdx),('cop','codex-p',f'{cdx} "{{CODEX_PROMPT}}"'),('a','aider','OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/mistral')]:
@@ -165,7 +164,7 @@ def add_proj(p):
         if c.execute("SELECT 1 FROM projects WHERE repo=? OR path=?", (repo,p)).fetchone(): return False, f"Exists: {p}"
         m = c.execute("SELECT MAX(display_order) FROM projects").fetchone()[0]
         c.execute("INSERT INTO projects (path,display_order,device,repo) VALUES (?,?,?,?)", (p, 0 if m is None else m+1, DEVICE_ID, repo)); c.commit()
-    emit_event("projects", "add", {"path": p, "repo": repo}, sync=True); _refresh_cache(); return True, f"Added: {p}"
+    _refresh_cache(); return True, f"Added: {p}"
 
 def rm_proj(i):
     with db() as c:
@@ -174,7 +173,7 @@ def rm_proj(i):
         c.execute("DELETE FROM projects WHERE id=?", (rows[i][0],))
         for j, r in enumerate(c.execute("SELECT id FROM projects ORDER BY display_order")): c.execute("UPDATE projects SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
-    emit_event("projects", "archive", {"path": rows[i][1]}, sync=True); _refresh_cache(); return True, f"Removed: {rows[i][1]}"
+    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
 def add_app(n, cmd):
     if not n or not cmd: return False, "Name and command required"
@@ -182,7 +181,7 @@ def add_app(n, cmd):
         if c.execute("SELECT 1 FROM apps WHERE name=? AND device IN (?, '*')", (n, DEVICE_ID)).fetchone(): return False, f"Exists: {n}"
         m = c.execute("SELECT MAX(display_order) FROM apps").fetchone()[0]
         c.execute("INSERT INTO apps (name, command, display_order, device) VALUES (?, ?, ?, ?)", (n, cmd, 0 if m is None else m+1, DEVICE_ID)); c.commit()
-    emit_event("apps", "add", {"name": n, "cmd": cmd}, sync=True); _refresh_cache(); return True, f"Added: {n}"
+    _refresh_cache(); return True, f"Added: {n}"
 
 def rm_app(i):
     with db() as c:
@@ -191,7 +190,7 @@ def rm_app(i):
         c.execute("DELETE FROM apps WHERE id=?", (rows[i][0],))
         for j, r in enumerate(c.execute("SELECT id FROM apps ORDER BY display_order")): c.execute("UPDATE apps SET display_order=? WHERE id=?", (j, r[0]))
         c.commit()
-    emit_event("apps", "archive", {"name": rows[i][1]}, sync=True); _refresh_cache(); return True, f"Removed: {rows[i][1]}"
+    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
 
 def fmt_cmd(c, mx=60):
     d = c.replace(os.path.expanduser('~'), '~')
@@ -428,73 +427,6 @@ def launch_dir(d, term=None):
     cmds = {'ptyxis': ['ptyxis', '--working-directory', d], 'gnome-terminal': ['gnome-terminal', f'--working-directory={d}'], 'alacritty': ['alacritty', '--working-directory', d]}
     try: sp.Popen(cmds.get(term, [])); print(f"✓ {term}: {d}"); return True
     except Exception as e: print(f"x {e}"); return False
-
-# Sync - Distributed system: events.jsonl is source of truth, aio.db is local cache
-# To sync a table: 1) emit_event() on write, 2) handle table in replay_events()
-# DB-only changes won't sync! Events sync via git, then replay rebuilds local SQLite.
-# Tables: ssh, notes, hub, projects, apps. Ops: add/archive/ack/update/rename
-def emit_event(table, op, data, device=None, sync=False):
-    """Append event to events.jsonl. Events are immutable - archive instead of delete."""
-    import hashlib; eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]
-    event = {"ts": time.time(), "id": eid, "dev": device or DEVICE_ID, "op": f"{table}.{op}", "d": data}
-    with open(EVENTS_PATH, "a") as f: f.write(json.dumps(event) + "\n")
-    sync and db_sync(); return eid
-
-def replay_events(tables=None, full=False):
-    """Incremental replay from events.jsonl. Only processes new events since last offset."""
-    if not os.path.exists(EVENTS_PATH): return
-    tables = tables or ['ssh', 'notes', 'hub', 'projects', 'apps']
-    c = sqlite3.connect(DB_PATH)
-    for t in ["sync_state(key TEXT PRIMARY KEY,val INT)","ssh(name PRIMARY KEY,host,pw)","notes(id PRIMARY KEY,t,s DEFAULT 0,d,c,proj,dev)","hub_jobs(id INTEGER PRIMARY KEY,name,schedule,prompt,device,enabled DEFAULT 1)","projects(id INTEGER PRIMARY KEY,path,display_order,device,repo)","apps(id INTEGER PRIMARY KEY,name,command,display_order,device)"]:
-        c.execute(f"CREATE TABLE IF NOT EXISTS {t}")
-    if 'repo' not in [r[1] for r in c.execute("PRAGMA table_info(projects)")]: c.execute("ALTER TABLE projects ADD COLUMN repo TEXT")
-    offset = 0 if full else (c.execute("SELECT val FROM sync_state WHERE key='offset'").fetchone() or [0])[0]
-    with open(EVENTS_PATH) as f:
-        f.seek(offset)
-        for line in f:
-            if not line.strip().startswith('{'): continue
-            try: e = json.loads(line)
-            except: continue
-            t, op = e["op"].split("."); d = e["d"]; k = d.get("path") or d.get("name") or d.get("id") or e["id"]
-            if t not in tables: continue
-            if t == "ssh":
-                if op == "add": c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)", (d.get("name",k), d.get("host",""), d.get("pw")))
-                elif op == "update": c.execute("UPDATE ssh SET host=COALESCE(?,host),pw=COALESCE(?,pw) WHERE name=?", (d.get("host"), d.get("pw"), k))
-                elif op == "archive": c.execute("DELETE FROM ssh WHERE name=?", (k,))
-                elif op == "rename": c.execute("DELETE FROM ssh WHERE name=?", (d.get("old"),)); c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)", (d["new"], d.get("host",""), d.get("pw")))
-            elif t == "notes":
-                if op == "add": c.execute("INSERT OR REPLACE INTO notes(id,t,s,d,proj,dev)VALUES(?,?,0,?,?,?)", (k, d.get("t",""), d.get("d"), d.get("proj"), e.get("dev")))
-                elif op in ("archive","ack"): c.execute("UPDATE notes SET s=1 WHERE id=?", (k,))
-                elif op == "update": c.execute("UPDATE notes SET t=COALESCE(?,t),d=COALESCE(?,d),proj=COALESCE(?,proj) WHERE id=?", (d.get("t"), d.get("d"), d.get("proj"), k))
-            elif t == "hub":
-                if op == "add": c.execute("INSERT OR REPLACE INTO hub_jobs(name,schedule,prompt,device,enabled)VALUES(?,?,?,?,?)", (d.get("name",k), d.get("schedule",""), d.get("prompt",""), d.get("device",""), d.get("enabled",1)))
-                elif op == "archive": c.execute("DELETE FROM hub_jobs WHERE name=?", (k,))
-            elif t == "projects":
-                if op == "add":
-                    if d.get("repo"): c.execute("UPDATE projects SET repo=? WHERE path=? AND repo IS NULL",(d["repo"],d["path"]))
-                    c.execute("SELECT 1 FROM projects WHERE path=?",(d["path"],)).fetchone() or c.execute("INSERT INTO projects(path,display_order,device,repo)VALUES(?,?,?,?)", (d["path"], int(e.get("ts",0))%1000, e.get("dev","*"), d.get("repo")))
-                elif op == "archive": c.execute("DELETE FROM projects WHERE path=?", (k,))
-            elif t == "apps":
-                if op == "add": c.execute("SELECT 1 FROM apps WHERE name=?",(d["name"],)).fetchone() or c.execute("INSERT INTO apps(name,command,display_order,device)VALUES(?,?,?,?)", (d["name"], d.get("cmd",""), int(e.get("ts",0))%1000, e.get("dev","*")))
-                elif op == "archive": c.execute("DELETE FROM apps WHERE name=?", (k,))
-        c.execute("INSERT OR REPLACE INTO sync_state(key,val)VALUES('offset',?)", (f.tell(),))
-    c.commit(); c.close()
-
-# Append-only sync: only events.jsonl synced (text, auto-merges), aio.db is local cache
-def db_sync(pull=False):
-    if not os.path.isdir(f"{DATA_DIR}/.git") or not shutil.which('gh') or sp.run(['gh','auth','status'],capture_output=True).returncode!=0:
-        pull and replay_events(); return True
-    gi, df = f"{DATA_DIR}/.gitignore", f"{DATA_DIR}/.device"; ".device" not in (Path(gi).read_text() if os.path.exists(gi) else "") and Path(gi).write_text("*.db*\n*.log\nlogs/\n*cache*\ntiming.jsonl\nnotebook/\n.device\n"); dev = Path(df).read_text() if os.path.exists(df) else None
-    sp.run(f'cd "{DATA_DIR}"&&git rm --cached -f *.db timing.jsonl 2>/dev/null;git add -A;git -c user.name=aio -c user.email=a@a commit -qm sync 2>/dev/null;git fetch -q&&git -c user.name=aio -c user.email=a@a merge -q -X theirs --no-edit origin/main 2>/dev/null||git checkout --theirs . 2>/dev/null&&git add -A&&git -c user.name=aio -c user.email=a@a commit -qm merge 2>/dev/null;git push -q 2>/dev/null',shell=True,capture_output=True); dev and Path(df).write_text(dev)
-    pull and replay_events(); return True
-
-def auto_backup():
-    if not hasattr(os, 'fork'): return
-    ts = os.path.join(DATA_DIR, ".backup_timestamp")
-    if os.path.exists(ts) and time.time() - os.path.getmtime(ts) < 600: return
-    if os.fork() == 0:
-        bp = os.path.join(DATA_DIR, f"aio_auto_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"); sqlite3.connect(DB_PATH).backup(sqlite3.connect(bp))
-        db_sync(); Path(ts).touch(); os._exit(0)
 
 # Prompt toolkit
 _prompt_toolkit = None

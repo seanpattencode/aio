@@ -1,6 +1,6 @@
 """aio remove - Remove project or command"""
 import sys
-from . _common import init_db, load_proj, load_apps, rm_proj, rm_app, auto_backup, list_all
+from . _common import init_db, load_proj, load_apps, rm_proj, rm_app, list_all
 
 def run():
     init_db()
@@ -17,5 +17,5 @@ def run():
         if ai is None: print(f"x Not found: {wda}"); list_all(); sys.exit(1)
         ok, msg = rm_app(ai)
     print(f"{'✓' if ok else 'x'} {msg}")
-    if ok: auto_backup(); list_all()
+    if ok: list_all()
     sys.exit(0 if ok else 1)

@@ -2,10 +2,6 @@
 """a - AI agent session manager"""
 import sys, os
 
-# Fast-path: 'a n <text>' - folder sync (append-only files)
-if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n') and sys.argv[2][0] != '?':
-    from a_cmd.sync import note_add; note_add(' '.join(sys.argv[2:])); print("✓"); sys.exit(0)
-
 # Fast-path: 'a i' - pipe mode only
 if len(sys.argv) > 1 and sys.argv[1] == 'i' and not sys.stdin.isatty():
     c = os.path.expanduser("~/.local/share/a/i_cache.txt")

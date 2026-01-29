@@ -2,7 +2,7 @@
 import sys, os, subprocess as sp, re, shutil, base64
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor as TP
-from . _common import init_db, db, _up, _die, emit_event, db_sync, DATA_DIR
+from . _common import init_db, db, _up, _die, DATA_DIR
 
 def _enc(t): return base64.b64encode(t.encode()).decode() if t else None
 def _dec(e):
@@ -10,7 +10,7 @@ def _dec(e):
     except: return None
 
 def run():
-    init_db(); db_sync(pull=True)
+    init_db()
     wda = sys.argv[2] if len(sys.argv) > 2 else None
 
     def _sshd_running(): return not os.system('nc -z localhost 22 2>&-||nc -z localhost 8022 2>&-')
@@ -56,7 +56,7 @@ def run():
         # self [name] [pw]
         u=os.environ.get('USER','user'); h=f"{u}@{ip}"+(f":{p}"if p!=22 else""); a=sys.argv[3:]; n=a[0]if a else u; pw=a[1]if len(a)>1 else input("Pw:").strip()
         os.system(f'sshpass -p "{pw}" ssh -oStrictHostKeyChecking=no -p{p} localhost exit')or 0
-        (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)",(n,h,_enc(pw))); c.commit(); emit_event("ssh","add",{"name":n,"host":h,"pw":_enc(pw)}); db_sync(); print(f"✓ {n}={h}"); return
+        (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)",(n,h,_enc(pw))); c.commit(); print(f"✓ {n}={h}"); return
     if wda in ('info','i'): [print(f"{n}: ssh {'-p '+hp[1]+' ' if len(hp:=h.rsplit(':',1))>1 else ''}{hp[0]}") for n,h in hosts]; return
     if wda in ('all','*') and len(sys.argv)>3:
         cmd='bash -ic '+repr(' '.join(sys.argv[3:])); ok_l, fail_l = [], []
@@ -64,10 +64,10 @@ def run():
         for n,ok,out in TP(8).map(_run,hosts): (ok_l if ok else fail_l).append(n); print(f"\n{'✓' if ok else 'x'} {n}"); out and print('\n'.join('  '+l for l in out.split('\n')[:20]))
         print(f"\n✓ {len(ok_l)}" + (f"  x {len(fail_l)} ({','.join(fail_l)})" if fail_l else ""))
         return
-    if wda == 'rm' and len(sys.argv) > 3: a=sys.argv[3]; n=hosts[int(a)][0] if a.isdigit() and int(a)<len(hosts) else a; (c:=db()).execute("DELETE FROM ssh WHERE name=?",(n,)); c.commit(); emit_event("ssh","archive",{"name":n}); db_sync(); print(f"✓ rm {n}"); return
-    if wda == 'pw' and len(sys.argv) > 3: a=sys.argv[3]; n=hosts[int(a)][0] if a.isdigit() and int(a)<len(hosts) else a; pw=input(f"Pw for {n}: ").strip(); (c:=db()).execute("UPDATE ssh SET pw=? WHERE name=?",(_enc(pw) if pw else None,n)); c.commit(); emit_event("ssh","update",{"name":n,"pw":_enc(pw) if pw else None}); db_sync(); print(f"✓ {n}"); return
-    if wda in ('mv','rename') and len(sys.argv) > 4: o,n=sys.argv[3:5]; p=pwmap.get(o); h=hmap.get(o,""); (c:=db()).execute("DELETE FROM ssh WHERE name=?",(o,)); c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)",(n,h,_enc(p) if p else None)); c.commit(); emit_event("ssh","rename",{"old":o,"new":n,"host":h}); db_sync(); print(f"✓ {o} → {n}"); return
-    if wda == 'add': h=re.sub(r'\s+-p\s*(\d+)',r':\1',input("Host (user@ip): ").strip()); _up(h) or _die(f"x cannot connect to {h}"); n=input("Name: ").strip() or h.split('@')[-1].split(':')[0].split('.')[-1]; pw=input("Pw? ").strip() or None; (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host,pw) VALUES(?,?,?)",(n,h,_enc(pw) if pw else None)); c.commit(); emit_event("ssh","add",{"name":n,"host":h,"pw":_enc(pw) if pw else None}); db_sync(); print(f"✓ {n}={h}{' [pw]' if pw else ''}"); return
+    if wda == 'rm' and len(sys.argv) > 3: a=sys.argv[3]; n=hosts[int(a)][0] if a.isdigit() and int(a)<len(hosts) else a; (c:=db()).execute("DELETE FROM ssh WHERE name=?",(n,)); c.commit(); print(f"✓ rm {n}"); return
+    if wda == 'pw' and len(sys.argv) > 3: a=sys.argv[3]; n=hosts[int(a)][0] if a.isdigit() and int(a)<len(hosts) else a; pw=input(f"Pw for {n}: ").strip(); (c:=db()).execute("UPDATE ssh SET pw=? WHERE name=?",(_enc(pw) if pw else None,n)); c.commit(); print(f"✓ {n}"); return
+    if wda in ('mv','rename') and len(sys.argv) > 4: o,n=sys.argv[3:5]; p=pwmap.get(o); h=hmap.get(o,""); (c:=db()).execute("DELETE FROM ssh WHERE name=?",(o,)); c.execute("INSERT OR REPLACE INTO ssh(name,host,pw)VALUES(?,?,?)",(n,h,_enc(p) if p else None)); c.commit(); print(f"✓ {o} → {n}"); return
+    if wda == 'add': h=re.sub(r'\s+-p\s*(\d+)',r':\1',input("Host (user@ip): ").strip()); _up(h) or _die(f"x cannot connect to {h}"); n=input("Name: ").strip() or h.split('@')[-1].split(':')[0].split('.')[-1]; pw=input("Pw? ").strip() or None; (c:=db()).execute("INSERT OR REPLACE INTO ssh(name,host,pw) VALUES(?,?,?)",(n,h,_enc(pw) if pw else None)); c.commit(); print(f"✓ {n}={h}{' [pw]' if pw else ''}"); return
     nm = hosts[int(wda)][0] if wda.isdigit() and int(wda) < len(hosts) else (_die(f"x No host #{wda}. Run: a ssh") if wda.isdigit() else wda); shutil.which('ssh') or _die("x ssh not installed"); h=hmap.get(nm,nm); pw=pwmap.get(nm); hp=h.rsplit(':',1)
     if len(sys.argv)>3:
         tty = sys.stdout.isatty(); cmd = ['ssh'] + (['-tt'] if tty else ['-oConnectTimeout=10']) + ['-oStrictHostKeyChecking=no'] + (['-p',hp[1]] if len(hp)>1 else []) + [hp[0], 'bash -ic '+repr(' '.join(sys.argv[3:]))+' 2>&1']

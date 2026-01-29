@@ -2,10 +2,10 @@
 import sys, os, time, subprocess as sp
 from pathlib import Path
 from datetime import datetime
-from . _common import init_db, LOG_DIR, db_sync
+from . _common import init_db, LOG_DIR
 
 def run():
-    init_db(); os.makedirs(LOG_DIR, exist_ok=True); db_sync(pull=True)
+    init_db(); os.makedirs(LOG_DIR, exist_ok=True)
     logs = sorted(Path(LOG_DIR).glob('*.log'), key=lambda x: x.stat().st_mtime, reverse=True)
     if not logs: print("No logs"); return
     sel = sys.argv[2] if len(sys.argv) > 2 else None

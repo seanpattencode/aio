@@ -1,7 +1,7 @@
 """aio scan - Scan/clone repos. Usage: aio scan [loc] [name|#|#-#|all]"""
 import sys, os, subprocess as sp, json
 from pathlib import Path
-from . _common import init_db, load_proj, add_proj, auto_backup
+from . _common import init_db, load_proj, add_proj
 
 def run():
     init_db(); args = sys.argv[2:]; loc = 'loc'in args; args = [a for a in args if a not in('gh','loc')]
@@ -16,7 +16,7 @@ def run():
         # Name match or search filter
         if name:
             match = next((r for r in repos if r['name']==name), None)
-            if match and name not in cloned: dest=os.path.expanduser(f'~/projects/{name}'); os.makedirs(os.path.dirname(dest),exist_ok=True); r=sp.run(['gh','repo','clone',match['url'],dest],capture_output=True,text=True); ok,_=add_proj(dest) if r.returncode==0 or os.path.isdir(dest) else (False,''); print(f"{'✓' if ok else 'x'} {name}"); auto_backup() if ok else None; return
+            if match and name not in cloned: dest=os.path.expanduser(f'~/projects/{name}'); os.makedirs(os.path.dirname(dest),exist_ok=True); r=sp.run(['gh','repo','clone',match['url'],dest],capture_output=True,text=True); ok,_=add_proj(dest) if r.returncode==0 or os.path.isdir(dest) else (False,''); print(f"{'✓' if ok else 'x'} {name}"); return
             elif name in cloned: print(f"○ {name} already added"); return
         repos = [(r['name'],r['url'],r.get('pushedAt','')[:10]) for r in repos if r['name'] not in cloned and (not name or name.lower() in r['name'].lower())]
         if not repos: print("No new GitHub repos"); return
@@ -32,7 +32,6 @@ def run():
         idxs = list(range(len(repos))) if sel == 'all' else [j for x in sel.replace(',', ' ').split() for j in (range(int(x.split('-')[0]), int(x.split('-')[1])+1) if '-' in x else [int(x)]) if 0 <= j < len(repos)]
         pd = os.path.expanduser('~/projects'); os.makedirs(pd, exist_ok=True)
         for i in idxs: n, u, _ = repos[i]; dest = f"{pd}/{n}"; r = sp.run(['gh', 'repo', 'clone', u, dest], capture_output=True, text=True); ok, _ = add_proj(dest) if r.returncode == 0 or os.path.isdir(dest) else (False, ''); print(f"{'✓' if ok else 'x'} {n}")
-        auto_backup() if idxs else None
     else:
         d = os.path.expanduser(next((a for a in args if a not in (sel,)), '~/projects'))
         existing = set(load_proj())
@@ -49,4 +48,3 @@ def run():
         if not sel or sel=='q': return
         idxs = list(range(len(repos)))if sel=='all'else[j for x in sel.replace(',',' ').split()for j in(range(int(x.split('-')[0]),int(x.split('-')[1])+1)if'-'in x else[int(x)])if 0<=j<len(repos)]
         for i in idxs: ok, _ = add_proj(str(repos[i])); print(f"{'✓' if ok else 'x'} {repos[i].name}")
-        auto_backup() if idxs else None
