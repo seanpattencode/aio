@@ -31,7 +31,7 @@ def run():
     print(f"  Git:    {'✓ '+gu+' ('+_ago(int(gt))+')' if gu and gt else 'x (aio backup setup)'}")
     remotes = _configured_remotes()
     if remotes:
-        from . _common import cloud_sync; cloud_sync(wait=True); Path(gf).touch()  # auto-sync
+        from . _common import cloud_sync; sys.stdout.write("  GDrive: syncing...\r"); sys.stdout.flush(); cloud_sync(wait=True); sys.stdout.write("\033[2K\r"); Path(gf).touch()
         auth = "local" if os.path.exists(f"{DATA_DIR}/.auth_local") else "shared" if os.path.exists(f"{DATA_DIR}/.auth_shared") else "?"
         sync_ago = f" (synced {_ago(os.path.getmtime(gf))} ago)" if os.path.exists(gf) else ""
         for rem in remotes: print(f"  GDrive: ✓ {rem} {cloud_account(rem)} ({auth}){sync_ago}"); url = _gdrive_url(rem); url and print(f"          {url}")
