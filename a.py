@@ -2,16 +2,20 @@
 """a - AI agent session manager"""
 import sys, os
 
-# Fast-path: 'a n <text>' - insert + sync full log to both gdrives
+# Fast-path: 'a n <text>' - insert + sync to events.jsonl + gdrives
 if len(sys.argv) > 2 and sys.argv[1] in ('note', 'n') and sys.argv[2][0] != '?':
-    import sqlite3, json, time, hashlib, shutil
+    import sqlite3, json, time, hashlib
     dd = os.path.expanduser("~/.local/share/a"); os.makedirs(dd, exist_ok=True)
-    eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]; txt = ' '.join(sys.argv[2:])
+    eid = hashlib.md5(f"{time.time()}{os.getpid()}".encode()).hexdigest()[:8]; txt = ' '.join(sys.argv[2:]); ts = time.time()
+    # Write to events.jsonl (source of truth for sync)
+    dev = hashlib.md5(open('/etc/machine-id').read().strip().encode()).hexdigest()[:12] if os.path.exists('/etc/machine-id') else 'unknown'
+    open(f"{dd}/events.jsonl", "a").write(json.dumps({"ts": ts, "id": eid, "dev": dev, "op": "notes.add", "d": {"t": txt}}) + "\n")
+    # Write to local DB cache
     c = sqlite3.connect(f"{dd}/aio.db"); c.execute("CREATE TABLE IF NOT EXISTS notes(id,t,s DEFAULT 0,d,c DEFAULT CURRENT_TIMESTAMP,proj)")
-    c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    log = '\n'.join(json.dumps({"id":r[0],"t":r[1],"s":r[2],"c":r[3]}) for r in c.execute("SELECT id,t,s,c FROM notes ORDER BY c")); c.close()
+    c.execute("INSERT OR REPLACE INTO notes(id,t,s) VALUES(?,?,0)", (eid, txt)); c.commit(); c.close()
+    # Sync to gdrives
     for gd in [os.path.expanduser("~/gdrive/a"), os.path.expanduser("~/gdrive2/a")]:
-        if os.path.isdir(os.path.dirname(gd)): os.makedirs(gd, exist_ok=True); open(f"{gd}/notes.jsonl", "w").write(log + "\n")
+        if os.path.isdir(os.path.dirname(gd)): os.makedirs(gd, exist_ok=True); open(f"{gd}/notes.jsonl", "a").write(json.dumps({"id":eid,"t":txt,"s":0}) + "\n")
     print("✓"); sys.exit(0)
 
 # Fast-path: 'a i' - pipe mode only
