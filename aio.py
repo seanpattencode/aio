@@ -26,7 +26,7 @@ if len(sys.argv) > 1 and sys.argv[1] in ('mono', 'monolith'):
     p = os.path.expanduser("~/.local/share/aios/aio_mono.py"); open(p, 'w').write('\n\n'.join(f"# === {f} ===\n" + open(f).read() for f in sorted(__import__('glob').glob(os.path.dirname(__file__) + '/aio_cmd/*.py')))); print(p); sys.exit(0)
 
 # Command dispatch table (like git's cmd_struct)
-# NOTE: Shell aliases a() and ai() defined in install.sh point to aio
+# NOTE: Shell function a() defined in install.sh. aio renamed to a.
 CMDS = {
     None: 'help', '': 'help', 'help': 'help_full', 'hel': 'help_full', '--help': 'help_full', '-h': 'help_full',
     'update': 'update', 'upd': 'update', 'jobs': 'jobs', 'job': 'jobs', 'kill': 'kill', 'kil': 'kill', 'killall': 'kill',

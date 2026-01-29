@@ -17,9 +17,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
     for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
         touch "$RC"
         grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
-        sed -i '' -e '/^aio() {/,/^}/d' -e '/^a() { aio/d' -e '/^ai() { aio/d' "$RC" 2>/dev/null||:
-        cat >> "$RC" << 'AIOFUNC'
-aio() {
+        sed -i '' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
+        cat >> "$RC" << 'AFUNC'
+a() {
     local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt icache=~/.local/share/aios/i_cache.txt
     [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/aio "$@"; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
@@ -29,9 +29,8 @@ aio() {
     [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/aios/timing.jsonl; return $r; }
     command python3 ~/.local/bin/aio "$@"
 }
-a() { aio "$@"; }
-ai() { aio "$@"; }
-AIOFUNC
+aio() { echo "aio has been renamed a. Yeah i know it sucks but its faster in the long term. 2.9× fewer errors on mobile, don't need English to type a. See ideas/LATENCY.md"; a "$@"; }
+AFUNC
     done
     ok "shell functions (bash + zsh)"
     exit 0
@@ -111,9 +110,9 @@ fi
 for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     touch "$RC"
     grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
-    sed -i '' -e '/^aio() {/,/^}/d' -e '/^a() { aio/d' -e '/^ai() { aio/d' "$RC" 2>/dev/null||:
-    cat >> "$RC" << 'AIOFUNC'
-aio() {
+    sed -i '' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
+    cat >> "$RC" << 'AFUNC'
+a() {
     local cache=~/.local/share/aios/help_cache.txt projects=~/.local/share/aios/projects.txt icache=~/.local/share/aios/i_cache.txt
     [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/aio "$@"; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
@@ -123,9 +122,8 @@ aio() {
     [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/aios/timing.jsonl; return $r; }
     command python3 ~/.local/bin/aio "$@"
 }
-a() { aio "$@"; }
-ai() { aio "$@"; }
-AIOFUNC
+aio() { echo "aio has been renamed a. Yeah i know it sucks but its faster in the long term. 2.9× fewer errors on mobile, don't need English to type a. See ideas/LATENCY.md"; a "$@"; }
+AFUNC
 done
 ok "shell functions (bash + zsh)"
 
@@ -177,12 +175,12 @@ echo -e "${G}══════════════════════�
 echo -e "${G}  Installation complete!${R}"
 echo -e "${G}══════════════════════════════════════════════════════════════${R}"
 echo ""
-echo -e "${Y}⚠  IMPORTANT: To use the 'aio' command, you must either:${R}"
+echo -e "${Y}⚠  IMPORTANT: To use the 'a' command, you must either:${R}"
 echo ""
 echo -e "   ${C}1.${R} Open a ${G}new terminal window${R}  (recommended)"
 echo ""
 echo -e "   ${C}2.${R} Or source your shell rc:"
 echo -e "      ${C}source ~/.bashrc${R}  or  ${C}source ~/.zshrc${R}"
 echo ""
-echo -e "Then type ${G}aio${R} to get started!"
+echo -e "Then type ${G}a${R} to get started!"
 echo ""
