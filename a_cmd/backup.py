@@ -24,15 +24,22 @@ def run():
     log_sz = sum(f.stat().st_size for f in Path(LOG_DIR).glob('*.log')) if os.path.isdir(LOG_DIR) else 0
     log_n = len(list(Path(LOG_DIR).glob('*.log'))) if os.path.isdir(LOG_DIR) else 0
     print("DATA")
-    print(f"  events.jsonl  {_sz(ev_sz):>8}  → git + gdrive")
-    print(f"  aio.db        {_sz(db_sz):>8}  → local only (rebuilt from events)")
-    print(f"  logs/         {_sz(log_sz):>8}  → gdrive ({log_n} files)")
+    print(f"  events.jsonl  {_sz(ev_sz):>8}  → notes, hub, projects (git)")
+    print(f"  aio.db        {_sz(db_sz):>8}  → local cache (rebuilt from events)")
+    print(f"  logs/         {_sz(log_sz):>8}  → session logs (gdrive, {log_n} files)")
+    # Git sync (events.jsonl = notes/hub/projects)
     print(f"\nSYNC")
-    print(f"  Git:    {'✓ '+gu+' ('+_ago(int(gt))+')' if gu and gt else 'x (aio backup setup)'}")
+    from . _common import db_sync, cloud_sync
+    if gu:
+        sys.stdout.write("  Git: syncing events...\r"); sys.stdout.flush(); db_sync(); sys.stdout.write("\033[2K\r")
+        gt = sp.run(f'cd "{DATA_DIR}" && git log -1 --format=%ct 2>/dev/null', shell=True, capture_output=True, text=True).stdout.strip()
+        print(f"  Git:    ✓ {gu} ({_ago(int(gt))} ago)")
+    else: print(f"  Git:    x (run: a backup setup)")
+    # GDrive sync (logs + events backup)
     remotes = _configured_remotes()
     if remotes:
-        from . _common import cloud_sync; sys.stdout.write("  GDrive: syncing...\r"); sys.stdout.flush(); cloud_sync(wait=True); sys.stdout.write("\033[2K\r"); Path(gf).touch()
+        sys.stdout.write("  GDrive: syncing logs...\r"); sys.stdout.flush(); cloud_sync(wait=True); sys.stdout.write("\033[2K\r"); Path(gf).touch()
         auth = "local" if os.path.exists(f"{DATA_DIR}/.auth_local") else "shared" if os.path.exists(f"{DATA_DIR}/.auth_shared") else "?"
-        sync_ago = f" (synced {_ago(os.path.getmtime(gf))} ago)" if os.path.exists(gf) else ""
+        sync_ago = f" ({_ago(os.path.getmtime(gf))} ago)" if os.path.exists(gf) else ""
         for rem in remotes: print(f"  GDrive: ✓ {rem} {cloud_account(rem)} ({auth}){sync_ago}"); url = _gdrive_url(rem); url and print(f"          {url}")
-    else: print(f"  GDrive: x (aio gdrive login) - {len(RCLONE_REMOTES)} slots available")
+    else: print(f"  GDrive: x (run: a gdrive login)")
