@@ -1,8 +1,8 @@
 """aio i - Interactive command picker with live suggestions"""
 import sys, os, tty, termios
 
-from ._common import DATA_DIR
-CACHE = f"{DATA_DIR}/i_cache.txt"
+from ._common import DATA_DIR, HELP_SHORT
+CACHE, HELP_CACHE = f"{DATA_DIR}/i_cache.txt", f"{DATA_DIR}/help_cache.txt"
 
 def getch():
     fd = sys.stdin.fileno()
@@ -22,13 +22,15 @@ def run():
 
     if os.fork() == 0: refresh_cache(); os._exit(0)  # Rebuild cache in background
 
-    print("Filter, Tab=cycle, Enter=run, Esc=quit\n"); buf, sel = "", 0
+    # Show help at top
+    help_txt = open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else ""
+    print(help_txt + "\n" + "-"*40 + "\nFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
 
     while True:
         matches = [x for x in items if buf.replace(' ','').lower() in x.lower()][:8] if buf else items[:8]
         sel = min(sel, len(matches)-1) if matches else 0
 
-        # Render
+        # Render search at bottom
         sys.stdout.write(f"\r\033[K> {buf}\n")
         for i, m in enumerate(matches): sys.stdout.write(f"\033[K{' >' if i==sel else '  '} {m}\n")
         sys.stdout.write(f"\033[{len(matches)+1}A\033[{len(buf)+3}C\033[?25h")
