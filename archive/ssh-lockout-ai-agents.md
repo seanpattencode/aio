@@ -4,7 +4,7 @@
 **Issue:** SSH password stopped working on HSU server
 
 ## Problem
-AI agents running scheduled tasks via `aio hub` can trigger multiple SSH auth failures faster than humans. Linux `faillock` defaults (3 failures, 10min lockout) lock out the account before you realize what happened.
+AI agents running scheduled tasks via `a hub` can trigger multiple SSH auth failures faster than humans. Linux `faillock` defaults (3 failures, 10min lockout) lock out the account before you realize what happened.
 
 The error gives no indication of lockout - just "Permission denied" - making it hard to diagnose.
 
