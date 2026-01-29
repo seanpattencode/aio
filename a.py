@@ -32,13 +32,7 @@ CMDS = {
 }
 
 def main():
-    import time, atexit, json; _t = time.time()
     arg = sys.argv[1] if len(sys.argv) > 1 else None
-    cmd = ' '.join(sys.argv[1:3]) if arg else 'help'
-    def _log():
-        try: d = os.path.expanduser("~/.local/share/a"); os.makedirs(d, exist_ok=True); open(f"{d}/timing.jsonl", "a").write(json.dumps({"cmd": cmd, "ms": int((time.time() - _t) * 1000)}) + "\n")
-        except: pass
-    atexit.register(_log)
     if c := CMDS.get(arg): __import__(f'a_cmd.{c}', fromlist=[c]).run()
     elif arg and arg.endswith('++') and not arg.startswith('w'): from a_cmd import wt_plus; wt_plus.run()
     elif arg and arg.startswith('w') and arg not in ('watch', 'web') and not os.path.isfile(arg): from a_cmd import wt; wt.run()
