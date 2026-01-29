@@ -2,6 +2,13 @@
 import os, subprocess as sp, shutil
 from . _common import _sg, list_all, init_db, SCRIPT_DIR, DATA_DIR
 
+def _clean_rc(rc, m="# aio", ln=""): rc=os.path.expanduser(rc); c=open(rc).read() if os.path.exists(rc) else ""; n=__import__('re').sub(rf'{m}-start.*?{m}-end\n?','',c,flags=8).rstrip()+f"\n\n{m}-start\n{ln}\n{m}-end\n" if ln else c; return n!=c and open(rc,'w').write(n)
+
+def _setup_shell():
+    sh = os.environ.get('SHELL', '').split('/')[-1] or 'bash'
+    rc = '~/.zshrc' if sh == 'zsh' else '~/.bashrc'
+    print(f"✓ {sh.title()} (updated)" if _clean_rc(rc, ln='export PATH="$HOME/.local/bin:$PATH"') else f"• {sh.title()} (ok)")
+
 def _setup_sync():
     if not shutil.which('gh') or sp.run(['gh','auth','status'],capture_output=True).returncode!=0: return
     sp.run('hp=~/.local/bin/git-credential-gh;mkdir -p $(dirname $hp);echo "#!/bin/sh\nexec $(which gh) auth git-credential \\\"\\$@\\\"">$hp;chmod +x $hp;git config --global credential.helper $hp',shell=True,capture_output=True)
@@ -10,10 +17,12 @@ def _setup_sync():
     url and sp.run(f'mkdir -p "{DATA_DIR}"&&cd "{DATA_DIR}"&&git init -b main -q;git remote add origin {url} 2>/dev/null;echo "*.db*\n*.log\nlogs/\n*cache*\ntiming.jsonl\nnotebook/\n.device">.gitignore;git fetch origin&&git reset --hard origin/main 2>/dev/null||(git add -A&&git -c user.name=aio -c user.email=a@a commit -m init -q&&git push -u origin main)',shell=True,capture_output=True) and print("✓ Sync")
 
 def run():
+    import sys; arg = sys.argv[2] if len(sys.argv) > 2 else None
+    if arg in ('bash', 'zsh', 'shell'): _setup_shell(); return
     if _sg('rev-parse', '--git-dir').returncode != 0: print("x Not in git repo"); return
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return
     _sh=f'bash {SCRIPT_DIR}/install.sh --shell>/dev/null'
-    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); _setup_sync(); return
+    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); _setup_shell(); _setup_sync(); return
     print("Downloading..."); _sg('pull', '--ff-only'); after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
-    os.system(_sh); init_db(); list_all(); print("Run: source ~/.bashrc"); _setup_sync()
+    os.system(_sh); init_db(); list_all(); _setup_shell(); _setup_sync()
