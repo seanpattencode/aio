@@ -141,7 +141,7 @@ def load_proj():
     proj_dir = SYNC_ROOT / 'workspace' / 'projects'; proj_dir.mkdir(parents=True, exist_ok=True); projs = []
     for f in proj_dir.glob('*.txt'):
         d = {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
-        if 'Name' in d: projs.append((d.get('Path', f'~/projects/{d["Name"]}'), d.get('Repo', ''), d['Name']))
+        if 'Name' in d: projs.append((f'~/projects/{d["Name"]}', d.get('Repo', ''), d['Name']))
     return [(os.path.expanduser(p), r) for p, r, n in sorted(projs, key=lambda x: x[2])]
 
 def load_apps():
