@@ -1,6 +1,7 @@
 """aio sync - Git-based sync to GitHub
 RFC 5322 with .txt is the default and preferred way to format data, because it doesn't hide information, doesn't break, and yet is machine searchable with metadata.
-This allows for isolation, so a sync conflict in notes doesn't bottleneck agent work logging."""
+This allows for isolation, so a sync conflict in notes doesn't bottleneck agent work logging.
+Because we by default save things to git and version control it, we can be more fearless in what we attempt knowing we can revert it. This helps democratize information rollback for the user's own programs and files and is essential for agentic interaction with file systems. A db might be very powerful when it runs and fail infrequently but a merkle tree revives you every time. And that is the security you need to be able to rely on things you build personally in the long term."""
 import os, subprocess as sp
 from pathlib import Path
 from ._common import SCRIPT_DIR
