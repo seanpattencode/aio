@@ -99,3 +99,48 @@ Most devs are either old Unix guards OR modern developers. This project requires
 Zero dependencies on provider SDKs. Any tool with a CLI becomes usable. Same interface on phone as desktop. Debuggable by running commands manually. Resilient - tmux survives disconnects.
 
 The terminal literally IS the API.
+
+## Most Code is This in Disguise
+
+Most code is just worse versions of:
+
+```bash
+tool1 | tool2 | tool3
+```
+
+**What "real" code often does:**
+```python
+# 500 lines of Python
+import requests
+response = requests.get(url)
+data = json.loads(response.text)
+filtered = [x for x in data if x['status'] == 'active']
+with open('out.json', 'w') as f:
+    json.dump(filtered, f)
+```
+
+**What it actually is:**
+```bash
+curl url | jq '.[] | select(.status == "active")' > out.json
+```
+
+**Examples hidden everywhere:**
+
+| "Application" | Actually just |
+|---------------|---------------|
+| CI/CD pipeline | Shell scripts with yaml |
+| Docker | tar + chroot + cgroups |
+| Kubernetes | SSH to machines + run containers |
+| Most web backends | Transform HTTP → database query → HTTP |
+| Electron apps | Chrome + Node subprocess |
+| "AI platforms" | Wrap API call, add UI |
+
+**This project makes it explicit:**
+- Don't hide that you're calling `claude`
+- Don't wrap `git` in abstraction
+- Don't build "session management" when tmux exists
+- Don't build "sync infrastructure" when git + rclone exist
+
+The honesty is: we're just orchestrating tools. The lie is: pretending we're doing something more sophisticated.
+
+Most codebases are shell scripts ashamed of themselves.
