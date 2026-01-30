@@ -122,6 +122,8 @@ Every character on a phone keyboard has ~5% error rate. A 47-character path mean
 
 `a` makes mobile dev actually usable. You have hours of dead time on your phone - commuting, waiting, whatever. Without `a`, that time is wasted because typing paths and commands on a phone keyboard is miserable. With `a`, you can checkpoint code, switch projects, and run agents from anywhere.
 
+The workflow: ask your agent to do work, close the screen, do other things or have a rest. Open it later, review. Check changes with `a diff`, revert bad runs with `a revert`.
+
 **The real cost:**
 
 Each command alone saves seconds. But friction changes behavior:
