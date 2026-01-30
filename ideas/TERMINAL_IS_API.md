@@ -249,4 +249,4 @@ sp.run(['claude', '--dangerously-skip-permissions'])
 
 The "real work" is done by C programs (git, tmux) or external services (claude). Python just orchestrates.
 
-That's the original vision. Super bash. Not "Java but slower."
+**In this project**, Python is used as orchestrator. Not a statement about what Python should be - Python is a great general-purpose language. But here, the architecture happens to use it as super bash, and that's the right fit for CLI tool composition.
