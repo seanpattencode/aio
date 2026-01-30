@@ -80,16 +80,16 @@ case $OS in
     debian)
         if [[ -n "$SUDO" ]]; then
             export DEBIAN_FRONTEND=noninteractive
-            $SUDO apt update -qq && $SUDO apt install -yqq tmux git curl nodejs npm python3-pip sshpass rclone 2>/dev/null || true
+            $SUDO apt update -qq && $SUDO apt install -yqq tmux git curl nodejs npm python3-pip sshpass rclone gh 2>/dev/null || true
             ok "pkgs"
         else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo apt install tmux"; fi
         ;;
     arch)
-        if [[ -n "$SUDO" ]]; then $SUDO pacman -Sy --noconfirm tmux nodejs npm git python-pip sshpass rclone 2>/dev/null && ok "pkgs"
+        if [[ -n "$SUDO" ]]; then $SUDO pacman -Sy --noconfirm tmux nodejs npm git python-pip sshpass rclone github-cli 2>/dev/null && ok "pkgs"
         else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo pacman -S tmux"; fi
         ;;
     fedora)
-        if [[ -n "$SUDO" ]]; then $SUDO dnf install -y tmux nodejs npm git python3-pip sshpass rclone 2>/dev/null && ok "pkgs"
+        if [[ -n "$SUDO" ]]; then $SUDO dnf install -y tmux nodejs npm git python3-pip sshpass rclone gh 2>/dev/null && ok "pkgs"
         else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi
         ;;
     termux) pkg update -y && pkg install -y tmux nodejs git python openssh sshpass gh rclone && ok "pkgs" ;;
