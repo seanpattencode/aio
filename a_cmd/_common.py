@@ -169,23 +169,23 @@ def _refresh_cache():
     from .update import refresh_caches; refresh_caches()
 
 def add_proj(p):
+    from .sync import sync
     p = os.path.abspath(os.path.expanduser(p))
     if not os.path.isdir(p): return False, f"Not a directory: {p}"
-    repo = sp.run(['git','-C',p,'remote','get-url','origin'],capture_output=True,text=True).stdout.strip() or None
-    with db() as c:
-        if c.execute("SELECT 1 FROM projects WHERE repo=? OR path=?", (repo,p)).fetchone(): return False, f"Exists: {p}"
-        m = c.execute("SELECT MAX(display_order) FROM projects").fetchone()[0]
-        c.execute("INSERT INTO projects (path,display_order,device,repo) VALUES (?,?,?,?)", (p, 0 if m is None else m+1, DEVICE_ID, repo)); c.commit()
-    _refresh_cache(); return True, f"Added: {p}"
+    name = os.path.basename(p)
+    d = SYNC_ROOT / 'workspace' / 'projects'; d.mkdir(parents=True, exist_ok=True)
+    if (d/f'{name}.txt').exists(): return False, f"Exists: {name}"
+    repo = sp.run(['git','-C',p,'remote','get-url','origin'],capture_output=True,text=True).stdout.strip()
+    (d/f'{name}.txt').write_text(f"Name: {name}\n" + (f"Repo: {repo}\n" if repo else "")); sync('workspace')
+    _refresh_cache(); return True, f"Added: {name}"
 
 def rm_proj(i):
-    with db() as c:
-        rows = c.execute("SELECT id, path FROM projects ORDER BY display_order").fetchall()
-        if i < 0 or i >= len(rows): return False, f"Invalid index: {i}"
-        c.execute("DELETE FROM projects WHERE id=?", (rows[i][0],))
-        for j, r in enumerate(c.execute("SELECT id FROM projects ORDER BY display_order")): c.execute("UPDATE projects SET display_order=? WHERE id=?", (j, r[0]))
-        c.commit()
-    _refresh_cache(); return True, f"Removed: {rows[i][1]}"
+    from .sync import sync
+    projs = load_proj()
+    if i < 0 or i >= len(projs): return False, f"Invalid index: {i}"
+    name = os.path.basename(projs[i][0])
+    (SYNC_ROOT/'workspace'/'projects'/f'{name}.txt').unlink(missing_ok=True); sync('workspace')
+    _refresh_cache(); return True, f"Removed: {name}"
 
 def add_app(n, cmd):
     if not n or not cmd: return False, "Name and command required"
