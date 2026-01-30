@@ -30,15 +30,20 @@ def _apply_token(token):
     sp.run(f'echo "{token}" | gh auth login --with-token', shell=True, capture_output=True)
 
 def run():
+    enabled = (LOGIN_DIR/'.git').exists()
+    if not enabled:
+        if input("Enable gh token sharing across devices? [y/n]: ").lower() not in ('y','yes'):
+            print("login sharing disabled - run 'a login' again to enable"); return
+        sync('login'); enabled = True
+    url = sp.run(['git','-C',str(LOGIN_DIR),'remote','get-url','origin'], capture_output=True, text=True).stdout.strip()
     local = _get_local_token()
     if local:
         _save_token(local)
-        print(f"saved gh token to aio-login")
+        print(f"saved gh token\n  Local: {TOKEN_FILE}\n  Remote: {url}")
     else:
-        (LOGIN_DIR/'.git').exists() or sync('login')
         token = _load_token()
         if token:
             _apply_token(token)
-            print("applied gh token from aio-login" if _get_local_token() else "x failed to apply token")
+            print(f"applied gh token\n  Local: {TOKEN_FILE}\n  Remote: {url}" if _get_local_token() else "x failed to apply token")
         else:
-            print("x no token found - run 'gh auth login' on an authed device first, then 'a login'")
+            print(f"x no token found\n  Local: {TOKEN_FILE}\n  Remote: {url}\n  Run 'gh auth login' on an authed device first, then 'a login'")
