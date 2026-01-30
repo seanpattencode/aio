@@ -6,16 +6,12 @@ from . _common import _up, _die, DATA_DIR
 from .sync import sync, SYNC_ROOT
 
 SSH_DIR = SYNC_ROOT / 'ssh'
-def _enc(t): return base64.b64encode(t.encode()).decode() if t else None
-def _dec(e):
-    try: return base64.b64decode(e).decode() if e else None
-    except: return None
-def _save(n, h, pw=None): SSH_DIR.mkdir(parents=True, exist_ok=True); (SSH_DIR/f'{n}.txt').write_text(f"Name: {n}\nHost: {h}\n"+(f"Password: {_enc(pw)}\n" if pw else "")); sync('ssh')
+def _save(n, h, pw=None): SSH_DIR.mkdir(parents=True, exist_ok=True); (SSH_DIR/f'{n}.txt').write_text(f"Name: {n}\nHost: {h}\n"+(f"Password: {pw}\n" if pw else "")); sync('ssh')
 def _load():
     SSH_DIR.mkdir(exist_ok=True); hosts = []
     for f in SSH_DIR.glob('*.txt'):
         d = {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
-        if 'Name' in d and 'Host' in d: hosts.append((d['Name'], d['Host'], _dec(d.get('Password'))))
+        if 'Name' in d and 'Host' in d: hosts.append((d['Name'], d['Host'], d.get('Password')))
     return hosts
 def _rm(n): (SSH_DIR/f'{n}.txt').unlink(missing_ok=True); sync('ssh')
 
