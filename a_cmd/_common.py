@@ -294,8 +294,8 @@ def _clip():
 
 def _write_conf():
     l0 = '#[align=left][#S]#[align=centre]#{W:#[range=window|#{window_index}]#I:#W#{?window_active,*,}#[norange] }'
-    sf = '#[range=user|sess]Ctrl+N:Win#[norange] #[range=user|new]Ctrl+T:New#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Quit#[norange]'
-    sm = '#[range=user|sess]Sess#[norange] #[range=user|new]New#[norange] #[range=user|close]Close#[norange] #[range=user|edit]Edit#[norange] #[range=user|kill]Kill#[norange] #[range=user|detach]Quit#[norange]'
+    sf = '#[range=user|sess]Ctrl+N:Win#[norange] #[range=user|new]Ctrl+T:New#[norange] #[range=user|side]Ctrl+Y:Side#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Quit#[norange]'
+    sm = '#[range=user|sess]Sess#[norange] #[range=user|new]New#[norange] #[range=user|side]Side#[norange] #[range=user|close]Close#[norange] #[range=user|edit]Edit#[norange] #[range=user|kill]Kill#[norange] #[range=user|detach]Quit#[norange]'
     l1 = '#{?#{e|<:#{client_width},70},' + sm + ',' + sf + '}'
     l2 = '#[align=left]#[range=user|esc]Esc#[norange]#[align=centre]#[range=user|kbd]Keyboard#[norange]'
     cc = _clip()
@@ -316,11 +316,12 @@ set -g status-format[1] "#[align=centre]{l1}"
 set -g status-format[2] "{l2}"
 bind-key -n C-n new-window
 bind-key -n C-t split-window
+bind-key -n C-y split-window -h
 bind-key -n C-w kill-pane
 bind-key -n C-q detach
 bind-key -n C-x confirm-before -p "Kill session? (y/n)" kill-session
-bind-key -n C-e split-window "e ."
-bind-key -T root MouseDown1Status if -F '#{{==:#{{mouse_status_range}},window}}' {{ select-window }} {{ run-shell 'r="#{{mouse_status_range}}"; case "$r" in sess) tmux new-window;; new) tmux split-window;; close) tmux kill-pane;; edit) tmux split-window e;; kill) tmux confirm-before -p "Kill?" kill-session;; detach) tmux detach;; esc) tmux send-keys Escape;; kbd) tmux set -g mouse off; tmux display-message "Tap terminal - mouse restores in 3s"; (sleep 3; tmux set -g mouse on) &;; esac' }}
+bind-key -n C-e split-window "command -v e>/dev/null&&e .||vi ."
+bind-key -T root MouseDown1Status if -F '#{{==:#{{mouse_status_range}},window}}' {{ select-window }} {{ run-shell 'r="#{{mouse_status_range}}"; case "$r" in sess) tmux new-window;; new) tmux split-window;; side) tmux split-window -h;; close) tmux kill-pane;; edit) tmux split-window "command -v e>/dev/null&&e||vi";; kill) tmux confirm-before -p "Kill?" kill-session;; detach) tmux detach;; esc) tmux send-keys Escape;; kbd) tmux set -g mouse off; tmux display-message "Tap terminal - mouse restores in 3s"; (sleep 3; tmux set -g mouse on) &;; esac' }}
 '''
     conf += f'set -s copy-command "{cc}"\n' if cc else ''; cq=f' "{cc}"'if cc else''
     conf += f'bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel{cq}\nbind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel{cq}\n'
