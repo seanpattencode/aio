@@ -1,6 +1,6 @@
 # a
-
-AI agent manager. One character. See [ideas/LATENCY.md](ideas/LATENCY.md).
+Human AI interaction accelerator.
+AI agent manager. 
 
 ## Prerequisites
 
