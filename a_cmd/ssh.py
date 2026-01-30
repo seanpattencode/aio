@@ -6,14 +6,16 @@ from . _common import _up, _die, DATA_DIR
 from .sync import sync, SYNC_ROOT
 
 SSH_DIR = SYNC_ROOT / 'ssh'
-def _save(n, h, pw=None): SSH_DIR.mkdir(parents=True, exist_ok=True); (SSH_DIR/f'{n}.txt').write_text(f"Name: {n}\nHost: {h}\n"+(f"Password: {pw}\n" if pw else "")); sync('ssh')
+def _parse(f): return {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
+def _save(n, h, pw=None, **kw):
+    SSH_DIR.mkdir(parents=True, exist_ok=True); d = _parse(SSH_DIR/f'{n}.txt') if (SSH_DIR/f'{n}.txt').exists() else {}
+    d.update({'Name': n, 'Host': h}); pw and d.update({'Password': pw}); d.update({k: v for k, v in kw.items() if v})
+    (SSH_DIR/f'{n}.txt').write_text('\n'.join(f"{k}: {v}" for k, v in d.items() if v) + '\n'); sync('ssh')
 def _load():
-    SSH_DIR.mkdir(parents=True, exist_ok=True); (SSH_DIR/'.git').exists() or sync('ssh'); hosts = []
-    for f in SSH_DIR.glob('*.txt'):
-        d = {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
-        hosts.append((d['Name'], d['Host'], d.get('Password'))) if 'Name' in d and 'Host' in d else hosts.append((f.stem, None, None))
-    return hosts
+    SSH_DIR.mkdir(parents=True, exist_ok=True); (SSH_DIR/'.git').exists() or sync('ssh')
+    return [_parse(f) for f in SSH_DIR.glob('*.txt')]
 def _rm(n): (SSH_DIR/f'{n}.txt').unlink(missing_ok=True); sync('ssh')
+def _os(): return sp.run('uname -sr 2>/dev/null || echo unknown', shell=True, capture_output=True, text=True).stdout.strip()
 
 def run():
     wda = sys.argv[2] if len(sys.argv) > 2 else None
@@ -21,7 +23,7 @@ def run():
     def _sshd_ip(): r = sp.run("ipconfig getifaddr en0 2>/dev/null || ifconfig 2>/dev/null | grep -A1 'wlan0\\|en0' | grep inet | awk '{print $2}'", shell=True, capture_output=True, text=True); return r.stdout.strip() or '?'
     def _sshd_port(): return 8022 if os.environ.get('TERMUX_VERSION') else 22
 
-    raw = _load(); hosts = [(n, h) for n, h, _ in raw]; hmap = {n: h for n, h, _ in raw}; pwmap = {n: pw for n, h, pw in raw}
+    raw = _load(); hosts = [(d.get('Name','?'), d.get('Host')) for d in raw]; hmap = {d['Name']: d['Host'] for d in raw if d.get('Host')}; pwmap = {d['Name']: d.get('Password') for d in raw}; osmap = {d['Name']: d.get('OS') for d in raw}
 
     if wda == 'start': r = sp.run(['sshd'], capture_output=True, text=True) if os.environ.get('TERMUX_VERSION') else sp.run(['sudo', '/usr/sbin/sshd'], capture_output=True, text=True); print(f"✓ sshd started (port {_sshd_port()})") if r.returncode == 0 or _sshd_running() else print(f"x sshd failed: {r.stderr.strip() or 'install openssh-server'}"); return
     if wda == 'stop': sp.run(['pkill', '-x', 'sshd']) if os.environ.get('TERMUX_VERSION') else sp.run(['sudo', 'pkill', '-x', 'sshd']); print("✓ sshd stopped" if not _sshd_running() else "x failed"); return
@@ -59,8 +61,15 @@ def run():
         # self [name] [pw]
         u=os.environ.get('USER','user'); h=f"{u}@{ip}"+(f":{p}"if p!=22 else""); a=sys.argv[3:]; n=a[0]if a else u; pw=a[1]if len(a)>1 else input("Pw:").strip()
         os.system(f'sshpass -p "{pw}" ssh -oStrictHostKeyChecking=no -p{p} localhost exit')or 0
-        _save(n, h, pw); print(f"✓ {n}={h}"); return
-    if wda in ('info','i'): [print(f"{n}: ssh {'-p '+hp[1]+' ' if len(hp:=h.rsplit(':',1))>1 else ''}{hp[0]}") for n,h in hosts]; return
+        _save(n, h, pw, OS=_os()); print(f"✓ {n}={h} [{_os()}]"); return
+    if wda in ('info','i'): [print(f"{n}: ssh {'-p '+hp[1]+' ' if len(hp:=h.rsplit(':',1))>1 else ''}{hp[0]}{' ('+osmap[n]+')' if osmap.get(n) else ''}") for n,h in hosts]; return
+    if wda == 'os':
+        cmd = 'uname -sr'; results = []
+        def _get(d): n,h,pw = d.get('Name'), d.get('Host'), d.get('Password'); hp=h.rsplit(':',1) if h else ['','']; r=sp.run((['sshpass','-p',pw]if pw else[])+['ssh','-oConnectTimeout=5','-oStrictHostKeyChecking=no']+(['-p',hp[1]]if len(hp)>1 else[])+[hp[0],cmd],capture_output=1,text=1); return (n,h,pw,r.stdout.strip() if not r.returncode else None)
+        for n,h,pw,os_info in TP(8).map(_get, raw):
+            if os_info: _save(n, h, pw, OS=os_info); print(f"✓ {n}: {os_info}")
+            else: print(f"x {n}: unreachable")
+        return
     if wda in ('all','*') and len(sys.argv)>3:
         cmd='bash -ic '+repr(' '.join(sys.argv[3:])); ok_l, fail_l = [], []
         def _run(nh): n,h=nh; pw=pwmap.get(n); hp=h.rsplit(':',1); r=sp.run((['sshpass','-p',pw]if pw else[])+['ssh','-oConnectTimeout=5','-oStrictHostKeyChecking=no','-oIdentitiesOnly=yes']+(['-p',hp[1]]if len(hp)>1 else[])+[hp[0],cmd],capture_output=1,text=1); return(n,not r.returncode,(r.stdout or r.stderr).strip())

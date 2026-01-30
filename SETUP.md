@@ -24,6 +24,9 @@ ssh user@host 'git config --global credential.helper "$(which gh) auth git-crede
 
 # 5. Sync all repos
 ssh user@host 'cd ~/projects/a && python3 a.py sync'
+
+# 6. Register to SSH hosts (run ON the new device)
+ssh user@host 'cd ~/projects/a && python3 a.py ssh self DEVICENAME PASSWORD'
 ```
 
 ## macOS
@@ -49,6 +52,9 @@ ssh user@host 'export PATH="$HOME/.local/bin:$PATH" && echo "TOKEN_HERE" | gh au
 
 # 6. Sync
 ssh user@host 'export PATH="$HOME/.local/bin:$PATH" && cd ~/projects/a && python3 a.py sync'
+
+# 7. Register to SSH hosts
+ssh user@host 'export PATH="$HOME/.local/bin:$PATH" && cd ~/projects/a && python3 a.py ssh self DEVICENAME PASSWORD'
 ```
 
 ## Termux (Android) via ADB
