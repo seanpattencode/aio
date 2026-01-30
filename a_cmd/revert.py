@@ -7,7 +7,7 @@ def run():
     _git(cwd, 'rev-parse', '--git-dir').returncode == 0 or _die("x Not a git repo")
     logs = _git(cwd, 'log', '--format=%h %ad %s', '--date=format:%m/%d %H:%M', '-15').stdout.strip().split('\n')
     for i, l in enumerate(logs): print(f"  {i}. {l}")
-    c = input("\nRevert to #: ").strip()
+    if not (c := input("\nRevert to #/q: ").strip()) or c == 'q': return
     if not c.isdigit() or int(c) >= len(logs): _die("x Invalid")
     h = logs[int(c)].split()[0]
     r = _git(cwd, 'revert', '--no-commit', f'{h}..HEAD')
