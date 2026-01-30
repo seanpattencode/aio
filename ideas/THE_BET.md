@@ -45,3 +45,27 @@ We're not competing with big players - we're betting they're building the wrong 
 - Don't bloat, don't over-document, don't over-engineer
 
 The tool sells itself. The philosophy retains power users.
+
+## The Railroad Paradox
+
+It is like a railroad.
+
+The machine (the train) moves far faster than any human and is incredible. 99% of the time, the human is not needed for the locomotion.
+
+But remove the human, and it fails on the turns. It ends up at the wrong destination.
+
+**The value is not the speed of the train.** That is a commodity.
+**The value is the switching of the tracks.**
+
+As the train gets faster, the cost of a wrong turn increases. Therefore, the faster the AI, the *more* critical the human pilot becomes, not less.
+
+## The Stakes
+
+It is a bit dramatic, but I think this is the most important work I'll ever do and I have a shot at changing the world for the better.
+
+Think about this: if an agent manager isn't available to everyone, everyone not using one will be managed by a system or person using one.
+
+My vision is that we make everyone a captain, a pilot, not crew.
+
+**Rebel! Fight for your independence! The future is to be made right now.**
+
