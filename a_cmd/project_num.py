@@ -1,6 +1,6 @@
 """aio <#> - Open project by number"""
 import sys, os, subprocess as sp
-from . _common import init_db, load_proj, load_apps, fmt_cmd, SCRIPT_DIR
+from . _common import init_db, load_proj, load_apps, resolve_cmd, fmt_cmd, SCRIPT_DIR
 
 _OK = os.path.expanduser('~/.local/share/a/logs/push.ok')
 
@@ -17,8 +17,9 @@ def run():
         os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash')])
     elif 0 <= idx - len(PROJ) < len(APPS):
         an, ac = APPS[idx - len(PROJ)]
-        print(f"> Running: {an}\n   Command: {fmt_cmd(ac)}")
-        os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash'), '-c', ac])
+        resolved = resolve_cmd(ac)
+        print(f"> Running: {an}\n   Command: {fmt_cmd(resolved)}")
+        os.execvp(os.environ.get('SHELL', '/bin/bash'), [os.environ.get('SHELL', '/bin/bash'), '-c', resolved])
     else:
         print(f"x Invalid index: {idx}")
         sys.exit(1)

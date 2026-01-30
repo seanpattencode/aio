@@ -138,12 +138,23 @@ def load_cfg():
     with db() as c: return dict(c.execute("SELECT key, value FROM config").fetchall())
 
 def load_proj():
-    with db() as c:
-        if 'repo' not in [r[1] for r in c.execute("PRAGMA table_info(projects)")]: c.execute("ALTER TABLE projects ADD COLUMN repo TEXT")
-        return [(r[0],r[1]) for r in c.execute("SELECT path,repo FROM projects ORDER BY display_order")]
+    proj_dir = SYNC_ROOT / 'workspace' / 'projects'; proj_dir.mkdir(parents=True, exist_ok=True); projs = []
+    for f in proj_dir.glob('*.txt'):
+        d = {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
+        if 'Name' in d: projs.append((d.get('Path', f'~/projects/{d["Name"]}'), d.get('Repo', ''), d['Name']))
+    return [(os.path.expanduser(p), r) for p, r, n in sorted(projs, key=lambda x: x[2])]
 
 def load_apps():
-    with db() as c: return [(r[0], r[1]) for r in c.execute("SELECT name, command FROM apps ORDER BY display_order")]
+    cmds_dir = SYNC_ROOT / 'workspace' / 'cmds'; cmds_dir.mkdir(parents=True, exist_ok=True); cmds = []
+    for f in cmds_dir.glob('*.txt'):
+        d = {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
+        if 'Name' in d and 'Command' in d: cmds.append((d['Name'], d['Command']))
+    return sorted(cmds, key=lambda x: x[0])
+
+def resolve_cmd(cmd):
+    import re
+    projs = {os.path.basename(p): p for p, _ in load_proj()}
+    return re.sub(r'\{(\w+)\}', lambda m: projs.get(m.group(1), m.group(0)), cmd)
 
 def load_sess(cfg):
     with db() as c: data = c.execute("SELECT key, name, command_template FROM sessions").fetchall()
@@ -523,8 +534,11 @@ EXPERIMENTAL
   a gdrive            Cloud sync (Google Drive)"""
 
 def list_all(cache=True, quiet=False):
+    import subprocess as sp
+    ws = SYNC_ROOT / 'workspace'; url = sp.run(['git','-C',str(ws),'remote','get-url','origin'], capture_output=True, text=True).stdout.strip()
     p, a = load_proj(), load_apps(); Path(os.path.join(DATA_DIR, 'projects.txt')).write_text('\n'.join(x for x,_ in p) + '\n')
-    out = ([f"PROJECTS:"] + [f"  {i}. {_pmark(x,r)} {x}" for i,(x,r) in enumerate(p)] if p else [])
+    out = [f"Workspace: {ws}", f"  {url}", ""] if url else []
+    out += ([f"PROJECTS:"] + [f"  {i}. {_pmark(x,r)} {x}" for i,(x,r) in enumerate(p)] if p else [])
     out += ([f"COMMANDS:"] + [f"  {len(p)+i}. {n} -> {fmt_cmd(c)}" for i, (n, c) in enumerate(a)] if a else [])
     txt = '\n'.join(out); not quiet and out and print(txt); cache and Path(os.path.join(DATA_DIR, 'help_cache.txt')).write_text(HELP_SHORT + '\n' + txt + '\n')
     return p, a

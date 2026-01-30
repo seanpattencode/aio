@@ -5,7 +5,7 @@ Because we by default save things to git and version control it, we can be more 
 import os, subprocess as sp
 from pathlib import Path
 from ._common import SYNC_ROOT
-REPOS = {'common': 'a-common', 'ssh': 'a-ssh', 'logs': 'a-logs', 'login': 'a-login', 'hub': 'a-hub', 'notes': 'a-notes'}
+REPOS = {'common': 'a-common', 'ssh': 'a-ssh', 'logs': 'a-logs', 'login': 'a-login', 'hub': 'a-hub', 'notes': 'a-notes', 'workspace': 'a-workspace'}
 
 def _sync_repo(path, repo_name, msg='sync'):
     path.mkdir(parents=True, exist_ok=True)
