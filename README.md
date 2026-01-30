@@ -40,6 +40,15 @@ git clone https://github.com/seanpattencode/aio.git && cd aio && ./install.sh
 
 Installs: tmux, node, claude, codex, gemini, a. Prompts for sudo if needed. Works without root (installs to ~/.local).
 
+## Multi-device Setup
+
+Auth tokens sync across devices - `gh auth login` only once:
+
+1. First device: `gh auth login` as normal
+2. Additional devices: Run `a login` to import token from your synced workspace
+
+Your GitHub token is stored in `~/projects/a-sync/login/` and shared via git sync.
+
 ## Simple start
 Type in terminal
 
