@@ -60,7 +60,7 @@ def run():
         url = sp.run(['git','-C',str(HUB_DIR),'remote','get-url','origin'], capture_output=True, text=True).stdout.strip()
         print(f"Hub: {len(jobs)} jobs\n  {HUB_DIR}\n  {url}\n")
         _el = lambda s,w: s if len(s)<=w else s[:w//2-1]+'..'+s[-(w-w//2-1):]
-        _lr = lambda t: dt.strptime(t,'%Y-%m-%d %H:%M').strftime('%d %H:%M'if m else'%m/%d %H:%M')if t else'-'
+        _lr = lambda t: (lambda h=int((dt.now()-dt.strptime(t,'%Y-%m-%d %H:%M')).total_seconds()//3600):f"{h//24}d{h%24}h"if m else dt.strptime(t,'%Y-%m-%d %H:%M').strftime('%m/%d %H:%M'))()if t else'-'
         cw=tw-32 if m else tw-48;print(f"# {'Name':<8} {'Last':<9}On Cmd"if m else f"# {'Name':<10} {'Sched':<6} {'Last':<12} {'Dev':<8} On Cmd")
         _pj=lambda J:[print(f"{i:<2}{j[1][:8]:<9}{_lr(j[6]):<10}{'✓'if j[5]else' ':<3}{_el(j[3]or'',cw)}"if m else f"{i:<2}{j[1][:10]:<11}{j[2][:6]:<7}{_lr(j[6]):<13}{j[4][:7]:<8}{'✓'if j[5]else' ':<3}{_el(j[3]or'',cw)}")for i,j in enumerate(J)]or print("  (none)")
         _pj(jobs)
