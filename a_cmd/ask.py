@@ -1,58 +1,10 @@
 """a ask <prompt> - query multiple LLMs in parallel"""
-import sys,os,threading,queue
-from pathlib import Path
-from ._common import SYNC_ROOT
-
-KEYS_FILE = SYNC_ROOT/'login'/'api_keys.env'
-
-def load_keys():
-    if not KEYS_FILE.exists(): return {}
-    return dict(l.strip().split('=',1) for l in KEYS_FILE.read_text().splitlines() if '=' in l and not l.startswith('#'))
-
-MODELS = {'claude':'claude-opus-4-5-20251101', 'gpt':'gpt-5.2', 'gemini':'gemini-3-pro-preview'}
-
-def ask_anthropic(prompt, q, keys):
-    m = MODELS['claude']
-    try:
-        from anthropic import Anthropic
-        r = Anthropic(api_key=keys.get('ANTHROPIC_API_KEY')).messages.create(model=m, max_tokens=512, messages=[{'role':'user','content':prompt}])
-        q.put((f'claude ({m})', r.content[0].text))
-    except Exception as e: q.put((f'claude ({m})', f'x {e}'))
-
-def ask_openai(prompt, q, keys):
-    m = MODELS['gpt']
-    try:
-        from openai import OpenAI
-        r = OpenAI(api_key=keys.get('OPENAI_API_KEY')).chat.completions.create(model=m, messages=[{'role':'user','content':prompt}], max_completion_tokens=512)
-        q.put((f'gpt ({m})', r.choices[0].message.content))
-    except Exception as e: q.put((f'gpt ({m})', f'x {e}'))
-
-def ask_gemini(prompt, q, keys):
-    m = MODELS['gemini']
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=keys.get('GOOGLE_API_KEY'))
-        q.put((f'gemini ({m})', genai.GenerativeModel(m).generate_content(prompt).text))
-    except Exception as e: q.put((f'gemini ({m})', f'x {e}'))
-
+import sys,threading,queue;from ._common import SYNC_ROOT
+M={'claude':('claude-opus-4-5-20251101','ANTHROPIC_API_KEY',lambda p,k,m:__import__('anthropic').Anthropic(api_key=k).messages.create(model=m,max_tokens=512,messages=[{'role':'user','content':p}]).content[0].text),'gpt':('gpt-5.2','OPENAI_API_KEY',lambda p,k,m:__import__('openai').OpenAI(api_key=k).chat.completions.create(model=m,messages=[{'role':'user','content':p}],max_completion_tokens=512).choices[0].message.content),'gemini':('gemini-3-pro-preview','GOOGLE_API_KEY',lambda p,k,m:(g:=__import__('google.generativeai',fromlist=['genai']),g.configure(api_key=k),g.GenerativeModel(m).generate_content(p).text)[-1])}
+def _ask(n,m,f,p,k,q):
+    try:q.put((f'{n}({m})',f(p,k,m)))
+    except Exception as e:q.put((f'{n}({m})',f'x {e}'))
 def run():
-    if len(sys.argv) < 3: print("usage: a ask <prompt>"); return
-    prompt = ' '.join(sys.argv[2:])
-    keys = load_keys()
-    if not keys: print(f"No keys. Create {KEYS_FILE} with:\nANTHROPIC_API_KEY=sk-...\nOPENAI_API_KEY=sk-...\nGOOGLE_API_KEY=AIza..."); return
-
-    q = queue.Queue()
-    threads = []
-    if keys.get('ANTHROPIC_API_KEY'): threads.append(threading.Thread(target=ask_anthropic, args=(prompt,q,keys)))
-    if keys.get('OPENAI_API_KEY'): threads.append(threading.Thread(target=ask_openai, args=(prompt,q,keys)))
-    if keys.get('GOOGLE_API_KEY'): threads.append(threading.Thread(target=ask_gemini, args=(prompt,q,keys)))
-
-    if not threads: print("No valid keys found"); return
-    for t in threads: t.start()
-
-    results = []
-    for _ in threads:
-        name, text = q.get()
-        results.append((name, text))
-        print(f"\n{'='*40}\n{name.upper()}\n{'='*40}\n{text[:500]}{'...' if len(text)>500 else ''}")
-    for t in threads: t.join()
+    if len(sys.argv)<3:print("usage: a ask <prompt>");return
+    p=' '.join(sys.argv[2:]);K=dict(l.split('=',1)for l in(SYNC_ROOT/'login'/'api_keys.env').read_text().splitlines()if'='in l and l[0]!='#')if(SYNC_ROOT/'login'/'api_keys.env').exists()else{};q=queue.Queue()
+    T=[threading.Thread(target=_ask,args=(n,m,f,p,K[kn],q))for n,(m,kn,f)in M.items()if K.get(kn)];[t.start()for t in T];[print(f"\n{'='*40}\n{(r:=q.get())[0].upper()}\n{'='*40}\n{r[1][:500]}")for _ in T];[t.join()for t in T]
