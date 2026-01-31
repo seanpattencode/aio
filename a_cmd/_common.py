@@ -237,10 +237,9 @@ def cloud_sync(wait=False):
         Path(DATA_DIR, '.gdrive_sync').touch() if ok else None; return ok
     return (True, _sync()) if wait else (__import__('threading').Thread(target=_sync, daemon=True).start(), (True, None))[1]
 def cloud_install():
-    import platform
-    bd, arch = os.path.expanduser('~/.local/bin'), 'amd64' if platform.machine() in ('x86_64', 'AMD64') else 'arm64'
+    u=os.uname();s,bd,arch='osx'if u.sysname=='Darwin'else'linux',os.path.expanduser('~/.local/bin'),'amd64'if u.machine in('x86_64','AMD64')else'arm64'
     print(f"Installing rclone..."); os.makedirs(bd, exist_ok=True)
-    if sp.run(f'curl -sL https://downloads.rclone.org/rclone-current-linux-{arch}.zip -o /tmp/rclone.zip && unzip -qjo /tmp/rclone.zip "*/rclone" -d {bd} && chmod +x {bd}/rclone', shell=True).returncode == 0:
+    if sp.run(f'curl -sL https://downloads.rclone.org/rclone-current-{s}-{arch}.zip -o /tmp/rclone.zip && unzip -qjo /tmp/rclone.zip "*/rclone" -d {bd} && chmod +x {bd}/rclone', shell=True).returncode == 0:
         print(f"✓ Installed"); return f'{bd}/rclone'
     return None
 def cloud_login(remote=None):

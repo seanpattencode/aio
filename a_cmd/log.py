@@ -1,9 +1,9 @@
 """aio log [#|tail|clean|grab|sync]"""
 import sys, os, time, subprocess as sp, shutil, json
 from pathlib import Path
-from datetime import datetime
-from ._common import init_db, LOG_DIR, DEVICE_ID, RCLONE_REMOTES, RCLONE_BACKUP_PATH, get_rclone
-from .sync import cloud_sync
+from datetime import datetime as D
+from ._common import init_db, LOG_DIR, DEVICE_ID, RCLONE_BACKUP_PATH, get_rclone, _configured_remotes as CR, cloud_install as CI
+from .sync import cloud_sync,_merge_rclone as MR
 CD = Path.home()/'.claude'
 
 def run():
@@ -19,15 +19,13 @@ def run():
     if s == 'clean': days = int(sys.argv[3]) if len(sys.argv) > 3 else 7; [f.unlink() for f in logs if (time.time() - f.stat().st_mtime) > days*86400]; print(f"✓ cleaned"); return
     if s == 'tail': f = logs[int(sys.argv[3])] if len(sys.argv) > 3 and sys.argv[3].isdigit() else (logs[0] if logs else None); f and os.execvp('tail', ['tail', '-f', str(f)]); return
     if s and s.isdigit() and logs and (i := int(s)) < len(logs): sp.run(['tmux', 'new-window', f'cat "{logs[i]}"; read']); return
-    print(f"Local: {len(logs)} logs, {sum(f.stat().st_size for f in logs)//1024//1024}MB")
-    if rc := get_rclone():
-        for r in RCLONE_REMOTES:
-            try:
-                res = sp.run([rc,'lsjson',f'{r}:{RCLONE_BACKUP_PATH}/logs'], capture_output=True, text=True, timeout=15)
-                t = {f['Name']:f for f in json.loads(res.stdout)}.get(f'{DEVICE_ID}.tar.zst') if res.returncode==0 else None
-                print(f"  {r}: {t['Size']//1024//1024}MB synced {t['ModTime'][:16].replace('T',' ')}\n    https://drive.google.com/file/d/{t['ID']}") if t else print(f"  {r}: x")
-            except: print(f"  {r}: timeout")
+    rc = get_rclone() or CI(); MR(); C = rc and CR()
+    C or print("gdrive: no login"if rc else"gdrive: no rclone")
+    for r in C or []:
+        try: t = {x['Name']:x for x in json.loads(sp.run([rc,'lsjson',f'{r}:{RCLONE_BACKUP_PATH}/logs'],capture_output=True,text=True,timeout=15).stdout)}.get(f'{DEVICE_ID}.tar.zst'); print(f"{r}: {t['Size']//1024//1024}MB @ {D.fromisoformat(t['ModTime'][:19]+'Z').astimezone():%m-%d %H:%M} drive.google.com/file/d/{t['ID']}"if t else f"{r}: ✓ no sync")
+        except: print(f"{r}: timeout")
+    print(f"\nLocal: {len(logs)} logs, {sum(f.stat().st_size for f in logs)//1024//1024}MB")
     for i, f in enumerate(logs[:12]):
         sn = '__'.join(f.stem.split('__')[1:]) or f.stem
-        print(f"{i:>2} {datetime.fromtimestamp(f.stat().st_mtime):%m/%d %H:%M} {sn[:26]:<26} {f.stat().st_size//1024:>5}K")
+        print(f"{i:>2} {D.fromtimestamp(f.stat().st_mtime):%m/%d %H:%M} {sn[:26]:<26} {f.stat().st_size//1024:>5}K")
     logs and print("\na log #  view | a log sync")

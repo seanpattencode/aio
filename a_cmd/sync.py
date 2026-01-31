@@ -8,20 +8,20 @@ REPOS = {k: f'a-{k}' for k in 'common ssh login hub notes workspace'.split()}
 
 def _merge_rclone():
     import re;lc,rc=SYNC_ROOT/'login'/'rclone.conf',Path.home()/'.config/rclone/rclone.conf'
-    if not lc.exists()or not rc.exists():return
-    lt,rt=lc.read_text(),rc.read_text();m={'aio-gdrive':'a-gdrive','aio-gdrive2':'a-gdrive2'}
-    for o,n in m.items():
-        if f'[{n}]'not in rt and(s:=re.search(rf'\[{o}\][^\[]*',lt)):rc.write_text(rt+'\n'+s.group().replace(f'[{o}]',f'[{n}]'));rt=rc.read_text()
+    if not lc.exists():return
+    rc.parent.mkdir(parents=True,exist_ok=True);lt,rt=lc.read_text(),rc.read_text()if rc.exists()else''
+    for n in('a-gdrive','a-gdrive2'):
+        if f'[{n}]'not in rt and(s:=re.search(rf'\[{n}\][^\[]*',lt)):rc.write_text(rt+s.group()+'\n');rt=rc.read_text()
 
 def cloud_sync(local_path, name):
     """Tar + upload to cloud. Returns (ok, msg)."""
     rc = get_rclone();_merge_rclone()
     if not rc: return False, "no rclone"
     tar = f'{os.getenv("TMPDIR","/tmp")}/{name}-{DEVICE_ID}.tar.zst'
-    if sp.run(f'tar -I zstd -cf {tar} -C {local_path} .', shell=True).returncode>1: return False, "tar failed"
-    ok = [r for r in RCLONE_REMOTES if sp.run([rc,'copyto',tar,f'{r}:{RCLONE_BACKUP_PATH}/{name}/{DEVICE_ID}.tar.zst','-P']).returncode==0]
+    if sp.run(f'tar -cf - -C {local_path} . 2>/dev/null | zstd -q > {tar}', shell=True).returncode>1: return False, "tar failed"
+    ok = [r for r in RCLONE_REMOTES if sp.run([rc,'copyto',tar,f'{r}:{RCLONE_BACKUP_PATH}/{name}/{DEVICE_ID}.tar.zst','-q']).returncode==0]
     Path(tar).unlink(missing_ok=True)
-    return (True, f"→ {','.join(ok)}") if ok else (False, "upload failed")
+    return bool(ok),f"{'✓'*len(ok)or'x'} {','.join(ok)or'fail'}"
 
 def _sync_repo(path, repo_name, msg='sync'):
     path.parent.mkdir(parents=True, exist_ok=True)
