@@ -1,9 +1,7 @@
-# Append-only: edits=new files. Push ours, reset to main. No merges.
-# Conflict-free: use {time_ms}_{device}.txt filenames. Each device writes unique files.
 import os, subprocess as sp
 from pathlib import Path
 from ._common import SYNC_ROOT, RCLONE_REMOTES, RCLONE_BACKUP_PATH, DEVICE_ID, get_rclone
-REPOS = {k: f'a-{k}' for k in 'common ssh login hub notes workspace'.split()}
+REPOS = {k: f'a-{k}' for k in 'common ssh login hub notes workspace docs'.split()}
 
 def _merge_rclone():
     import re;lc,rc=SYNC_ROOT/'login'/'rclone.conf',Path.home()/'.config/rclone/rclone.conf'
@@ -34,10 +32,10 @@ def _sync_repo(path, repo_name, msg='sync'):
     return url
 
 def sync(repo='common', msg='sync'): return _sync_repo(SYNC_ROOT/repo, REPOS.get(repo, f'a-{repo}'), msg)
-def sync_all(msg='sync'): return {r: _sync_repo(SYNC_ROOT/r, name, msg) for r, name in REPOS.items()}
 
 def run():
-    print(f"{SYNC_ROOT}")
+    os.system('pgrep -x inotifywait>/dev/null')and os.system(f'inotifywait -mqr -e close_write {SYNC_ROOT}|while read x;do sleep 1;~/.local/bin/a sync&done&')
+    print(SYNC_ROOT)
     for repo, name in REPOS.items():
         path = SYNC_ROOT/repo; url = _sync_repo(path, name)
         t = sp.run(['git','-C',str(path),'log','-1','--format=%cd %s','--date=format:%Y-%m-%d %I:%M:%S %p'],capture_output=True,text=True).stdout.strip()
