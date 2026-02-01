@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Constants
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-PROMPTS_DIR = Path(SCRIPT_DIR) / 'data' / 'prompts'
+PROMPTS_DIR = Path(SCRIPT_DIR).parent / 'a-sync' / 'common' / 'prompts'
 DATA_DIR = os.path.expanduser("~/.local/share/a")
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
 SYNC_ROOT = Path(SCRIPT_DIR).parent / 'a-sync'

@@ -1,1 +1,0 @@
-Add this feature: {task}. Steps: 1) Read relevant files fully 2) Run as user would 3) Ultrathink how most popular apps solve similar problems 4) Ultrathink best libraries for this 5) Run and debug fix. Guidelines: minimize line count, execute as fast as possible, use library glue (all operations handled by library calls, none by custom logic), follow readability conventions.

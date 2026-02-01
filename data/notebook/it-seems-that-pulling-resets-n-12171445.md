@@ -1,1 +1,0 @@
-it seems that pulling resets notes to old state

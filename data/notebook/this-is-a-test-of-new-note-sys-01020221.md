@@ -1,1 +1,0 @@
-this is a test of new note system in terminal

@@ -1,1 +1,0 @@
-General guidelines: minimize line count, maximize speed of execution, use direct library calls only, follow readability conventions.

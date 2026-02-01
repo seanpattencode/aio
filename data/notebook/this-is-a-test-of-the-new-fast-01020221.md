@@ -1,1 +1,0 @@
-this is a test of the new faster note system
