@@ -1,6 +1,4 @@
-"""aio sync - Git sync to GitHub, rclone sync to cloud
-Per-device files are safe: each device writes its own, viewers can't corrupt.
-Accidental edits on device B get overwritten by device A's next sync."""
+# Append-only: edits=new files. Push ours, reset to main. No merges.
 import os, subprocess as sp
 from pathlib import Path
 from ._common import SYNC_ROOT, RCLONE_REMOTES, RCLONE_BACKUP_PATH, DEVICE_ID, get_rclone
