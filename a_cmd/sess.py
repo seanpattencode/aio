@@ -2,7 +2,7 @@
 import sys, os, subprocess as sp, shlex
 from . _common import (init_db, load_cfg, load_proj, load_apps, load_sess, tm, _env,
                        get_dir_sess, create_sess, send_prefix, launch_win, _start_log,
-                       _ghost_claim, _GM, SCRIPT_DIR, fmt_cmd, get_prefix)
+                       _ghost_claim, _GM, SCRIPT_DIR)
 
 def _add_prompt(cmd, prompt):
     if not prompt: return cmd, False
@@ -33,11 +33,10 @@ def run():
     is_p = arg and arg.endswith('p') and not arg.endswith('pp') and len(arg) == 2 and arg in sess
     pp = [a for a in sys.argv[(2 if is_wda_prompt else (3 if wda else 2)):] if a not in ['-w', '--new-window', '--yes', '-y', '-t', '--with-terminal']]
     prompt = ' '.join(pp) if pp else None
-    if prompt and (sf := os.path.join(wd, 'SUBAGENTS.md')) and os.path.exists(sf): prompt = open(sf).read().strip() + ' ' + prompt
 
     if 'TMUX' in os.environ and arg in sess and len(arg) == 1:
         an, cmd = sess[arg]
-        if prompt: cmd, _ = _add_prompt(cmd, get_prefix(an, cfg, wd) + prompt)
+        if prompt: cmd, _ = _add_prompt(cmd, (cfg.get('default_prompt', '') + ' ' if cfg.get('default_prompt') else '') + prompt)
         n = int(wda) if wda and wda.isdigit() and int(wda) < 10 else 1
         pids = [sp.run(['tmux', 'split-window', '-hfP', '-F', '#{pane_id}', '-c', wd, cmd], capture_output=True, text=True).stdout.strip() for _ in range(n)]
         for pid in pids:
@@ -55,7 +54,7 @@ def run():
         n, c = sess.get(arg, (arg, None)) if sn is None else (sn, sess[arg][1])
         cmd = c if sn is None else sess[arg][1]
         agent = n if sn is None else sess[arg][0]
-        if prompt: cmd, ok = _add_prompt(cmd, get_prefix(agent, cfg, wd) + prompt); ok and print(f"Prompt: {prompt[:50]}...")
+        if prompt: dp = cfg.get('default_prompt', ''); cmd, ok = _add_prompt(cmd, (dp + ' ' if dp else '') + prompt); ok and print(f"Prompt: {prompt[:50]}...")
         create_sess(sn or n, wd, cmd, cfg, env=env, skip_prefix=bool(prompt))
         sn, created = sn or n, True
     else:
