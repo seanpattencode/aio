@@ -48,7 +48,7 @@ class TM:
     def go(self, n): os.execvp('tmux', ['tmux', 'switch-client' if 'TMUX' in os.environ else 'attach', '-t', n])
     def has(self, n):
         try: return sp.run(['tmux', 'has-session', '-t', n], capture_output=True, timeout=2).returncode == 0
-        except sp.TimeoutExpired: return (sp.run(['pkill', '-9', 'tmux']), False)[1] if input("! tmux hung. Kill? (y/n): ").lower() == 'y' else sys.exit(1)
+        except sp.TimeoutExpired: print("! tmux hung, killing..."); sp.run(['pkill', '-9', 'tmux']); return False
     def ls(self): return _tmux('list-sessions', '-F', '#{session_name}')
     def cap(self, n): return _tmux('capture-pane', '-p', '-t', n)
     @property
