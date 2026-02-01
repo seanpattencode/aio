@@ -2,6 +2,28 @@
 
 Comparison of filename and content search methods.
 
+## Precompute Search Leaderboard (10K URLs)
+
+**Winner: precompute_py.py** - 14,454x faster than fzf
+
+| Rank | Implementation | LOC | Avg (µs) | vs fzf | Notes |
+|------|----------------|----:|----------|--------|-------|
+| 🥇 | precompute_py.py | 81 | 0.4 | **14,454x** | char + prefix index |
+| 🥈 | nano_precompute.py | 6 | 36 | **142x** | best for 2+ char queries |
+| 🥉 | pico_precompute.py | 3 | 36 | **142x** | minimal, case-sensitive |
+| 4 | fzf --filter | - | 5,100 | 1x | process spawn overhead |
+
+### Run Benchmark
+```bash
+python3 bench_python_only.py
+```
+
+### Key Insight
+- Single-char 'c': full=0.7µs vs nano=216µs (char index wins)
+- Multi-char 'chromium': nano=0.26µs vs full=0.30µs (simpler wins)
+
+---
+
 ## Results (10k files, 1M words)
 
 ### Filename Search
