@@ -55,7 +55,7 @@ def run():
             else: cmd = buf
             if not cmd: continue
             print(f"\n\n\033[KRunning: a {cmd}\n")
-            import subprocess; subprocess.run([sys.executable, os.path.dirname(__file__) + '/../a.py'] + cmd.split()); break
+            import subprocess; subprocess.run([sys.executable, os.path.dirname(__file__) + '/../a.py'] + cmd.split())
         elif ch in ('\x03', '\x04') or (ch == 'q' and not buf): break  # Ctrl+C, Ctrl+D, q
         elif ch.isalnum() or ch in '-_ ': buf, sel = buf + ch, 0
 
