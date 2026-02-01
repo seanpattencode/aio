@@ -24,7 +24,7 @@ def _sync_repo(path, repo_name, msg='sync'):
     path.parent.mkdir(parents=True,exist_ok=True);g=f'cd {path}&&'
     if (path/'.git').exists():
         sp.run(f'{g}git add -A&&git commit -qm "{msg}"',shell=True,capture_output=True)
-        r=sp.run(f'{g}git pull -q origin main --rebase;git push -q',shell=True,capture_output=True,text=True)
+        r=sp.run(f'{g}git pull -q --rebase;git push -q',shell=True,capture_output=True,text=True)
     else:
         r=sp.run(f'gh repo clone {repo_name} {path} 2>/dev/null||(mkdir -p {path}&&{g}git init -q&&echo "# {repo_name}">README.md&&git add -A&&git commit -qm "init"&&gh repo create {repo_name} --private --source=. --push)',shell=True,capture_output=True,text=True)
     url=sp.run(['git','-C',str(path),'remote','get-url','origin'],capture_output=True,text=True).stdout.strip()or'sync'
@@ -34,7 +34,7 @@ def _sync_repo(path, repo_name, msg='sync'):
 def sync(repo='common', msg='sync'): return _sync_repo(SYNC_ROOT/repo, REPOS.get(repo, f'a-{repo}'), msg)
 
 def run():
-    os.system('pgrep -x inotifywait>/dev/null')and os.system(f'inotifywait -mqr -e close_write {SYNC_ROOT}|while read x;do sleep 1;a sync&done&')
+    os.system('pgrep -x inotifywait>/dev/null')and os.system(f'inotifywait -mqr --exclude \.git -e close_write {SYNC_ROOT}|while read x;do a sync&done&')
     print(SYNC_ROOT)
     for repo, name in REPOS.items():
         path = SYNC_ROOT/repo; url = _sync_repo(path, name)
