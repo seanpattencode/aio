@@ -2,6 +2,7 @@
 import sys,time;from ._common import SYNC_ROOT,DEVICE_ID as D
 def run():
     d,a=SYNC_ROOT/'tasks',sys.argv[2:];d.mkdir(exist_ok=True);t=sorted(d.glob('*.txt'))
+    if a and a[0] in ('--time','-h','--help','h'):import os;os.execlp('t','t',a[0])
     if not a:
         for f in t:
             print(f"\n{f.read_text().strip()}\n");c=input("[d]el [n]ext [l]ist: ").strip().lower()
