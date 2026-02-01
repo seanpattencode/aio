@@ -31,6 +31,7 @@ CMDS = {
     'agent': 'agent', 'tree': 'tree', 'tre': 'tree', 'dir': 'dir', 'web': 'web', 'ssh': 'ssh', 'run': 'run', 'hub': 'hub', 'ask': 'ask',
     'task': 'task', 'tas': 'task', 't': 'task', 'daemon': 'daemon', 'ui': 'ui', 'review': 'review',
     'n': 'note', 'note': 'note', 'i': 'i', 'rebuild': 'rebuild', 'repo': 'repo', 'sync': 'sync', 'syn': 'sync', 'login': 'login',
+    'hi': 'hi',
 }
 
 def main():

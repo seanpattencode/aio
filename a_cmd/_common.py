@@ -346,7 +346,7 @@ def _start_log(sn, parent=None):
     sp.run(['tmux', 'pipe-pane', '-t', sn, f"cat >> {lf}"], capture_output=True)
     with db() as c: c.execute("INSERT OR REPLACE INTO agent_logs VALUES (?,?,?,?)", (sn, parent, time.time(), DEVICE_ID))
 
-def create_sess(sn, wd, cmd, cfg, env=None):
+def create_sess(sn, wd, cmd, cfg, env=None, skip_prefix=False):
     ai = cmd and any(a in cmd for a in ['codex', 'claude', 'gemini', 'aider'])
     if ai: cmd = f'while :; do {cmd}; e=$?; [ $e -eq 0 ] && break; echo -e "\\n! Crashed (exit $e). [R]estart / [Q]uit: "; read -n1 k; [[ $k =~ [Rr] ]] || break; done'
     r = tm.new(sn, wd, cmd or '', env); ensure_tmux(cfg)
