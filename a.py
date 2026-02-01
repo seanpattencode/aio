@@ -4,11 +4,6 @@ NOTE: After editing commands, test via bash (~/.local/bin/a) not just python a.p
 """
 import sys, os
 
-# Fast-path: 'a i' - pipe mode only
-if len(sys.argv) > 1 and sys.argv[1] == 'i' and not sys.stdin.isatty():
-    c = os.path.expanduser("~/.local/share/a/i_cache.txt")
-    print('\n'.join(x for x in open(c).read().split('\n') if x and x[0] not in '<=>') if os.path.exists(c) else ''); sys.exit(0)
-
 # Generate monolith
 if len(sys.argv) > 1 and sys.argv[1] in ('mono', 'monolith'):
     from glob import glob as G
