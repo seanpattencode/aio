@@ -36,7 +36,7 @@ def setup_all():
     print(f"✓ {sh.title()} (updated)" if updated else f"• {sh.title()} (ok)")
     refresh_caches(); print("✓ Cache")
 
-def from .sync import run as _sync; _sync():
+def _setup_sync():
     if not shutil.which('gh') or sp.run(['gh','auth','status'],capture_output=True).returncode!=0: return
     sp.run('hp=~/.local/bin/git-credential-gh;mkdir -p $(dirname $hp);echo "#!/bin/sh\nexec $(which gh) auth git-credential \\\"\\$@\\\"">$hp;chmod +x $hp;git config --global credential.helper $hp',shell=True,capture_output=True)
     if os.path.isdir(f"{DATA_DIR}/.git"): print("✓ Sync"); return
@@ -51,6 +51,6 @@ def run():
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return
     _sh=f'bash {SCRIPT_DIR}/install.sh --shell>/dev/null'
-    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); setup_all(); from .sync import run as _sync; _sync(); return
+    if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); setup_all(); _setup_sync(); return
     print("Downloading..."); _sg('pull', '--ff-only'); after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
-    os.system(_sh); init_db(); list_all(); setup_all(); from .sync import run as _sync; _sync()
+    os.system(_sh); init_db(); list_all(); setup_all(); _setup_sync()
