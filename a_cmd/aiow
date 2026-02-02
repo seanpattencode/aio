@@ -1,2 +1,2 @@
 #!/bin/sh
-printf "%s\n%s" "$PWD" "$*" | nc -U /tmp/a.sock
+printf "%s\n%s" "$PWD" "$*" | nc -U "${TMPDIR:-/tmp}/a.sock"

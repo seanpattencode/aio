@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""aio warm daemon - pre-warms Python for 4-6x faster commands"""
+"""a daemon - prewarm for faster commands"""
 import os, sys, socket, io
 
-SOCK, AIO = '/tmp/a.sock', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'a.py')
+SOCK,AIO=os.environ.get('TMPDIR','/tmp')+'/a.sock',os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'/a.py'
 
 def daemon():
     try: socket.socket(1).connect(SOCK);return
@@ -42,15 +42,13 @@ def client(args):
     while (d := s.recv(4096)): sys.stdout.write(d.decode()); sys.stdout.flush()
 
 def install():
-    me = os.path.abspath(__file__)
-    py = sys.executable
-    # Symlink shell client to ~/.local/bin (like VS Code does)
+    me = os.path.abspath(__file__);py = sys.executable
     sh_src = os.path.join(os.path.dirname(me), 'aiow')
     sh_dst = os.path.expanduser('~/.local/bin/aiow')
     os.makedirs(os.path.dirname(sh_dst), exist_ok=True)
     os.path.exists(sh_dst) and os.remove(sh_dst)
     os.symlink(sh_src, sh_dst); print(f"✓ Symlinked: {sh_dst} -> {sh_src}")
-    if sys.platform == 'darwin':  # macOS launchd
+    if sys.platform == 'darwin':
         p = os.path.expanduser('~/Library/LaunchAgents/com.aio.warm.plist')
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, 'w').write(f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -61,11 +59,11 @@ def install():
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 </dict></plist>''')
         os.system(f'launchctl load {p}'); print(f"✓ Installed: {p}")
-    elif os.path.exists('/data/data/com.termux'):  # Termux cron
+    elif os.path.exists('/data/data/com.termux'):
         os.system('pkg install -y cronie 2>/dev/null; pgrep crond || crond')
         os.system(f'(crontab -l 2>/dev/null | grep -v aio.warm; echo "@reboot {py} {me} daemon") | crontab -')
         os.system(f'{py} {me} daemon &'); print("✓ Installed: crontab @reboot")
-    else:  # Linux systemd
+    else:
         d = os.path.expanduser('~/.config/systemd/user'); os.makedirs(d, exist_ok=True)
         open(f'{d}/aio-warm.service', 'w').write(f'[Unit]\nDescription=aio warm daemon\n[Service]\nExecStart={py} {me} daemon\nRestart=always\n[Install]\nWantedBy=default.target')
         os.system('systemctl --user daemon-reload && systemctl --user enable --now aio-warm'); print(f"✓ Installed: {d}/aio-warm.service")
