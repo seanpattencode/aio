@@ -1,3 +1,0 @@
-#!/bin/sh
-[ -S /tmp/a.sock ] && printf '%s\0' "$@" | nc -UN /tmp/a.sock && exit
-python3 ~/projects/a/a.py "$@"
