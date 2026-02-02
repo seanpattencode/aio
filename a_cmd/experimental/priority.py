@@ -1,8 +1,3 @@
 """Recommend which task should be #1"""
-import subprocess,shutil,os
-
-def run():
-    gemini=shutil.which('gemini')or os.path.expanduser('~/.local/bin/gemini')
-    tasks=subprocess.run(['a','task'],capture_output=True,text=True).stdout.strip()
-    subprocess.run([gemini,f'Given these tasks:\n{tasks}\n\nWhich should be #1 priority? Reply: <num>NUMBER</num><why>1 sentence reason</why>'],stderr=subprocess.DEVNULL)
-    subprocess.run([gemini,'-c'],stderr=subprocess.DEVNULL)
+import subprocess as sp
+def run():print("Thinking...",flush=True);sp.run('a task l|gemini -p "Most important task? Number + 1 sentence why." 2>/dev/null',shell=True)
