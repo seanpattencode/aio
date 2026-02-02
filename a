@@ -1,2 +1,3 @@
 #!/bin/sh
-echo "$*">/tmp/a.cmd; cat /tmp/a.out
+[ -S /tmp/a.sock ] && printf '%s\0' "$@" | nc -UN /tmp/a.sock && exit
+python3 ~/projects/a/a.py "$@"
