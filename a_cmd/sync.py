@@ -34,7 +34,7 @@ def _sync_repo(path, repo_name, msg='sync'):
 def sync(repo='common', msg='sync'): return _sync_repo(SYNC_ROOT/repo, REPOS.get(repo, f'a-{repo}'), msg)
 
 def run():
-    os.system('pgrep -x inotifywait>/dev/null')and os.system(f'inotifywait -mqr --exclude \.git -e close_write {SYNC_ROOT}|while read x;do a sync&done&')
+    os.system(f'pgrep -x inotifywait>/dev/null||inotifywait -mqr --exclude \\.git -e close_write {SYNC_ROOT} 2>/dev/null|while read x;do a sync&done 2>/dev/null&')
     print(SYNC_ROOT)
     for repo, name in REPOS.items():
         path = SYNC_ROOT/repo; url = _sync_repo(path, name)
