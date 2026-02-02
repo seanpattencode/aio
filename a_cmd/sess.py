@@ -67,5 +67,5 @@ def run():
         elif created and arg in sess: send_prefix(sn, sess[arg][0], wd, cfg)
 
     if new_win: launch_win(sn); with_term and __import__('a_cmd._common', fromlist=['launch_dir']).launch_dir(wd)
-    elif "TMUX" in os.environ or not sys.stdout.isatty(): print(f"✓ Session: {sn}")
-    else: os.execvp((a:=tm.attach(sn))[0],a)
+    elif not sys.stdout.isatty(): print(f"✓ Session: {sn}")
+    else: tm.go(sn)
