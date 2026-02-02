@@ -5,8 +5,10 @@ import os, sys, socket, io
 SOCK, AIO = '/tmp/a.sock', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'a.py')
 
 def daemon():
-    if os.fork(): print("a daemon started"); return
-    if os.fork(): os._exit(0)  # double fork, parent exits
+    try: socket.socket(1).connect(SOCK);return
+    except: pass
+    if os.fork(): return
+    if os.fork(): os._exit(0)
     os.environ['_AIO_WARM'] = '1'
     sys.path.insert(0, os.path.dirname(AIO))
     code = compile(open(AIO).read(), AIO, 'exec')
@@ -16,8 +18,7 @@ def daemon():
     sys.stdout = sys.__stdout__
     try: os.unlink(SOCK)
     except: pass
-    sock = socket.socket(socket.AF_UNIX); sock.bind(SOCK); sock.listen(5)
-    print("a warm daemon ready")
+    sock = socket.socket(1); sock.bind(SOCK); sock.listen(5)
     while True:
         conn, _ = sock.accept(); data = conn.recv(8192).decode()
         if data == 'STOP': conn.close(); break
