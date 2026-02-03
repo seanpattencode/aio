@@ -40,10 +40,19 @@ def _sync_repo(path, repo_name, msg='sync'):
 
 def sync(repo='common', msg='sync'): return _sync_repo(SYNC_ROOT/repo, REPOS.get(repo, f'a-{repo}'), msg)
 
+HELP = """a sync - Sync a-sync repos to GitHub
+  a sync       Sync all repos locally → GitHub
+  a sync all   Sync local + broadcast to all SSH hosts
+  a sync help  Show this help"""
+
 def run():
+    import sys
+    arg = sys.argv[2] if len(sys.argv) > 2 else None
+    if arg in ('help', '-h', '--help'): print(HELP); return
     os.system('pgrep -x inotifywait>/dev/null')and os.system(f'inotifywait -mqr --exclude \\.git -e close_write {SYNC_ROOT}|while read x;do a sync&done&')
     print(SYNC_ROOT)
     for repo, name in REPOS.items():
         path = SYNC_ROOT/repo; url = _sync_repo(path, name)
         t = sp.run(['git','-C',str(path),'log','-1','--format=%cd %s','--date=format:%Y-%m-%d %I:%M:%S %p'],capture_output=True,text=True).stdout.strip()
         print(f"\n[{repo}] {url}\nLast: {t}")
+    if arg == 'all': print("\n--- Broadcasting to SSH hosts ---"); sp.run('a ssh all "a sync"', shell=True)
