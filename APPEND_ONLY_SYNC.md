@@ -271,3 +271,99 @@ cd ~/a-sync && git status
 ```bash
 cd ~/a-sync && git add -A && git commit -m fix && git push --force
 ```
+
+---
+
+## Real-Time Sync
+
+### How It Works
+
+```
+LOCAL WRITE (a task add, a n, etc.)
+    ↓
+1. Immediate push to GitHub
+    ↓
+2. Broadcast to all devices (non-blocking)
+    ↓
+3. Poll daemon pulls every 60s (fallback)
+```
+
+### Broadcast (Automatic)
+
+When you push changes, all other devices are notified via SSH:
+
+| Feature | Detail |
+|---------|--------|
+| Parallel | All hosts pinged simultaneously |
+| 2s timeout | Offline devices don't block |
+| 3 retries | Pings at 0s, 3s, 6s intervals |
+| Non-blocking | Returns immediately |
+| Password support | Uses sshpass for hosts with passwords |
+
+**No setup required** - broadcast runs automatically on every sync.
+
+### Poll Daemon (Manual Start)
+
+Background process that pulls every 60 seconds as fallback.
+
+**Start daemon:**
+```bash
+a sync poll
+# Output: Poll daemon started (pid 12345, interval 60s)
+```
+
+**Stop daemon:**
+```bash
+a sync stop
+# Output: Poll daemon stopped (pid 12345)
+```
+
+**Check status:**
+```bash
+a sync
+# Shows at bottom:
+#   Poll: running (60s) - stop with: a sync stop
+# or:
+#   Poll: not running - start with: a sync poll
+```
+
+### Auto-Start Poll Daemon (Optional)
+
+**Option 1: Add to shell profile**
+```bash
+echo 'a sync poll 2>/dev/null' >> ~/.bashrc
+```
+
+**Option 2: Systemd user service**
+```bash
+mkdir -p ~/.config/systemd/user
+
+cat > ~/.config/systemd/user/a-sync-poll.service << 'EOF'
+[Unit]
+Description=a-sync poll daemon
+
+[Service]
+ExecStart=/bin/bash -c 'while true; do sleep 60; cd ~/a-sync && git pull -q origin main; done'
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user enable --now a-sync-poll
+```
+
+### Sync Flow Summary
+
+| Trigger | Action | Latency |
+|---------|--------|---------|
+| Local write | Push + broadcast | ~2-3s to online devices |
+| Remote write | Poll daemon pulls | ≤60s |
+| Manual | `a sync` | Immediate |
+| Offline device | Catches up on next sync | Variable |
+
+### Recommended Setup
+
+1. **Active workstation:** Start poll daemon (`a sync poll`)
+2. **Server/always-on:** Systemd service or cron
+3. **Mobile/laptop:** Rely on broadcast + manual sync
