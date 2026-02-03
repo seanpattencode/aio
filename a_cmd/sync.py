@@ -1,7 +1,8 @@
+"""Sync repos to GitHub. All repos should use main branch. Large files (>100MB) should use cloud storage, not git."""
 import os, subprocess as sp
 from pathlib import Path
 from ._common import SYNC_ROOT, RCLONE_REMOTES, RCLONE_BACKUP_PATH, DEVICE_ID, get_rclone
-REPOS = {k: f'a-{k}' for k in 'common ssh login hub notes workspace docs tasks'.split()}
+REPOS = {k: f'a-{k}' for k in 'common ssh login hub notes workspace docs tasks logs'.split()}
 
 def _merge_rclone():
     import re;lc,rc=SYNC_ROOT/'login'/'rclone.conf',Path.home()/'.config/rclone/rclone.conf'
@@ -22,8 +23,9 @@ def cloud_sync(local_path, name):
 def _sync_repo(path, repo_name, msg='sync'):
     path.parent.mkdir(parents=True,exist_ok=True);g=f'cd {path}&&';b=SYNC_ROOT/'backup'/path.name;path.exists()and sp.run(f'mkdir -p {b.parent}&&rm -rf {b}&&cp -r {path} {b}',shell=True,capture_output=True)
     if not sp.run(f'git -C {path} remote get-url origin',shell=True,capture_output=True).returncode:
+        br=sp.run(f'git -C {path} branch --show-current',shell=True,capture_output=True,text=True).stdout.strip()or'main'
         sp.run(f'{g}git add -A&&git commit -qm "{msg}"',shell=True,capture_output=True)
-        r=sp.run(f'{g}git pull -q origin main;git push -q',shell=True,capture_output=True,text=True)
+        r=sp.run(f'{g}git pull -q --no-rebase origin {br};git push -q',shell=True,capture_output=True,text=True)
     else:
         r=sp.run(f'rm -rf {path};gh repo clone {repo_name} {path}||(mkdir -p {path}&&{g}git init -q&&echo "# {repo_name}">README.md&&git add -A&&git commit -qm init&&gh repo create {repo_name} --private --source=. --push)',shell=True,capture_output=True)
     url=sp.run(['git','-C',str(path),'remote','get-url','origin'],capture_output=True,text=True).stdout.strip()or'sync'

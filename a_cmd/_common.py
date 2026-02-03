@@ -230,8 +230,7 @@ def cloud_sync(wait=False):
         ok = True
         for rem in remotes:
             r = sp.run([rc, 'sync', DATA_DIR, f'{rem}:{RCLONE_BACKUP_PATH}', '-q', '--exclude', '*.db*', '--exclude', '*cache*', '--exclude', 'timing.jsonl', '--exclude', '.device', '--exclude', '.git/**', '--exclude', 'logs/**'], capture_output=True, text=True)
-            sp.run([rc, 'sync', LOG_DIR, f'{rem}:{RCLONE_BACKUP_PATH}/logs/{DEVICE_ID}', '-q'], capture_output=True)
-            for f in ['~/.config/gh/hosts.yml', '~/.config/rclone/rclone.conf']:  # auth: rclone bootstraps, circular dep = low risk
+            for f in ['~/.config/gh/hosts.yml', '~/.config/rclone/rclone.conf']:
                 p = os.path.expanduser(f); os.path.exists(p) and sp.run([rc, 'copy', p, f'{rem}:{RCLONE_BACKUP_PATH}/auth/', '-q'], capture_output=True)
             ok = ok and r.returncode == 0
         Path(DATA_DIR, '.gdrive_sync').touch() if ok else None; return ok

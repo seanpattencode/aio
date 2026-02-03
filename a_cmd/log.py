@@ -1,4 +1,4 @@
-"""aio log [#|tail|clean|grab|sync]"""
+"""aio log [#|tail|clean|grab|sync] - Large files (>100MB) should use cloud storage, not git"""
 import sys, os, time, subprocess as sp, shutil, json
 from pathlib import Path
 from datetime import datetime as D
