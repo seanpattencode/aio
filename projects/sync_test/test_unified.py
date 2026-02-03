@@ -140,20 +140,19 @@ if __name__ == '__main__':
     test_cross_device()
     test_hsu_ops()
 
-    # Broadcast test
+    # Broadcast test (uses a task add which triggers _broadcast via fork)
     print("\n=== BROADCAST TEST ===")
-    fname = f'_bcast_{TS}.txt'
-    (ROOT / 'tasks' / fname).write_text('broadcast test\n')
-    sync_local()
-    print(f"  WSL: created + synced {fname}")
-    time.sleep(10)  # wait for broadcast
-    ok, out = hsu(f'ls ~/projects/a-sync/tasks/{fname}')
-    if fname in out:
+    bcast_id = str(int(time.time()))[-6:]  # last 6 digits
+    sp.run(f'a task add "bcasttest{bcast_id}"', shell=True, capture_output=True)
+    print(f"  WSL: added task 'bcasttest{bcast_id}' (triggers broadcast)")
+    time.sleep(8)  # wait for forked broadcast (3 pings at 3s intervals)
+    ok, out = hsu(f'ls ~/projects/a-sync/tasks/*bcasttest{bcast_id}*')
+    if f'bcasttest{bcast_id}' in out:
         print("  HSU: received via broadcast - PASS")
     else:
         ERRORS.append("broadcast: hsu didn't receive file")
-        print("  HSU: missing - FAIL")
-    (ROOT / 'tasks' / fname).unlink(missing_ok=True)
+        print(f"  HSU: missing - FAIL (got: {out[:50]})")
+    for f in ROOT.glob(f'tasks/*bcasttest{bcast_id}*'): f.unlink()
     sync_local()
 
     # Final status
