@@ -29,7 +29,7 @@ n=${#L[@]}; i=0
 while [ $i -lt $n ]; do
   IFS=$'\t' read -r f t <<< "${L[$i]}"
   echo -e "\n$t\n"
-  read -sn1 -p "[d/n/s/l]: " c; echo
+  read -sn1 -p "[d]elete [n]ext [s]earch [l]ist [Enter=quit]: " c; echo
   case $c in
     d) rm "$f" 2>/dev/null; sed -i "$((i+1))d" "$C"; ((n--));;
     n) ((i++));;
