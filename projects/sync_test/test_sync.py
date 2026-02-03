@@ -29,4 +29,23 @@ def test_archive(): setup(); f=create_file('device_a','toarchive'); [pull(d) for
 
 def test_offline(): setup(); f1,f2,f3,f4=[create_file('device_a',n) for n in ('toadd','todelete','toarchive','toedit')]; [pull(d) for d in DEVICES]; [(create_file('device_b',f'online{i}'), pull('device_b')) for i in range(2)]; pull('device_c'); (ROOT/'device_c'/'newfile.txt').write_text('add'); (ROOT/'device_c'/f2).unlink(); (ROOT/'device_c'/'.archive').mkdir(exist_ok=True); (ROOT/'device_c'/f3).rename(ROOT/'device_c'/'.archive'/f3); (ROOT/'device_c'/f4).write_text('edited'); sync_edit('device_c'); [pull(d) for d in DEVICES]; return {'files':{d:len(list((ROOT/d).glob('*.txt'))) for d in DEVICES},'archive':{d:len(list((ROOT/d/'.archive').glob('*.txt'))) for d in DEVICES}}
 
-if __name__ == '__main__': print(test_offline())
+import random
+def monte_carlo(n=1000):
+    setup(); create_file('device_a','seed'); [pull(d) for d in DEVICES]; online={d:True for d in DEVICES}; errors=[]
+    for i in range(n):
+        d=random.choice(DEVICES); op=random.choice(['add','delete','archive','edit','toggle'])
+        if op=='toggle': online[d]=not online[d]; continue
+        if not online[d]: continue
+        try:
+            pull(d); files=list((ROOT/d).glob('*.txt'))
+            if op=='add': (ROOT/d/f'f{i}.txt').write_text(f'{i}'); sync(d)
+            elif op=='delete' and files: random.choice(files).unlink(); sp.run(f'cd {ROOT/d} && git add -A && git commit -qm "del" && git push origin main',shell=True)
+            elif op=='archive' and files: (ROOT/d/'.archive').mkdir(exist_ok=True); f=random.choice(files); f.rename(ROOT/d/'.archive'/f.name); sp.run(f'cd {ROOT/d} && git add -A && git commit -qm "arc" && git push origin main',shell=True)
+            elif op=='edit' and files: random.choice(files).write_text(f'edit{i}'); sync_edit(d)
+        except Exception as e: errors.append((i,d,op,str(e)))
+    [pull(d) for d in DEVICES]; counts={d:(len(list((ROOT/d).glob('*.txt'))),len(list((ROOT/d/'.archive').glob('*.txt')))if(ROOT/d/'.archive').exists()else 0) for d in DEVICES}
+    return {'actions':n,'errors':len(errors),'counts':counts,'match':len(set(counts.values()))==1}
+
+def test_old_no_ts(): setup(); (ROOT/'device_a'/'note.txt').write_text('old no ts'); create_file('device_b','note'); [pull(d) for d in DEVICES if d!='device_a']; sync('device_a'); [pull(d) for d in DEVICES]; return {d:[p.name for p in (ROOT/d).glob('*.txt')] for d in DEVICES}
+
+if __name__ == '__main__': print(test_old_no_ts())
