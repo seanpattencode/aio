@@ -114,3 +114,160 @@ def get_latest(path, name):
 4. **App reads latest** → `get_latest()` finds newest by timestamp in filename
 
 **Trade-off (CAP theorem):** This is an AP system - Available + Partition-tolerant, eventually consistent. Two devices editing "same" logical file create two versions; app shows most recent by timestamp.
+
+---
+
+## Unified Repository Structure
+
+### Previous: 8 Separate Repos
+```
+~/a-sync/
+├── common/   (.git → a-common)
+├── ssh/      (.git → a-ssh)
+├── login/    (.git → a-login)
+├── hub/      (.git → a-hub)
+├── notes/    (.git → a-notes)
+├── workspace/(.git → a-workspace)
+├── docs/     (.git → a-docs)
+└── tasks/    (.git → a-tasks)
+```
+**Problem:** 8 repos to manage, 8 potential conflict points, complex sync logic.
+
+### Current: Single `a-git` Repo
+```
+~/a-sync/                  ← single git repo: github.com/seanpattencode/a-git
+├── .git/
+├── .gitignore             ← ignores backup/, logs/, .archive/
+├── common/
+├── ssh/
+├── login/
+├── hub/
+├── notes/
+├── workspace/
+├── docs/
+├── tasks/
+├── backup/                ← local only (gitignored)
+└── logs/                  ← cloud only via rclone (gitignored)
+```
+
+**Benefits:**
+- One `git pull && push` syncs everything
+- One place to debug if issues
+- Simpler mental model
+- Append-only eliminates the risk that motivated separation
+
+---
+
+## Device Migration Guide
+
+### Prerequisites
+- `gh` CLI authenticated (`gh auth status`)
+- Access to `seanpattencode/a-git` repo
+- Updated `a` repo (`cd ~/projects/a && git pull`)
+
+### Migration Checklist
+
+```
+[ ] 1. Backup current data
+[ ] 2. Update a repo
+[ ] 3. Replace a-sync with a-git clone
+[ ] 4. Verify sync works
+[ ] 5. Test task/note operations
+```
+
+### Step-by-Step Migration
+
+**1. Backup current data**
+```bash
+cp -r ~/a-sync ~/a-sync-backup-$(date +%Y%m%d)
+# or for ~/projects/a-sync:
+cp -r ~/projects/a-sync ~/projects/a-sync-backup-$(date +%Y%m%d)
+```
+
+**2. Update a repo**
+```bash
+cd ~/projects/a && git pull origin main
+# or wherever your a repo is located
+```
+
+**3. Replace a-sync with unified repo**
+```bash
+# Remove old structure (has individual .git folders)
+rm -rf ~/projects/a-sync
+
+# Clone unified repo
+gh repo clone seanpattencode/a-git ~/projects/a-sync
+```
+
+**4. Verify sync works**
+```bash
+a sync
+```
+Expected output:
+```
+/home/<user>/projects/a-sync
+  https://github.com/seanpattencode/a-git.git
+  Last: <timestamp> sync
+  Status: synced
+  common: X files
+  ssh: X files
+  ...
+```
+
+**5. Test operations**
+```bash
+# Test task
+a task add "migration test $(hostname)"
+a task l | grep migration
+
+# Test note
+a n "migration test note $(hostname)"
+
+# Sync and verify
+a sync
+```
+
+### Rollback (if needed)
+```bash
+rm -rf ~/projects/a-sync
+cp -r ~/projects/a-sync-backup-* ~/projects/a-sync
+```
+
+### Path Variations by Device
+
+| Device | a-sync location |
+|--------|-----------------|
+| WSL (MSI) | `~/a-sync` |
+| hsu | `~/projects/a-sync` |
+| Phone (Termux) | `~/a-sync` |
+
+The `SYNC_ROOT` in `_common.py` should resolve correctly based on device detection.
+
+---
+
+## Quick Reference
+
+**Sync all data:**
+```bash
+a sync
+```
+
+**Add task:**
+```bash
+a task add "description"
+```
+
+**Add note:**
+```bash
+a n "note text"
+```
+
+**Check repo status:**
+```bash
+cd ~/a-sync && git status
+```
+
+**Force push (recovery):**
+```bash
+cd ~/a-sync && git add -A && git commit -m fix && git push --force
+```
