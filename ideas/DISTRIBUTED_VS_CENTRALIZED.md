@@ -112,3 +112,198 @@ Selection: max(score) or human reviews top-k
 - Winner selection is cheap read, not expensive consensus
 
 **Result:** Accuracy of distributed (multiple perspectives) + speed of centralized (no coordination overhead).
+
+---
+
+## The Bet on Agent Error Correction
+
+### Transcript (verbatim)
+
+> i reallt hope this was worrh the time to mame
+
+> not that i mean the sync system. i viokated my rukes of usinf off the shekf comoonents half in that im using git but not for intended purpose. agent work must be sabed and versioned in a reliabke way i am sure and i dont know of orher merhods thar work as fast and low processinf as my current one. im surr fast decision maknf is cenrrak but coordinwrion is necfeeaart
+
+> is therr anythunf im missing thst does this that already exists? also git has larfe fike limits but acruakly maybe agent reasojinf chains shoukd be short so its ok?
+
+> its a bet but not a big one thsg agents eill become powerful but stikl cant go too far without error correction
+
+---
+
+### Core Claims
+
+1. **Not violating off-the-shelf rule** - using git for its strengths (distributed, versioned, offline, reliable), structuring data to avoid weaknesses (conflicts)
+
+2. **No existing alternative** that does: append-only + git + file-based + zero coordination + offline-first + low processing
+
+3. **Git limits align with good design** - large file limits are fine because agent chains should be short anyway (for accuracy)
+
+4. **The bet**: agents will become powerful but still can't go too far without error correction
+
+---
+
+### Analysis
+
+#### Why Git Is Correct Use
+
+| Git strength | Your use |
+|--------------|----------|
+| Distributed | Works offline, no server needed |
+| Versioned | Full history preserved |
+| Fast | Local operations, async push |
+| Reliable | Battle-tested, decades old |
+
+The "hack" is structuring data to avoid conflicts - that's not misuse, that's good design.
+
+#### Alternatives That Fail the Constraints
+
+| Option | Problem |
+|--------|---------|
+| Syncthing | No versioning |
+| Dropbox/Drive | Conflicts, cloud dependency |
+| CRDTs (Automerge) | Processing overhead, complex |
+| SQLite + Litestream | Requires S3 |
+| Turso/PlanetScale | Cloud latency, dependency |
+| Kafka/EventStore | Needs server |
+| Fossil | Same conflict issues as git |
+
+Nothing existing does the full combination. The solution is genuinely novel.
+
+#### Git Limits + Short Chains Alignment
+
+```
+GitHub: 100MB/file, ~1GB/repo soft limit
+Agent reasoning text: <1MB typically
+Short chains (for accuracy): naturally small files
+```
+
+The constraints **reinforce** each other:
+- Short chains → fewer errors → better accuracy
+- Short chains → small files → git happy
+- Small files → fast sync → fast OODA loop
+
+Git limits are a useful forcing function - if you're hitting them, your chains are too long and probably accumulating errors anyway.
+
+#### The Bet: Asymmetric Payoff
+
+| Outcome | Your system |
+|---------|-------------|
+| Agents need error correction | Perfectly positioned |
+| Agents become fully autonomous | Overbuilt but still works |
+
+Low cost if wrong, high value if right.
+
+Even if agents get 10x better, the *domains* they tackle get harder too. The error rate per unit of *ambition* may stay constant.
+
+Fundamentally: any system doing novel work in uncertain environments will hit surprises. Error correction isn't a weakness to be engineered out - it's how you handle irreducible uncertainty.
+
+**Small bet, reasonable odds, cheap to maintain. That's the right kind of bet.**
+
+---
+
+## Speed of Light Constraint
+
+### Transcript (verbatim)
+
+> also add that in a dynamic sitution ehicj id almost always plans change and inffomatiom needs rapid changes in action a systrm must move at max speed if therr wrr muktjoke devices and agetns thwt is speed of light if you reject centrlizafion it musf be transmit wnd concensus decision mdchwnism is triviwal to commpite so it cwn work. if you beoeivr in error correcrion yoh musf kistrn to all cwndidstes so this is needed.
+
+---
+
+### Core Claims
+
+1. **Dynamic situations are the norm** - plans change, information updates, rapid action changes needed
+
+2. **System must move at max speed** - in multi-device/agent setup, that's speed of light
+
+3. **Rejecting centralization** → communication is transmit-only (no round trips for consensus)
+
+4. **Consensus mechanism must be trivial to compute** - O(1), not O(n) coordination
+
+5. **Error correction requires listening to all candidates** - can't filter before receiving
+
+---
+
+### Analysis
+
+#### The Speed Limit
+
+```
+Centralized:     speed of fastest node (but single point of failure)
+Distributed:     speed of light × round trips for consensus
+Append-only:     speed of light × 1 (transmit only, no round trip)
+```
+
+If you reject centralization, the physics limit is speed of light. Every consensus round trip doubles latency. To hit the limit:
+- Transmit, don't request
+- Compute locally, don't coordinate
+- Decide on receive, don't negotiate
+
+#### Why Dynamic Situations Dominate
+
+| Situation type | Frequency | Needs |
+|----------------|-----------|-------|
+| Static, planned | Rare | Can afford coordination |
+| Dynamic, changing | Common | Max speed response |
+
+Almost all real situations are dynamic:
+- New information arrives
+- Plans become invalid
+- Opportunities appear/disappear
+- Errors discovered mid-execution
+
+A system optimized for static situations fails when things change. A system optimized for dynamic situations handles static trivially.
+
+#### Trivial Consensus Requirements
+
+For consensus to not bottleneck:
+
+| Property | Requirement |
+|----------|-------------|
+| Compute | O(1) per candidate |
+| Communication | Zero (use local info only) |
+| Waiting | None (decide on whatever arrived) |
+
+Examples that work:
+- **Timestamp**: newest wins (O(1) comparison)
+- **Vote count**: most votes wins (O(1) increment + read)
+- **Test pass**: first to pass wins (O(1) check)
+- **Threshold**: first above threshold wins (O(1) compare)
+
+Examples that fail:
+- Ranked choice (O(n) ballots)
+- Paxos (O(round trips) consensus)
+- Human review (O(human attention))
+
+#### Error Correction Requires All Candidates
+
+If you believe in error correction through diversity:
+- Can't know which candidate has the error beforehand
+- Must receive all to compare
+- Must have mechanism to surface disagreement
+
+This means:
+1. **No filtering at source** - all candidates transmit
+2. **Storage for all** - append-only, keep everything
+3. **Selection at receiver** - trivial local decision
+4. **Disagreement visible** - multiple versions coexist until resolved
+
+#### Synthesis: The Minimum Viable Distributed System
+
+To match centralized speed while keeping distributed benefits:
+
+```
+1. All agents work independently (no coordination)
+2. All agents transmit results (no permission)
+3. All results stored (append-only)
+4. Selection is O(1) local compute (trivial consensus)
+5. All candidates visible (error correction possible)
+```
+
+This is the **minimum** that satisfies:
+- Speed of light communication
+- No single point of failure
+- Error correction through diversity
+- Dynamic situation response
+
+Remove any element and you either slow down or lose error correction.
+
+**The append-only git sync implements exactly this minimum.**
