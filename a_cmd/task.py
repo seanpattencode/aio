@@ -26,7 +26,7 @@ a task do       AI do tasks
 a task s        AI suggest
 
 context: ~/a-sync/tasks/
-https://github.com/seanpattencode/a-tasks""")
+https://github.com/seanpattencode/a-git""")
         return
 
     cmd = a[0]
@@ -53,7 +53,7 @@ https://github.com/seanpattencode/a-tasks""")
         filename = f'{slug}_{ts()}.txt'
         (d / filename).write_text(text + '\n')
         print(f"✓ Added: {text[:50]}")
-        _sync(d, silent=True)
+        _sync(silent=True)
         return
 
     # Delete task
@@ -68,7 +68,7 @@ https://github.com/seanpattencode/a-tasks""")
                 content = f.read_text().strip().split('\n')[0][:40]
                 f.unlink()
                 print(f"✓ Deleted: {content}")
-                _sync(d, silent=True)
+                _sync(silent=True)
             else:
                 print(f"Invalid task number: {a[1]}")
         except ValueError:
@@ -78,7 +78,7 @@ https://github.com/seanpattencode/a-tasks""")
     # Sync
     if cmd == 'sync':
         add_timestamps(d)
-        ok, conflict = _sync(d)
+        ok, conflict = _sync()
         if ok:
             print("✓ Tasks synced")
         elif conflict:

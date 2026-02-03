@@ -21,13 +21,13 @@ def _save(text, status='pending', project=None, due=None, device=None):
     if due:
         content += f"Due: {due}\n"
     (NOTES_DIR / filename).write_text(content)
-    _sync(NOTES_DIR, silent=True)
+    _sync(silent=True)
     return filename
 
 def _load():
     """Load all notes, sorted by timestamp (newest first)"""
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    _sync(NOTES_DIR, silent=True)
+    _sync(silent=True)
     notes = []
     for f in sorted(NOTES_DIR.glob('*.txt'), key=lambda p: p.stem.rsplit('_', 1)[-1] if '_20' in p.stem else '0', reverse=True):
         if f.name.startswith('.'):
@@ -53,7 +53,7 @@ def _rm(filepath):
     archive.mkdir(exist_ok=True)
     if filepath.exists():
         filepath.rename(archive / filepath.name)
-    _sync(NOTES_DIR, silent=True)
+    _sync(silent=True)
 
 def run():
     raw = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
@@ -81,7 +81,7 @@ def run():
         return
 
     # Interactive mode
-    url = sp.run(['git', '-C', str(NOTES_DIR), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
+    url = sp.run(['git', '-C', str(SYNC_ROOT), 'remote', 'get-url', 'origin'], capture_output=True, text=True).stdout.strip()
     print(f"Notes: {len(pending)} pending\n  {NOTES_DIR}\n  {url}\n")
     print(f"{len(pending)} notes | [a]ck [e]dit [s]earch [q]uit | 1/20=due")
     i = 0
