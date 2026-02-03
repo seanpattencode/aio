@@ -1,11 +1,101 @@
-# Append-only: {time_ns}_{device}.txt = no conflicts. Push ours, reset to main.
-import sys,time;from ._common import SYNC_ROOT,DEVICE_ID as D
+# Append-only tasks: {name}_{timestamp}.txt = no conflicts
+# Uses sync.py append-only logic for conflict-free sync
+
+import sys, time
+from pathlib import Path
+from ._common import SYNC_ROOT, DEVICE_ID
+from .sync import _sync, ts, get_latest, add_timestamps
+
 def run():
-    d,a=SYNC_ROOT/'tasks',sys.argv[2:];d.mkdir(exist_ok=True);t=sorted(d.glob('*.txt'),key=lambda f:f.stat().st_mtime)
-    if not a:print("a task t     review one-by-one\na task l     list\na task 0     AI pick #1\na task p     AI plan each\na task do    AI do tasks\na task s     AI suggest\na task d #   delete\na task <txt> add\ncontext: ~/projects/a-sync/task_context.txt\nhttps://github.com/seanpattencode/a-tasks");return
-    if a[0] in ('t','--time','-h','--help','h'):import os;os.execlp('t','t',*(a[1:]if a[0]=='t'else a))
-    if a[0]in('l','ls','list'):[print(f"{i}. {f.read_text().strip()}")for i,f in enumerate(t,1)]
-    elif a[0] in('0','p','do','s'):import subprocess;subprocess.run(['a','x.'+{'0':'priority','p':'plan','do':'do','s':'suggest'}[a[0]]])
-    elif a[0]=='d':t[int(a[1])-1].unlink();_sync(d)
-    else:s=' '.join(a);(d/f'{s[:20].replace(" ","-").lower()}_{time.strftime("%m%d%H%M")}.txt').write_text(s+'\n');_sync(d)
-def _sync(d):import subprocess as p;p.run(f'cd {d}&&git add -A&&git commit -qm sync&&git pull -q --no-rebase&&git push -q',shell=True,capture_output=True)
+    d = SYNC_ROOT / 'tasks'
+    d.mkdir(exist_ok=True)
+    a = sys.argv[2:]
+
+    # Get all task files sorted by timestamp in filename (not mtime)
+    tasks = sorted([f for f in d.glob('*.txt') if '_20' in f.stem or not f.name.startswith('.')],
+                   key=lambda f: f.stem.rsplit('_', 1)[-1] if '_20' in f.stem else '0')
+
+    if not a:
+        print("""a task l        list all tasks
+a task add <t>  add a task
+a task d #      delete task by number
+a task sync     sync tasks repo
+a task 0        AI pick top priority
+a task p        AI plan each
+a task do       AI do tasks
+a task s        AI suggest
+
+context: ~/a-sync/tasks/
+https://github.com/seanpattencode/a-tasks""")
+        return
+
+    cmd = a[0]
+
+    # List tasks
+    if cmd in ('l', 'ls', 'list'):
+        if not tasks:
+            print("No tasks")
+            return
+        for i, f in enumerate(tasks, 1):
+            content = f.read_text().strip().split('\n')[0][:60]
+            print(f"{i}. {content}")
+        return
+
+    # Add task
+    if cmd in ('add', 'a') or (cmd not in ('d', 'del', 'delete', 'sync', 'l', 'ls', 'list', '0', 'p', 'do', 's', 't', 'h', '--help', '-h')):
+        text = ' '.join(a[1:]) if cmd in ('add', 'a') else ' '.join(a)
+        if not text:
+            print("Usage: a task add <task description>")
+            return
+        # Create filename: first 20 chars slugified + timestamp
+        slug = text[:20].replace(' ', '-').replace('/', '-').lower()
+        slug = ''.join(c for c in slug if c.isalnum() or c == '-')
+        filename = f'{slug}_{ts()}.txt'
+        (d / filename).write_text(text + '\n')
+        print(f"✓ Added: {text[:50]}")
+        _sync(d, silent=True)
+        return
+
+    # Delete task
+    if cmd in ('d', 'del', 'delete'):
+        if len(a) < 2:
+            print("Usage: a task d <number>")
+            return
+        try:
+            idx = int(a[1]) - 1
+            if 0 <= idx < len(tasks):
+                f = tasks[idx]
+                content = f.read_text().strip().split('\n')[0][:40]
+                f.unlink()
+                print(f"✓ Deleted: {content}")
+                _sync(d, silent=True)
+            else:
+                print(f"Invalid task number: {a[1]}")
+        except ValueError:
+            print(f"Invalid number: {a[1]}")
+        return
+
+    # Sync
+    if cmd == 'sync':
+        add_timestamps(d)
+        ok, conflict = _sync(d)
+        if ok:
+            print("✓ Tasks synced")
+        elif conflict:
+            pass  # _sync already printed conflict message
+        else:
+            print("✓ Tasks synced (no changes)")
+        return
+
+    # AI commands
+    if cmd in ('0', 'p', 'do', 's'):
+        import subprocess
+        subprocess.run(['a', 'x.' + {'0': 'priority', 'p': 'plan', 'do': 'do', 's': 'suggest'}[cmd]])
+        return
+
+    # Help / passthrough to t command
+    if cmd in ('t', '--time', '-h', '--help', 'h'):
+        import os
+        os.execlp('t', 't', *(a[1:] if cmd == 't' else a))
+
+    print(f"Unknown command: {cmd}")
