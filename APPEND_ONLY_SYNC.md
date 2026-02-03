@@ -367,3 +367,90 @@ systemctl --user enable --now a-sync-poll
 1. **Active workstation:** Start poll daemon (`a sync poll`)
 2. **Server/always-on:** Systemd service or cron
 3. **Mobile/laptop:** Rely on broadcast + manual sync
+
+---
+
+## Migration Log (2026-02-03)
+
+### Old System Cleanup
+
+Removed 2,117 lines of old events.jsonl-based sync code:
+
+**Files removed:**
+```
+~/.local/share/a/events.jsonl          # 600 lines - old event log
+~/.local/share/a/events.sql            # old SQL events
+feature_tests/turso/                   # turso sync candidates (sync_v1-v4.py)
+feature_tests/sync_simulation/         # old simulation tests + logs
+feature_tests/db_sync_multi_device.md  # old db sync architecture doc
+ideas/SYNC_ARCHITECTURE.md             # old events.jsonl architecture
+ideas/temporary new sync.md            # old notes
+```
+
+**Kept:**
+- `projects/sync_test/test_sync.py` - Monte Carlo simulation (still useful)
+- `projects/sync_test/test_unified.py` - Cross-device tests for new system
+- `ideas/APPEND_ONLY_SYNC.md` - Current system docs
+
+### Unified Repo Migration
+
+**Problem:** Each subfolder had its own `.git` pointing to separate repos:
+```
+~/a-sync/tasks/.git   → a-tasks
+~/a-sync/notes/.git   → a-notes
+~/a-sync/ssh/.git     → a-ssh
+... (8 total)
+```
+
+Git saw subfolders as gitlinks, not tracking actual file contents.
+
+**Fix applied:**
+
+1. Remove nested `.git` folders:
+```bash
+cd ~/a-sync
+rm -rf common/.git docs/.git hub/.git login/.git notes/.git ssh/.git tasks/.git workspace/.git
+```
+
+2. Remove gitlink entries from parent repo:
+```bash
+git rm --cached common docs hub login notes ssh tasks workspace
+```
+
+3. Add all actual files:
+```bash
+git add -A
+# 534 files staged
+```
+
+4. Commit and push:
+```bash
+git commit -m "unify to single repo - add all folder contents"
+git remote add origin https://github.com/seanpattencode/a-git.git
+git push -u origin main --force
+```
+
+5. Clean up on other devices (HSU):
+```bash
+ssh hsu "cd ~/projects/a-sync && git fetch origin && git reset --hard origin/main"
+ssh hsu "cd ~/projects/a-sync && rm -rf common/.git docs/.git hub/.git login/.git notes/.git ssh/.git tasks/.git workspace/.git"
+```
+
+### Verification
+
+```bash
+# Local (Termux)
+a task add "synctest$(date +%H%M%S)"
+a sync
+
+# Remote (HSU)
+ssh hsu "ls ~/projects/a-sync/tasks/*synctest*"
+# Output: synctest174344_20260203T174344.739930547.txt ✓
+```
+
+### Result
+
+- Single `a-git` repo with 534 files
+- All devices sync via one `git pull && push`
+- No more nested repo management
+- Append-only timestamps prevent conflicts
