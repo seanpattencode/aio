@@ -28,6 +28,7 @@ def _sync_repo(path, repo_name, msg='sync'):
     path.parent.mkdir(parents=True,exist_ok=True);g=f'cd {path}&&';b=SYNC_ROOT/'backup'/path.name;path.exists()and sp.run(f'mkdir -p {b.parent}&&rm -rf {b}&&cp -r {path} {b}',shell=True,capture_output=True)
     if not sp.run(f'git -C {path} remote get-url origin',shell=True,capture_output=True).returncode:
         br=sp.run(f'git -C {path} branch --show-current',shell=True,capture_output=True,text=True).stdout.strip()or'main'
+        if br=='master':print(f"⚠ [{repo_name}] on master, switching to main...");sp.run(f'{g}git checkout main 2>/dev/null||git checkout -b main',shell=True,capture_output=True);br='main'
         sp.run(f'{g}git add -A&&git commit -qm "{msg}"',shell=True,capture_output=True)
         r=sp.run(f'{g}git pull -q --no-rebase origin {br};git push -q',shell=True,capture_output=True,text=True)
     else:
