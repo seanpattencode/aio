@@ -50,15 +50,18 @@ def _sync(path, silent=False):
     """
     Append-only sync with conflict detection.
     Returns (success, conflict_detected)
-    """
-    r = sp.run(
-        f'cd {q(path)} && git add -A && git commit -qm sync && git pull -q --no-rebase origin main && git push -q origin main',
-        shell=True, capture_output=True, text=True
-    )
 
-    if r.returncode != 0:
-        err = (r.stderr + r.stdout).lower()
-        if 'conflict' in err or 'diverged' in err or 'rejected' in err:
+    Flow: pull first, then commit local changes, then push.
+    This ensures we always get remote changes even if nothing local to commit.
+    """
+    p = q(path)
+
+    # Step 1: Pull remote changes first
+    pull = sp.run(f'cd {p} && git pull -q --no-rebase origin main', shell=True, capture_output=True, text=True)
+
+    if pull.returncode != 0:
+        err = (pull.stderr + pull.stdout).lower()
+        if 'conflict' in err or 'diverged' in err:
             if not silent:
                 print(f"""
 ! Sync conflict (this shouldn't happen with append-only)
@@ -69,10 +72,29 @@ If you're SURE this device has the latest data:
 If unsure, ask AI:
   a c "help me resolve sync conflict in {path}"
 
-Error: {(r.stderr + r.stdout)[:200]}
+Error: {(pull.stderr + pull.stdout)[:200]}
 """)
             return False, True
-        return False, False
+
+    # Step 2: Add and commit local changes (ok if nothing to commit)
+    sp.run(f'cd {p} && git add -A', shell=True, capture_output=True)
+    commit = sp.run(f'cd {p} && git commit -qm sync', shell=True, capture_output=True, text=True)
+
+    # Step 3: Push if we have commits to push
+    if commit.returncode == 0:  # Had something to commit
+        push = sp.run(f'cd {p} && git push -q origin main', shell=True, capture_output=True, text=True)
+        if push.returncode != 0:
+            err = (push.stderr + push.stdout).lower()
+            if 'rejected' in err:
+                if not silent:
+                    print(f"""
+! Push rejected (remote has changes, try sync again)
+
+Error: {(push.stderr + push.stdout)[:200]}
+""")
+                return False, True
+            return False, False
+
     return True, False
 
 def _merge_rclone():
