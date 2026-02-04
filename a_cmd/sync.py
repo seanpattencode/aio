@@ -6,6 +6,40 @@
 #
 # Unified repo: a-git (contains common/ssh/login/hub/notes/workspace/docs/tasks)
 # ============================================================================
+#
+# MIGRATION NOTES (2026-02-03)
+# ----------------------------
+# Problem: Local ~/projects/a-sync/ had no git remote configured. Only had
+# a single "init" commit while remote a-git repo had all the real data.
+# Local and remote were completely diverged (51 local-only files, 69 remote-only).
+#
+# Fix steps:
+#   1. Add missing remote:
+#      git remote add origin https://github.com/seanpattencode/a-git.git
+#
+#   2. Fetch remote:
+#      git fetch origin
+#
+#   3. Reset to remote (preserves untracked local files):
+#      git reset --hard origin/main
+#
+#   4. Stage and commit local-only files to merge both sets:
+#      git add -A && git commit -m "merge local and remote sync data"
+#
+#   5. Push merged data:
+#      git push origin main
+#
+# Result: 114 tasks (combined), 39 hub, 8 ssh, 383 notes all synced.
+#
+# Old repos to delete (need delete_repo scope):
+#   gh auth refresh -h github.com -s delete_repo
+#   gh repo delete seanpattencode/test-sync-4 --yes
+#   gh repo delete seanpattencode/test-sync-repo-3 --yes
+#   gh repo delete seanpattencode/a-sync --yes
+#   gh repo delete seanpattencode/aio-sync --yes
+#   gh repo delete seanpattencode/aio-sync-archive --yes
+#
+# ============================================================================
 
 """a-sync folder sync:
   git+github:  ~/a-sync/ -> a-git repo (common ssh login hub notes workspace docs tasks)
