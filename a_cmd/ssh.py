@@ -61,7 +61,7 @@ def run():
         # === Linux/Termux: use local IP ===
         else: ip, p = sp.run("hostname -I 2>/dev/null | awk '{print $1}'", shell=True, capture_output=True, text=True).stdout.strip() or _sshd_ip(), _sshd_port()
         # self [name] [pw]
-        u=os.environ.get('USER','user'); h=f"{u}@{ip}"+(f":{p}"if p!=22 else""); a=sys.argv[3:]; n=a[0]if a else u; pw=a[1]if len(a)>1 else input("Pw:").strip()
+        u=os.environ.get('USER') or sp.run('whoami',shell=True,capture_output=True,text=True).stdout.strip() or 'user'; h=f"{u}@{ip}"+(f":{p}"if p!=22 else""); a=sys.argv[3:]; n=a[0]if a else u; pw=a[1]if len(a)>1 else input("Pw:").strip()
         os.system(f'sshpass -p "{pw}" ssh -oStrictHostKeyChecking=no -p{p} localhost exit')or 0
         _save(n, h, pw, OS=_os()); print(f"✓ {n}={h} [{_os()}]"); return
     if wda in ('info','i'): [print(f"{n}: ssh {'-p '+hp[1]+' ' if len(hp:=h.rsplit(':',1))>1 else ''}{hp[0]}{' ('+osmap[n]+')' if osmap.get(n) else ''}") for n,h in hosts]; return
