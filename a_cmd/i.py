@@ -57,7 +57,8 @@ def run():
             import subprocess
             if via_a:
                 print(f"\n\n\033[KRunning: a {cmd}\n")
-                subprocess.run([sys.executable, os.path.dirname(__file__) + '/../a.py'] + cmd.split())
+                import a; args = cmd.split() if cmd.split()[0] in a.CMDS or cmd.isdigit() else [cmd]
+                subprocess.run([sys.executable, os.path.dirname(__file__) + '/../a.py'] + args)
             else:
                 print(f"\n\n\033[KRunning: {cmd}\n")
                 subprocess.run(cmd.split())

@@ -5,7 +5,7 @@ from . _common import (init_db, load_cfg, load_proj, load_apps, load_sess, tm, _
                        _ghost_claim, _GM, SCRIPT_DIR)
 
 def _add_prompt(cmd, prompt):
-    if not prompt: return cmd, False
+    if not prompt or not cmd: return cmd, False
     p = shlex.quote(prompt)
     if 'gemini' in cmd: return cmd + f' -i {p}', True
     if 'claude' in cmd or 'codex' in cmd: return cmd + f' {p}', True
