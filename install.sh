@@ -20,12 +20,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
         sed -i '' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
         cat >> "$RC" << 'AFUNC'
 a() {
-    local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt icache=~/.local/share/a/i_cache.txt
+    local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt
     [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/a "$@"; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
     local d="${1/#~/$HOME}"; [[ "$1" == /projects/* ]] && d="$HOME$1"; [[ -d "$d" ]] && { echo "📂 $d"; cd "$d"; ls; return; }
     [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/a "$@"; return; }
-    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; awk '/^[^<=>]/{if(++n<=8)print (n==1?" > ":"   ")$0}' "$icache" 2>/dev/null; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/a "$@"; printf '\033[?25h'; return; }
+    [[ "$1" == "i" ]] && { command python3 ~/.local/bin/a "$@"; return; }
     [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/a/timing.jsonl; return $r; }
     command python3 ~/.local/bin/a "$@"
 }
@@ -123,12 +123,12 @@ for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     sed -i '' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
     cat >> "$RC" << 'AFUNC'
 a() {
-    local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt icache=~/.local/share/a/i_cache.txt
+    local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt
     [[ "$1" == "a" || "$1" == "ai" || "$1" == "aio" || "$1" == "all" ]] && { command python3 ~/.local/bin/a "$@"; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then local dir=$(sed -n "$((${1}+1))p" "$projects" 2>/dev/null); [[ -d "$dir" ]] && { echo "📂 $dir"; cd "$dir"; return; }; fi
     local d="${1/#~/$HOME}"; [[ "$1" == /projects/* ]] && d="$HOME$1"; [[ -d "$d" ]] && { echo "📂 $d"; cd "$d"; ls; return; }
     [[ -z "$1" ]] && { cat "$cache" 2>/dev/null || command python3 ~/.local/bin/a "$@"; return; }
-    [[ "$1" == "i" ]] && { printf "Type to filter, Tab=cycle, Enter=run, Esc=quit\n\n> \033[s\n"; awk '/^[^<=>]/{if(++n<=8)print (n==1?" > ":"   ")$0}' "$icache" 2>/dev/null; [[ -t 0 ]] && printf '\033[?25l' && _AIO_I=1 command python3 ~/.local/bin/a "$@"; printf '\033[?25h'; return; }
+    [[ "$1" == "i" ]] && { command python3 ~/.local/bin/a "$@"; return; }
     [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/a/timing.jsonl; return $r; }
     command python3 ~/.local/bin/a "$@"
 }
