@@ -37,7 +37,7 @@ def run():
 
         # Render search at bottom
         sys.stdout.write(f"\r\033[K> {buf}\n")
-        for i, m in enumerate(matches): sys.stdout.write(f"\033[K{' >' if i==sel else '  '} {m}\n")
+        for i, m in enumerate(matches): sys.stdout.write(f"\033[K{' >' if i==sel else '  '} a {m}\n")
         sys.stdout.write(f"\033[{len(matches)+1}A\033[{len(buf)+3}C\033[?25h")
         sys.stdout.flush()
 
