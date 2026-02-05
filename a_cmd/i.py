@@ -30,7 +30,7 @@ def run():
     def search(q): q=q.lower(); return sorted([items[i] for i in ix.get(q[:2],range(len(items))) if q in items[i].lower()], key=lambda x:(q not in x.lower()[:len(q)],x.lower().find(q)))
 
     print((open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else "") + "\n" + "-"*40)
-    rows = os.get_terminal_size().lines; max_show = max(3, rows - 2)
+    rows = os.get_terminal_size().lines; max_show = max(3, rows - 3)
     sys.stdout.write("\033[2J\033[HFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
 
     while True:
