@@ -52,7 +52,7 @@ https://github.com/seanpattencode/a-git""")
         slug = ''.join(c for c in slug if c.isalnum() or c == '-')
         filename = f'{slug}_{ts()}.txt'
         (d / filename).write_text(text + '\n')
-        print(f"✓ Added: {text[:50]}")
+        print(f"✓ Added: {text}")
         _sync(silent=True)
         return
 
