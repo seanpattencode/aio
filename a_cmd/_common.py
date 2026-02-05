@@ -316,7 +316,6 @@ bind-key -n C-n new-window
 bind-key -n C-t split-window
 bind-key -n C-y split-window -fh
 bind-key -n C-a split-window -h 'claude --dangerously-skip-permissions'
-bind-key -n C-f copy-mode \\; send-keys /
 bind-key -n C-w kill-pane
 bind-key -n C-q detach
 bind-key -n C-x confirm-before -p "Kill session? (y/n)" kill-session
