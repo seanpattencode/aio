@@ -29,9 +29,9 @@ def run():
         for p in set(u[j:j+2].lower() for j in range(len(u)-1)): ix.setdefault(p, []).append(i)
     def search(q): q=q.lower(); return sorted([items[i] for i in ix.get(q[:2],range(len(items))) if q in items[i].lower()], key=lambda x:(q not in x.lower()[:len(q)],x.lower().find(q)))
 
-    print((open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else "") + "\n" + "-"*40)
-    rows = os.get_terminal_size().lines; max_show = max(3, rows - 3)
-    sys.stdout.write("\033[2J\033[HFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
+    help_txt = open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else ""
+    max_show = max(3, os.get_terminal_size().lines - help_txt.count('\n') - 4)
+    print(help_txt + "\n" + "-"*40 + "\nFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
 
     while True:
         matches = (search(buf) if buf else items[:max_show])[:max_show]
