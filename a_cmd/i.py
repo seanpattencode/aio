@@ -18,22 +18,18 @@ def run():
     except: refresh_cache(); items = open(CACHE).read().strip().split('\n')
     if not items: refresh_cache(); items = open(CACHE).read().strip().split('\n')
 
+    if len(sys.argv)>2 and (m:=next((x for x in items if ' '.join(sys.argv[2:]).lower() in x.lower()),None)): c=m.split(':')[0].strip()if':'in m else m; print(f"a {c}"); __import__('subprocess').run([sys.executable,__file__.replace('i.py','../a.py')]+c.split()); sys.exit(0)
+    elif len(sys.argv)>2: print(f"x No match"); sys.exit(1)
     if not sys.stdin.isatty(): print('\n'.join(items)); sys.exit(0)
 
     if os.fork() == 0: refresh_cache(); os._exit(0)  # Rebuild cache in background
 
-    # Pico bigram index (3 LOC) - 100x faster than linear
     ix = {}
     for i, u in enumerate(items):
         for p in set(u[j:j+2].lower() for j in range(len(u)-1)): ix.setdefault(p, []).append(i)
-    def search(q):
-        q = q.lower()
-        hits = [items[i] for i in ix.get(q[:2], range(len(items))) if q in items[i].lower()]
-        return sorted(hits, key=lambda x: (0 if x.lower().startswith(q) else 1, x.lower().find(q)))[:10]
+    def search(q): q=q.lower(); return sorted([items[i] for i in ix.get(q[:2],range(len(items))) if q in items[i].lower()], key=lambda x:(q not in x.lower()[:len(q)],x.lower().find(q)))[:10]
 
-    # Show help at top
-    help_txt = open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else ""
-    print(help_txt + "\n" + "-"*40 + "\nFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
+    print((open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else "") + "\n" + "-"*40 + "\nFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
 
     while True:
         matches = search(buf) if buf else items[:10]
@@ -50,18 +46,10 @@ def run():
         elif ch == '\t': sel = (sel + 1) % len(matches) if matches else 0
         elif ch == '\x7f' and buf: buf, sel = buf[:-1], 0
         elif ch == '\r':
-            if ' ' in buf: cmd, via_a = buf, True  # Has args, use as-is
-            elif matches: cmd, via_a = (matches[sel].split(':')[0].strip() if ':' in matches[sel] else matches[sel].strip()), True
-            else: cmd, via_a = buf, False  # No match, run directly
+            cmd = buf if ' ' in buf else (matches[sel].split(':')[0].strip() if matches and ':' in matches[sel] else (matches[sel].strip() if matches else buf))
             if not cmd: continue
-            import subprocess
-            if via_a:
-                print(f"\n\n\033[KRunning: a {cmd}\n")
-                import a; args = cmd.split() if cmd.split()[0] in a.CMDS or cmd.isdigit() else [cmd]
-                subprocess.run([sys.executable, os.path.dirname(__file__) + '/../a.py'] + args)
-            else:
-                print(f"\n\n\033[KRunning: {cmd}\n")
-                subprocess.run(cmd.split())
+            via_a = ' ' in buf or matches; print(f"\n\n\033[KRunning: {'a '+cmd if via_a else cmd}\n")
+            __import__('subprocess').run([sys.executable,__file__.replace('i.py','../a.py')]+cmd.split() if via_a else cmd.split()); break
         elif ch in ('\x03', '\x04') or (ch == 'q' and not buf): break  # Ctrl+C, Ctrl+D, q
         elif ch.isalnum() or ch in '-_ ': buf, sel = buf + ch, 0
 

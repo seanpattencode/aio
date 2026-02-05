@@ -1,6 +1,6 @@
 #!/bin/bash
 # Task review - supports folders (text_*.txt, prompt_*.txt) and legacy .txt
-D=~/projects/a-sync/tasks
+D=~/a-sync/tasks
 DEV=$(cat ~/.local/share/a/.device 2>/dev/null || hostname)
 
 case "$1" in
