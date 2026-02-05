@@ -2,7 +2,7 @@
 import sys, os, tty, termios
 
 from ._common import DATA_DIR, HELP_SHORT
-CACHE, HELP_CACHE = f"{DATA_DIR}/i_cache.txt", f"{DATA_DIR}/help_cache.txt"
+CACHE = f"{DATA_DIR}/i_cache.txt"
 
 def getch():
     fd = sys.stdin.fileno()
@@ -29,9 +29,8 @@ def run():
         for p in set(u[j:j+2].lower() for j in range(len(u)-1)): ix.setdefault(p, []).append(i)
     def search(q): q=q.lower(); return sorted([items[i] for i in ix.get(q[:2],range(len(items))) if q in items[i].lower()], key=lambda x:(q not in x.lower()[:len(q)],x.lower().find(q)))
 
-    help_txt = open(HELP_CACHE).read().strip() if os.path.exists(HELP_CACHE) else ""
-    max_show = max(3, os.get_terminal_size().lines - help_txt.count('\n') - 4)
-    print(help_txt + "\n" + "-"*40 + "\nFilter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
+    max_show = max(3, os.get_terminal_size().lines - 3)
+    print("Filter (Tab=cycle, Enter=run, Esc=quit)\n"); buf, sel = "", 0
 
     while True:
         matches = (search(buf) if buf else items[:max_show])[:max_show]
