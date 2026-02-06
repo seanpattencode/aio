@@ -108,9 +108,58 @@ Linux binaries. The 15ms floor comes from:
    to every `open()`/`stat()`. Desktop Linux hits ext4 directly.
 
 On a rooted device with SELinux permissive, the same binary would be faster.
+Root would also enable CPU pinning (`taskset` to big core) and `performance` governor.
+NDK doesn't help — same compiler, same kernel, same security layer. NDK is for building
+apps inside the Android framework, not faster CLI binaries.
+
+## Why Android is fast at everything except process spawning
+
+"Surely many ops run in 1ms in Android — it's an existing process spawn needed right?"
+
+Yes. The 15ms tax is specifically `fork+exec` of a **new process**. Android is fast when
+you stay inside an existing process:
+
+| Operation | Time | Why |
+|---|---|---|
+| Method call inside app | ~microseconds | Same process, no kernel |
+| Binder IPC (cross-app) | ~0.1-0.5ms | Message passing between existing processes |
+| Bash builtin | 0ms | Already-running shell process |
+| `fork+exec` new binary | **15-20ms** | SELinux + sandbox + linker + scheduler |
+
+Android apps never call `fork+exec`. They fork from Zygote (prewarmed), talk via Binder
+(existing processes), run code in-process. The `fork+exec` path was never optimized because
+Android never uses it.
+
+This is why the bash builtin approach works — the bash process is already running.
+`$(<file)` and `printf` execute inside that process. Same reason Android apps are fast.
+
+Occasional 30ms spikes on ac are not GC (C has no GC) — it's CPU frequency scaling
+(Android clocks down when idle), big.LITTLE scheduler migration, cold page cache,
+or background Android system work.
+
+The only way to get C-speed without the spawn tax: a long-running daemon (like Zygote).
+C process stays alive, talk to it over a socket. Overkill when bash builtins cover the
+fast paths already.
 
 The real solution: 0ms bash builtin wrapper for fast paths, C binary (~15ms) for everything else.
-See `experimental/install_ac.sh`.
+See `experimental/docs/install_ac.sh`.
+
+## Final verdict: ac can never hit 1ms on Termux
+
+ac is an external binary. Any external binary on Android = 15-20ms. No fix without root.
+`a` (bash function) hits 1ms because it runs inside the already-running shell process.
+That's the only way to get sub-15ms on Android: stay inside an existing process.
+
+| Command | Time | Why |
+|---|---|---|
+| `a` (bash function) | **1ms** | Runs inside existing bash process |
+| `ac` (C binary) | **15-20ms** | fork+exec+linker, Android floor |
+
+ac is the fallback for commands that need sqlite/real logic. The bash wrapper handles
+the 3 most-typed fast paths (help, number, dir) at 1ms. This is the ceiling on Android.
+
+The bash wrapper is worth it: `a` (no args) is the single most common invocation.
+For everything else, 15ms via C is already 13x faster than 200ms via Python.
 
 C binary: `experimental/ac.c` (1647 lines, 73K binary)
 Compile: `gcc -O2 -Wall -Wextra -Wno-unused-parameter -I$HOME/micromamba/include -L$HOME/micromamba/lib -o ac ac.c -lsqlite3`

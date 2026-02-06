@@ -9,7 +9,8 @@ ok() { echo -e "${G}✓${R} $1"; }
 
 BIN="$HOME/.local/bin"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AC_SRC="$SCRIPT_DIR/ac.c"
+AC_SRC="$SCRIPT_DIR/../ac.c"
+[[ -f "$AC_SRC" ]] || AC_SRC="$SCRIPT_DIR/ac.c"
 mkdir -p "$BIN"
 
 # Compile
@@ -53,11 +54,15 @@ AFUNC
     ok "shell function → $RC"
 done
 
+# Source into current shell
+source "$HOME/.bashrc" 2>/dev/null || source "$HOME/.zshrc" 2>/dev/null || true
+
 # Verify
 echo ""
-echo "Timing:"
+echo "ac (C binary):"
 time "$BIN/ac" >/dev/null 2>&1
 echo ""
-bash -c 'source ~/.bashrc 2>/dev/null; time a' 2>&1
+echo "a (bash builtin):"
+time a >/dev/null 2>&1
 echo ""
-ok "done — restart shell or: source ~/.bashrc"
+ok "done — ac installed, bash function loaded"
