@@ -23,7 +23,7 @@ a() {
     local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt
     # No args: print cached help (builtin read, 0ms)
     if [[ -z "$1" ]]; then
-        [[ -f "$cache" ]] && printf '%s\n' "$(<"$cache")" || command ac
+        [[ -f "$cache" ]] && printf '%s\n' "$(<"$cache")" || command a
         return
     fi
     # Number: cd to project (builtin mapfile, 0ms)
@@ -38,7 +38,7 @@ a() {
     # .py file: time it
     [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/a/timing.jsonl; return $r; }
     # Everything else: C binary
-    command ac "$@"
+    command a "$@"
 }
 aio() { a "$@"; }
 ai() { a "$@"; }
@@ -109,8 +109,8 @@ case $OS in
 esac
 
 # Compile ac (C binary)
-AC_SRC="$SCRIPT_DIR/ac.c"
-if [[ -f "$AC_SRC" ]]; then
+A_SRC="$SCRIPT_DIR/a.c"
+if [[ -f "$A_SRC" ]]; then
     # Find sqlite3 headers
     SQLITE_FLAGS=""
     if [[ -d "$HOME/micromamba/include" ]]; then
@@ -118,10 +118,9 @@ if [[ -f "$AC_SRC" ]]; then
     fi
     CC=clang; command -v clang &>/dev/null || CC=gcc
     $CC -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result \
-        $SQLITE_FLAGS -o "$BIN/ac" "$AC_SRC" -lsqlite3 && ok "ac compiled ($CC, $(wc -c < "$BIN/ac") bytes)"
-    ln -sf "$BIN/ac" "$BIN/a" && ok "a -> ac symlink"
+        $SQLITE_FLAGS -o "$BIN/a" "$A_SRC" -lsqlite3 && ok "a compiled ($CC, $(wc -c < "$BIN/a") bytes)"
 else
-    warn "ac.c not found at $AC_SRC"
+    warn "a.c not found at $A_SRC"
 fi
 
 # a-i helper
@@ -147,7 +146,7 @@ a() {
     local cache=~/.local/share/a/help_cache.txt projects=~/.local/share/a/projects.txt
     # No args: print cached help (builtin read, 0ms)
     if [[ -z "$1" ]]; then
-        [[ -f "$cache" ]] && printf '%s\n' "$(<"$cache")" || command ac
+        [[ -f "$cache" ]] && printf '%s\n' "$(<"$cache")" || command a
         return
     fi
     # Number: cd to project (builtin mapfile, 0ms)
@@ -162,7 +161,7 @@ a() {
     # .py file: time it
     [[ "$1" == *.py && -f "$1" ]] && { local s=$(($(date +%s%N)/1000000)); python3 "$@"; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> ~/.local/share/a/timing.jsonl; return $r; }
     # Everything else: C binary
-    command ac "$@"
+    command a "$@"
 }
 aio() { a "$@"; }
 ai() { a "$@"; }
@@ -204,13 +203,13 @@ if ! command -v ollama &>/dev/null; then
 else ok "ollama (exists)"; fi
 
 # Enable tmux config if no existing tmux.conf
-[[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/ac" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
+[[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/a" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)"
 
 # Generate cache
-"$BIN/ac" >/dev/null 2>&1 && ok "cache generated"
+"$BIN/a" >/dev/null 2>&1 && ok "cache generated"
 
 # Setup sync (prompt gh login if needed)
-command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && "$BIN/ac" backup setup 2>/dev/null && ok "sync configured"; }
+command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && "$BIN/a" backup setup 2>/dev/null && ok "sync configured"; }
 
 # Final message
 echo ""

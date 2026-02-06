@@ -1,9 +1,9 @@
 /*
- * ac.c - monolithic C rewrite of 'a' AI agent session manager
+ * a.c - monolithic C rewrite of 'a' AI agent session manager
  *
  * Build:
  *   make                (uses Makefile)
- *   clang -O2 -o ac ac.c -lsqlite3      (manual)
+ *   clang -O2 -o a a.c -lsqlite3      (manual)
  *
  * Clang preferred over GCC: 36% faster compile (0.34s vs 0.53s),
  * 5% smaller binary (67KB vs 70KB), identical runtime.
@@ -55,7 +55,7 @@ static void init_paths(void) {
         self[n] = 0;
         char *s = strrchr(self, '/');
         if (s) { *s = 0; snprintf(SDIR, P, "%s", self);
-            /* binary is at projects/a/ac → strip to projects/ */
+            /* binary is at projects/a/a → strip to projects/ */
             s = strrchr(self, '/');
             if (s) { *s = 0; snprintf(SROOT, P, "%s/a-sync", self); }
         }
@@ -464,7 +464,7 @@ static void fallback_py(int argc, char **argv) {
     for (int i = 1; i < argc; i++) na[i + 1] = argv[i];
     na[argc + 1] = NULL;
     execvp("python3", na);
-    perror("ac: python3"); _exit(127);
+    perror("a: python3"); _exit(127);
 }
 
 /* ═══ SESSION CREATE ═══ */
@@ -802,7 +802,7 @@ static int cmd_ls(int argc, char **argv) {
         }
         if (e) p = e + 1; else break;
     }
-    puts("\nSelect:\n  ac ls 0"); return 0;
+    puts("\nSelect:\n  a ls 0"); return 0;
 }
 
 /* ── kill ── */
