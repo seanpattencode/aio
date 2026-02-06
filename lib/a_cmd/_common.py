@@ -258,10 +258,35 @@ def cloud_logout(remote=None):
     if not remotes: print("Not logged in"); return False
     rem = remote or remotes[-1]
     sp.run([get_rclone(), 'config', 'delete', rem]); print(f"✓ Logged out {rem}"); return True
+def _cloud_storage(remote):
+    rc = get_rclone()
+    if not rc: return ""
+    try:
+        r = sp.run([rc, 'about', f'{remote}:', '--json'], capture_output=True, text=True, timeout=10)
+        if r.returncode != 0: return ""
+        d = json.loads(r.stdout); used, total = d.get('used', 0), d.get('total', 0)
+        def _h(b):
+            for u in ('B','KiB','MiB','GiB','TiB'):
+                if b < 1024: return f"{b:.1f} {u}"
+                b /= 1024
+            return f"{b:.1f} PiB"
+        return f" ({_h(used)} / {_h(total)})"
+    except: return ""
+def _all_drive_remotes():
+    rc = get_rclone()
+    if not rc: return {}
+    try:
+        d = json.loads(sp.run([rc, 'config', 'dump'], capture_output=True, text=True).stdout)
+        return {k: v for k, v in d.items() if v.get('type') == 'drive'}
+    except: return {}
 def cloud_status():
     remotes, slots = _configured_remotes(), len(RCLONE_REMOTES)
-    if remotes:
-        for rem in remotes: print(f"✓ {rem}: {cloud_account(rem)}")
+    all_rem = _all_drive_remotes()
+    if all_rem:
+        for rem, cfg in all_rem.items():
+            tag = "✓" if rem in remotes else "·"
+            key = "custom" if cfg.get('client_id') else "shared"
+            print(f"{tag} {rem}: {cloud_account(rem)}{_cloud_storage(rem)} [{key} key]")
         free = slots - len(remotes)
         free and print(f"\n{free} slot{'s' if free > 1 else ''} available. Add another account: aio gdrive login")
         return True
