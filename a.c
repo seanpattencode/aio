@@ -1131,18 +1131,29 @@ static int cmd_task(int argc, char **argv) {
         DIR *d = opendir(dir); if (!d) { puts("No tasks"); return 0; }
         struct dirent *e; int i = 0;
         while ((e = readdir(d))) {
-            if (e->d_name[0] == '.' || e->d_type != DT_DIR) continue;
-            /* Read latest text_*.txt in this task folder */
-            char td[P]; snprintf(td, P, "%s/%s", dir, e->d_name);
-            char tpaths[16][P]; int tn = listdir(td, tpaths, 16);
-            const char *text = NULL;
-            for (int j = tn - 1; j >= 0; j--) {
-                if (strstr(tpaths[j], "text_")) {
-                    kvs_t kv = kvfile(tpaths[j]);
-                    text = kvget(&kv, "Text"); if (text) break;
+            if (e->d_name[0] == '.') continue;
+            char fp[P]; snprintf(fp, P, "%s/%s", dir, e->d_name);
+            if (e->d_type == DT_DIR) {
+                /* Folder: read latest text_*.txt inside */
+                char tpaths[16][P]; int tn = listdir(fp, tpaths, 16);
+                const char *text = NULL;
+                for (int j = tn - 1; j >= 0; j--) {
+                    if (strstr(tpaths[j], "text_")) {
+                        kvs_t kv = kvfile(tpaths[j]);
+                        text = kvget(&kv, "Text");
+                        if (!text) { /* flat text file, first line */
+                            size_t len; char *raw = readf(tpaths[j], &len);
+                            if (raw) { char *nl = strchr(raw, '\n'); if (nl) *nl = 0; text = raw; }
+                        }
+                        if (text) break;
+                    }
                 }
+                if (text) printf("  %d. [d] %.60s\n", i++, text);
+            } else if (e->d_type == DT_REG && strstr(e->d_name, ".txt")) {
+                /* Flat .txt file: first line is task text */
+                size_t len; char *raw = readf(fp, &len);
+                if (raw) { char *nl = strchr(raw, '\n'); if (nl) *nl = 0; printf("  %d. [f] %.60s\n", i++, raw); free(raw); }
             }
-            if (text) printf("  %d. %s\n", i++, text);
         }
         closedir(d);
         if (!i) puts("No tasks");
