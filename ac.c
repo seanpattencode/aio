@@ -55,9 +55,9 @@ static void init_paths(void) {
         self[n] = 0;
         char *s = strrchr(self, '/');
         if (s) { *s = 0; snprintf(SDIR, P, "%s", self);
-            /* binary is at projects/a/ac → parent is projects/ */
+            /* binary is at projects/a/ac → strip to projects/ */
             s = strrchr(self, '/');
-            if (s) snprintf(SROOT, P, "%s/a-sync", self);
+            if (s) { *s = 0; snprintf(SROOT, P, "%s/a-sync", self); }
         }
     }
     if (!SROOT[0]) snprintf(SROOT, P, "%s/projects/a-sync", h);
