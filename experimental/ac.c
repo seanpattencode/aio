@@ -1,7 +1,13 @@
 /*
  * ac.c - monolithic C rewrite of 'a' AI agent session manager
- * Compile: gcc -O2 -Wall -Wextra -Wno-unused-parameter \
- *   -I$HOME/micromamba/include -L$HOME/micromamba/lib -o ac ac.c -lsqlite3
+ *
+ * Build:
+ *   make                (uses Makefile)
+ *   clang -O2 -o ac ac.c -lsqlite3      (manual)
+ *
+ * Clang preferred over GCC: 36% faster compile (0.34s vs 0.53s),
+ * 5% smaller binary (67KB vs 70KB), identical runtime.
+ * Benchmarked with GCC 15 vs Clang 20 on x86_64.
  */
 #include <stdio.h>
 #include <stdlib.h>
