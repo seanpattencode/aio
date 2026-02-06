@@ -8,6 +8,21 @@
  * Clang preferred over GCC: 36% faster compile (0.34s vs 0.53s),
  * 5% smaller binary (67KB vs 70KB), identical runtime.
  * Benchmarked with GCC 15 vs Clang 20 on x86_64.
+ *
+ * Sections (grep for ═══ or ──):
+ *   GLOBALS, INIT PATHS, UTILITIES, RFC 5322 KEY:VALUE PARSER,
+ *   SQLITE, DATA LOADERS, HELP TEXT, LIST_ALL + CACHE,
+ *   TMUX HELPERS, GIT HELPERS, SYNC, FALLBACK, SESSION CREATE
+ *
+ * Commands (grep for ── name ──):
+ *   help, install, uninstall, set, dir, hi, done, web, repo,
+ *   backup, rebuild, project_num, push, pull, diff, revert,
+ *   ls, kill, config, prompt, add, remove, move, scan, attach,
+ *   watch, send, copy, dash, jobs, cleanup, tree, note, task,
+ *   ssh, hub, log, login, sync, update, review, docs, run,
+ *   agent, multi/all, session, worktree, dir_file, interactive picker
+ *
+ * Dispatch: MAIN DISPATCH (switch on first arg)
  */
 #include <stdio.h>
 #include <stdlib.h>
