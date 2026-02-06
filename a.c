@@ -1098,103 +1098,76 @@ static int cmd_tree(int argc, char **argv) {
     return 0;
 }
 
-/* ── note ── */
-static int cmd_note(int argc, char **argv) {
-    char dir[P]; snprintf(dir, P, "%s/notes", SROOT); mkdirp(dir);
-    /* Quick add */
-    if (argc > 2 && argv[2][0] != '?') {
-        char text[B] = ""; for (int i=2;i<argc;i++) { if(i>2) strcat(text," "); strncat(text,argv[i],B-strlen(text)-2); }
-        char ts[64]; time_t now = time(NULL); struct timespec tp; clock_gettime(CLOCK_REALTIME, &tp);
-        strftime(ts, 32, "%Y%m%dT%H%M%S", localtime(&now));
-        char slug[16]; snprintf(slug, 16, "%08x", (unsigned)(tp.tv_nsec ^ (unsigned)now));
-        char fn[P]; snprintf(fn, P, "%s/%s_%s.%09ld.txt", dir, slug, ts, tp.tv_nsec);
-        char ct[32]; strftime(ct, 32, "%Y-%m-%d %H:%M", localtime(&now));
-        char data[B]; snprintf(data, B, "Text: %s\nStatus: pending\nDevice: %s\nCreated: %s\n", text, DEV, ct);
-        writef(fn, data); sync_repo();
-        puts("\xe2\x9c\x93"); return 0;
-    }
-    /* List notes */
-    char paths[512][P]; int n = listdir(dir, paths, 512);
-    if (!n) { puts("a n <text>"); return 0; }
-    /* Sort by name descending (timestamp in name) */
-    /* Print pending notes */
-    sync_repo();
-    n = listdir(dir, paths, 512); /* reload after sync */
-    int shown = 0;
-    for (int i = 0; i < n && shown < 20; i++) {
-        kvs_t kv = kvfile(paths[i]);
-        const char *text = kvget(&kv, "Text");
-        const char *status = kvget(&kv, "Status");
-        if (!text || (status && strcmp(status, "pending"))) continue;
-        const char *proj = kvget(&kv, "Project");
-        printf("%s%s\n", text, proj ? proj : "");
-        shown++;
-    }
-    if (!shown) puts("a n <text>");
-    return 0;
+/* ── note/task shared ── */
+static void do_archive(const char *p) {
+    const char *s=strrchr(p,'/'); char a[P],d[P]; snprintf(a,P,"%.*s/.archive",(int)(s-p),p); mkdirp(a);
+    snprintf(d,P,"%s%s",a,s); rename(p,d);
 }
-
+/* ── note ── */
+static void note_save(const char *d, const char *t) {
+    struct timespec tp; clock_gettime(CLOCK_REALTIME,&tp); time_t now=tp.tv_sec;
+    char ts[32],fn[P],buf[B]; strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&now));
+    snprintf(fn,P,"%s/%08x_%s.%09ld.txt",d,(unsigned)(tp.tv_nsec^(unsigned)now),ts,tp.tv_nsec);
+    snprintf(buf,B,"Text: %s\nStatus: pending\nDevice: %s\nCreated: %s\n",t,DEV,ts); writef(fn,buf);
+}
+static char _np[256][P],_nt[256][512];
+static int load_notes(const char *dir, const char *f) {
+    DIR *d=opendir(dir); if(!d) return 0; struct dirent *e; int n=0;
+    while((e=readdir(d))) { if(e->d_name[0]=='.'||!strstr(e->d_name,".txt")) continue;
+        char fp[P]; snprintf(fp,P,"%s/%s",dir,e->d_name); kvs_t kv=kvfile(fp);
+        const char *t=kvget(&kv,"Text"),*s=kvget(&kv,"Status");
+        if(t&&(!s||!strcmp(s,"pending"))&&(!f||strcasestr(t,f))){if(n<256){snprintf(_np[n],P,"%s",fp);snprintf(_nt[n],512,"%s",t);} n++;}
+    } closedir(d); return n;
+}
+static int cmd_note(int argc, char **argv) {
+    char dir[P]; snprintf(dir,P,"%s/notes",SROOT); mkdirp(dir);
+    if(argc>2&&argv[2][0]!='?'){char t[B]="";for(int i=2;i<argc;i++){if(i>2)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
+        note_save(dir,t);sync_repo();puts("\xe2\x9c\x93");return 0;}
+    sync_repo(); const char *f=(argc>2&&argv[2][0]=='?')?argv[2]+1:NULL; int n=load_notes(dir,f);
+    if(!n){puts("a n <text>");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(_nt[i]);return 0;}
+    printf("Notes: %d pending\n  %s\n\n[a]ck [d]el [s]earch [q]uit | type=add\n",n,dir);
+    for(int i=0,s=n<256?n:256;i<s;){
+        printf("\n[%d/%d] %s\n> ",i+1,n,_nt[i]); char line[B]; if(!fgets(line,B,stdin)) break; line[strcspn(line,"\n")]=0;
+        if(line[0]=='q'&&!line[1]) break;
+        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(_np[i]);sync_repo();puts("\xe2\x9c\x93");memmove(_np+i,_np+i+1,(s-i-1)*P);memmove(_nt+i,_nt+i+1,(s-i-1)*512);n--;s=n<256?n:256;continue;}
+        if(line[0]=='s'&&!line[1]){printf("search: ");char q[128];if(fgets(q,128,stdin)){q[strcspn(q,"\n")]=0;n=load_notes(dir,q);s=n<256?n:256;i=0;printf("%d results\n",n);}continue;}
+        if(line[0]){note_save(dir,line);sync_repo();n=load_notes(dir,NULL);s=n<256?n:256;printf("\xe2\x9c\x93 [%d]\n",n);continue;}
+        i++;
+    } return 0;
+}
 /* ── task ── */
+static char _td[256][P],_tt[256][256];
+static int load_tasks(const char *dir) {
+    DIR *d=opendir(dir); if(!d) return 0; struct dirent *e; int n=0;
+    while((e=readdir(d))&&n<256) { if(e->d_name[0]=='.') continue;
+        char fp[P]; snprintf(fp,P,"%s/%s",dir,e->d_name); const char *t=NULL;
+        if(e->d_type==DT_DIR) { char tp[16][P]; for(int j=listdir(fp,tp,16)-1;j>=0;j--) {
+            if(!strstr(tp[j],"text_")) continue; kvs_t kv=kvfile(tp[j]); t=kvget(&kv,"Text");
+            if(!t){size_t l;char *r=readf(tp[j],&l);if(r){char *nl=strchr(r,'\n');if(nl)*nl=0;t=r;}} break; }
+        } else if(e->d_type==DT_REG&&strstr(e->d_name,".txt")){size_t l;char *r=readf(fp,&l);if(r){char *nl=strchr(r,'\n');if(nl)*nl=0;t=r;}}
+        if(t){snprintf(_td[n],P,"%s",fp);snprintf(_tt[n],256,"%.255s",t);n++;}
+    } closedir(d); return n;
+}
+static void task_add(const char *dir, const char *t) {
+    char sl[64]; snprintf(sl,64,"%.32s",t); for(char *p=sl;*p;p++) if(*p==' '||*p=='/')*p='-'; else if(*p>='A'&&*p<='Z')*p+=32;
+    struct timespec tp; clock_gettime(CLOCK_REALTIME,&tp); time_t now=tp.tv_sec;
+    char ts[32],td[P],fn[P],buf[B]; strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&now));
+    snprintf(td,P,"%s/%s_%s",dir,sl,ts); mkdirp(td); snprintf(fn,P,"%s/text_%s.%09ld_%s.txt",td,ts,tp.tv_nsec,DEV);
+    snprintf(buf,B,"Text: %s\nDevice: %s\nCreated: %s\n",t,DEV,ts); writef(fn,buf);
+}
 static int cmd_task(int argc, char **argv) {
-    char dir[P]; snprintf(dir, P, "%s/tasks", SROOT); mkdirp(dir);
-    const char *sub = argc > 2 ? argv[2] : NULL;
-    /* List */
-    if (!sub || !strcmp(sub,"l") || !strcmp(sub,"ls") || !strcmp(sub,"list")) {
-        sync_repo();
-        DIR *d = opendir(dir); if (!d) { puts("No tasks"); return 0; }
-        struct dirent *e; int i = 0;
-        while ((e = readdir(d))) {
-            if (e->d_name[0] == '.') continue;
-            char fp[P]; snprintf(fp, P, "%s/%s", dir, e->d_name);
-            if (e->d_type == DT_DIR) {
-                /* Folder: read latest text_*.txt inside */
-                char tpaths[16][P]; int tn = listdir(fp, tpaths, 16);
-                const char *text = NULL;
-                for (int j = tn - 1; j >= 0; j--) {
-                    if (strstr(tpaths[j], "text_")) {
-                        kvs_t kv = kvfile(tpaths[j]);
-                        text = kvget(&kv, "Text");
-                        if (!text) { /* flat text file, first line */
-                            size_t len; char *raw = readf(tpaths[j], &len);
-                            if (raw) { char *nl = strchr(raw, '\n'); if (nl) *nl = 0; text = raw; }
-                        }
-                        if (text) break;
-                    }
-                }
-                if (text) printf("  %d. [d] %.60s\n", i++, text);
-            } else if (e->d_type == DT_REG && strstr(e->d_name, ".txt")) {
-                /* Flat .txt file: first line is task text */
-                size_t len; char *raw = readf(fp, &len);
-                if (raw) { char *nl = strchr(raw, '\n'); if (nl) *nl = 0; printf("  %d. [f] %.60s\n", i++, raw); free(raw); }
-            }
-        }
-        closedir(d);
-        if (!i) puts("No tasks");
-        return 0;
-    }
-    /* Add */
-    if (!strcmp(sub,"add") || !strcmp(sub,"a")) {
-        if (argc < 4) { puts("Usage: a task add <text>"); return 1; }
-        char text[B] = ""; for (int i=3;i<argc;i++) { if(i>3) strcat(text," "); strncat(text,argv[i],B-strlen(text)-2); }
-        /* Create task folder */
-        char slug[64]; snprintf(slug, 64, "%.32s", text);
-        for (char *p=slug;*p;p++) if(*p==' '||*p=='/')*p='-'; else if(*p>='A'&&*p<='Z')*p+=32;
-        char ts[64]; time_t now = time(NULL); struct timespec tp; clock_gettime(CLOCK_REALTIME, &tp);
-        strftime(ts, 32, "%Y%m%dT%H%M%S", localtime(&now));
-        char td[P]; snprintf(td, P, "%s/%s", dir, slug); mkdirp(td);
-        char fn[P]; snprintf(fn, P, "%s/text_%s.%09ld.txt", td, ts, tp.tv_nsec);
-        char ct[32]; strftime(ct, 32, "%Y-%m-%d %H:%M", localtime(&now));
-        char data[B]; snprintf(data, B, "Text: %s\nDevice: %s\nCreated: %s\n", text, DEV, ct);
-        writef(fn, data); sync_repo();
-        puts("\xe2\x9c\x93"); return 0;
-    }
-    /* Delete */
-    if (!strcmp(sub,"d") || !strcmp(sub,"del") || !strcmp(sub,"delete")) {
-        /* Delegate to python for interactive */
-        fallback_py(argc, argv);
-    }
-    /* Other task subcommands -> python */
-    fallback_py(argc, argv);
+    char dir[P]; snprintf(dir,P,"%s/tasks",SROOT); mkdirp(dir); const char *sub=argc>2?argv[2]:NULL;
+    if(!sub){puts("a task [l|add|d|sync] <text>");return 0;}
+    if(*sub=='l'){sync_repo();int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
+        for(int i=0;i<n;i++) printf("  %d. %.60s\n",i+1,_tt[i]);return 0;}
+    if(!strcmp(sub,"add")||!strcmp(sub,"a")){if(argc<4){puts("a task add <text>");return 1;}
+        char t[B]="";for(int i=3;i<argc;i++){if(i>3)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
+        task_add(dir,t);sync_repo();printf("\xe2\x9c\x93 %s\n",t);return 0;}
+    if(*sub=='d'){if(argc<4){puts("a task d #");return 1;} int n=load_tasks(dir),x=atoi(argv[3])-1;
+        if(x<0||x>=n){puts("x Invalid");return 1;} do_archive(_td[x]);sync_repo();printf("\xe2\x9c\x93 %.40s\n",_tt[x]);return 0;}
+    if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
+    char t[B]="";for(int i=2;i<argc;i++){if(i>2)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
+    task_add(dir,t);sync_repo();printf("\xe2\x9c\x93 %s\n",t);return 0;
 }
 
 /* ── ssh ── */
@@ -1372,7 +1345,7 @@ static int cmd_update(int argc, char **argv) {
                 "push","pull","revert","set","install","uninstall","deps","prompt","gdrive","add","remove","move",
                 "dash","all","backup","scan","copy","log","done","agent","tree","dir","web","ssh","run","hub",
                 "task","ui","review","note"};
-            for (int i=0;i<40;i++) fprintf(f, "%s\n", cmds[i]);
+            for (int i=0;i<(int)(sizeof(cmds)/sizeof(*cmds));i++) fprintf(f, "%s\n", cmds[i]);
             fclose(f);
         }
         puts("\xe2\x9c\x93 Cache"); return 0;
@@ -1621,8 +1594,7 @@ static int cmd_i(int argc, char **argv) {
             if (!nm) continue;
             char *m = matches[sel]; char cmd[256];
             char *colon = strchr(m, ':');
-            if (blen && strchr(buf,' ')) snprintf(cmd, 256, "%s", buf);
-            else if (colon) { int cl = (int)(colon-m); snprintf(cmd, 256, "%.*s", cl, m); while(cmd[0]==' ')memmove(cmd,cmd+1,strlen(cmd)); }
+            if (colon) { int cl = (int)(colon-m); snprintf(cmd, 256, "%.*s", cl, m); while(cmd[0]==' ')memmove(cmd,cmd+1,strlen(cmd)); }
             else snprintf(cmd, 256, "%s", m);
             /* Trim */
             char *e = cmd+strlen(cmd)-1; while(e>cmd&&*e==' ')*e--=0;
