@@ -662,11 +662,7 @@ static int cmd_project_num(int argc, char **argv, int idx) {
         return 0;
     }
     int ai = idx - NPJ;
-    if (ai >= 0 && ai < NAP) {
-        printf("> Running: %s\n   Command: %s\n", AP[ai].name, AP[ai].cmd);
-        const char *sh = getenv("SHELL"); if (!sh) sh = "/bin/bash";
-        execlp(sh, sh, "-c", AP[ai].cmd, (char*)NULL);
-    }
+    if (ai>=0 && ai<NAP) { char ex[B],*p,*e; snprintf(ex,B,"%s",AP[ai].cmd); while((p=strchr(ex,'{'))&&(e=strchr(p,'}'))){ *e=0;for(int j=0;j<NPJ;j++)if(!strcmp(PJ[j].name,p+1)){*p=0;char t[B];snprintf(t,B,"%s%s%s",ex,PJ[j].path,e+1);snprintf(ex,B,"%s",t);break;}} return printf("> %s\n",AP[ai].name),system(ex)>>8; }
     printf("x Invalid index: %d\n", idx); return 1;
 }
 
