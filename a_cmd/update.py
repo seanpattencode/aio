@@ -26,7 +26,7 @@ def refresh_shell(ln='export PATH="$HOME/.local/bin:$PATH"'):
     sh = os.environ.get('SHELL','').split('/')[-1] or 'bash'
     rc = os.path.expanduser('~/.zshrc' if sh == 'zsh' else '~/.bashrc')
     m, c = "# aio", open(rc).read() if os.path.exists(rc) else ""
-    n = __import__('re').sub(rf'{m}-start.*?{m}-end\n?','',c,flags=8).rstrip()+f"\n\n{m}-start\n{ln}\n{m}-end\n" if ln else c
+    n = __import__('re').sub(rf'{m}-start.*?{m}-end\n?','',c,flags=16).rstrip()+f"\n\n{m}-start\n{ln}\n{m}-end\n" if ln else c
     updated = n != c and open(rc,'w').write(n)
     return sh, updated
 

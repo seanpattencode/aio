@@ -89,25 +89,21 @@ def soft_delete(path, filepath):
 # =============================================================================
 
 def _broadcast():
-    """Non-blocking: fork to ping all devices 3x at 3s intervals"""
-    if os.fork() > 0: return  # parent returns immediately
-    os.setsid()  # detach from terminal
-    from concurrent.futures import ThreadPoolExecutor
+    """Non-blocking: background thread pings other devices once via SSH"""
     hosts = []
     for f in (SYNC_ROOT / 'ssh').glob('*.txt'):
         d = {k.strip(): v.strip() for l in f.read_text().splitlines() if ':' in l for k, v in [l.split(':', 1)]}
         if d.get('Host') and d.get('Name') != DEVICE_ID:
             hosts.append((d['Host'], d.get('Password')))
-    for _ in range(3):
-        def ping(hp):
+    if not hosts: return
+    def _ping():
+        for h, pw in hosts:
             try:
-                h, pw = hp; p = h.rsplit(':', 1)
+                p = h.rsplit(':', 1)
                 cmd = (['sshpass', '-p', pw] if pw else []) + ['ssh', '-oConnectTimeout=2', '-oStrictHostKeyChecking=no'] + (['-p', p[1]] if len(p) > 1 else []) + [p[0], 'cd ~/projects/a-sync 2>/dev/null && git pull -q origin main || cd ~/a-sync && git pull -q origin main']
                 sp.run(cmd, capture_output=True, timeout=5)
             except: pass
-        with ThreadPoolExecutor(max_workers=len(hosts) or 1) as ex: list(ex.map(ping, hosts))
-        time.sleep(3)
-    os._exit(0)
+    threading.Thread(target=_ping, daemon=True).start()
 
 def q(p):
     """Quote path for shell"""
@@ -245,61 +241,10 @@ def _init_repo():
     )
     return r.returncode == 0
 
-POLL_INTERVAL = 60  # seconds
-
-def _poll_loop():
-    """Background loop: pull every POLL_INTERVAL seconds"""
-    while True:
-        time.sleep(POLL_INTERVAL)
-        sp.run(f'cd {q(SYNC_ROOT)} && git pull -q origin main', shell=True, capture_output=True)
-
-def start_poll_daemon():
-    """Start background poll loop (fork to background)"""
-    import os
-    pid_file = Path.home() / '.a-sync-poll.pid'
-    if pid_file.exists():
-        pid = int(pid_file.read_text().strip())
-        try:
-            os.kill(pid, 0)  # check if running
-            print(f"Poll daemon already running (pid {pid})")
-            return
-        except OSError:
-            pass  # not running, continue
-
-    pid = os.fork()
-    if pid > 0:
-        pid_file.write_text(str(pid))
-        print(f"Poll daemon started (pid {pid}, interval {POLL_INTERVAL}s)")
-        return
-
-    # Child process
-    os.setsid()
-    while True:
-        time.sleep(POLL_INTERVAL)
-        sp.run(f'cd {q(SYNC_ROOT)} && git pull -q origin main', shell=True, capture_output=True)
-
-def stop_poll_daemon():
-    """Stop background poll loop"""
-    import os, signal
-    pid_file = Path.home() / '.a-sync-poll.pid'
-    if not pid_file.exists():
-        print("Poll daemon not running")
-        return
-    pid = int(pid_file.read_text().strip())
-    try:
-        os.kill(pid, signal.SIGTERM)
-        pid_file.unlink()
-        print(f"Poll daemon stopped (pid {pid})")
-    except OSError:
-        pid_file.unlink()
-        print("Poll daemon was not running")
-
 HELP = """a sync - Append-only sync to GitHub (no conflicts possible)
 
   a sync           Sync all data (unified a-git repo)
   a sync all       Sync + broadcast to SSH hosts
-  a sync poll      Start background poll daemon (60s interval)
-  a sync stop      Stop poll daemon
   a sync help      Show this help
 
 Data: ~/a-sync/ -> github.com/seanpattencode/a-git
@@ -310,21 +255,13 @@ def run():
     args = sys.argv[2:] if len(sys.argv) > 2 else []
 
     if args and args[0] in ('help', '-h', '--help'):
-        print(HELP)
-        return
+        print(HELP); return
 
-    if args and args[0] == 'poll':
-        start_poll_daemon()
-        return
+    # Clean stale poll daemon PID file
+    pf = Path.home() / '.a-sync-poll.pid'
+    pf.unlink(missing_ok=True)
 
-    if args and args[0] == 'stop':
-        stop_poll_daemon()
-        return
-
-    # Initialize if needed
     _init_repo()
-
-    # Sync
     print(f"{SYNC_ROOT}")
     ok, conflict = _sync(SYNC_ROOT)
 
@@ -336,26 +273,11 @@ def run():
     status = "CONFLICT" if conflict else ("synced" if ok else "no changes")
     print(f"  {url}\n  Last: {t}\n  Status: {status}")
 
-    # Show folder stats
     for folder in FOLDERS:
         p = SYNC_ROOT / folder
         if p.exists():
             count = len(list(p.glob('*.txt')))
             print(f"  {folder}: {count} files")
-
-    # Show daemon status
-    pid_file = Path.home() / '.a-sync-poll.pid'
-    daemon_running = False
-    if pid_file.exists():
-        try:
-            import os
-            os.kill(int(pid_file.read_text().strip()), 0)
-            daemon_running = True
-        except: pass
-    if daemon_running:
-        print(f"\n  Poll: running ({POLL_INTERVAL}s) - stop with: a sync stop")
-    else:
-        print(f"\n  Poll: not running - start with: a sync poll")
 
     if args and args[0] == 'all':
         print("\n--- Broadcasting to SSH hosts ---")
