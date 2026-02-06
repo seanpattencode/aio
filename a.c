@@ -20,6 +20,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <termios.h>
+#include <sys/ioctl.h>
 #include <sqlite3.h>
 
 #define P 1024
@@ -1556,6 +1558,81 @@ static int cmd_dir_file(int argc, char **argv) {
     return 0;
 }
 
+/* ── interactive picker ── */
+static int cmd_i(int argc, char **argv) {
+    char cache[P]; snprintf(cache, P, "%s/i_cache.txt", DDIR);
+    size_t len; char *raw = readf(cache, &len);
+    if (!raw) { puts("No cache - run: a update cache"); return 1; }
+    /* Parse lines */
+    char *lines[512]; int n = 0;
+    for (char *p = raw, *end = raw + len; p < end && n < 512;) {
+        char *nl = memchr(p, '\n', end - p);
+        if (!nl) nl = end;
+        if (nl > p && p[0] != '<' && p[0] != '=' && p[0] != '>' && p[0] != '#') { *nl = 0; lines[n++] = p; }
+        p = nl + 1;
+    }
+    if (!n) { puts("Empty cache"); free(raw); return 1; }
+    if (!isatty(STDIN_FILENO)) { for (int i=0;i<n;i++) puts(lines[i]); free(raw); return 0; }
+    /* Terminal size */
+    struct winsize ws; ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
+    int maxshow = ws.ws_row > 6 ? ws.ws_row - 3 : 10;
+    /* Raw mode */
+    struct termios old, raw_t;
+    tcgetattr(STDIN_FILENO, &old); raw_t = old;
+    raw_t.c_lflag &= ~(ICANON | ECHO);
+    raw_t.c_cc[VMIN] = 1; raw_t.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw_t);
+    char buf[256] = ""; int blen = 0, sel = 0;
+    printf("Filter (↑↓/Tab=cycle, Enter=run, Esc=quit)\n");
+    while (1) {
+        /* Search */
+        char *matches[512]; int nm = 0;
+        if (!blen) { for (int i=0;i<n&&nm<maxshow;i++) matches[nm++]=lines[i]; }
+        else { for (int i=0;i<n&&nm<maxshow;i++) { if (strcasestr(lines[i],buf)) matches[nm++]=lines[i]; } }
+        if (sel >= nm) sel = nm ? nm-1 : 0;
+        /* Render */
+        printf("\r\033[K> %s\n", buf);
+        for (int i=0;i<nm;i++) printf("\033[K%s a %s\n", i==sel?" >":"  ", matches[i]);
+        printf("\033[%dA\033[%dC\033[?25h", nm+1, blen+3);
+        fflush(stdout);
+        /* Read key */
+        char ch; if (read(STDIN_FILENO, &ch, 1) != 1) break;
+        if (ch == '\x1b') { /* Escape sequence or Esc */
+            char seq[2]; if (read(STDIN_FILENO, &seq[0], 1) != 1) break;
+            if (seq[0] == '[') {
+                if (read(STDIN_FILENO, &seq[1], 1) != 1) break;
+                if (seq[1] == 'A') { sel = sel > 0 ? sel-1 : (nm?nm-1:0); } /* Up */
+                else if (seq[1] == 'B') { sel = (sel+1) % (nm?nm:1); } /* Down */
+            } else break; /* bare Esc */
+        } else if (ch == '\t') { sel = (sel+1) % (nm?nm:1); }
+        else if (ch == '\x7f' || ch == '\b') { if (blen) buf[--blen]=0; sel=0; }
+        else if (ch == '\r' || ch == '\n') {
+            if (!nm) continue;
+            char *m = matches[sel]; char cmd[256];
+            char *colon = strchr(m, ':');
+            if (blen && strchr(buf,' ')) snprintf(cmd, 256, "%s", buf);
+            else if (colon) { int cl = (int)(colon-m); snprintf(cmd, 256, "%.*s", cl, m); while(cmd[0]==' ')memmove(cmd,cmd+1,strlen(cmd)); }
+            else snprintf(cmd, 256, "%s", m);
+            /* Trim */
+            char *e = cmd+strlen(cmd)-1; while(e>cmd&&*e==' ')*e--=0;
+            tcsetattr(STDIN_FILENO, TCSANOW, &old);
+            printf("\n\n\033[KRunning: a %s\n", cmd);
+            /* Build argv for exec */
+            char *args[32]; int ac=0; args[ac++]="a";
+            char *p=cmd; while(*p&&ac<31) { while(*p==' ')p++; if(!*p)break; args[ac++]=p; while(*p&&*p!=' ')p++; if(*p)*p++=0; }
+            args[ac]=NULL;
+            free(raw); execvp("a", args);
+            return 0;
+        } else if (ch == '\x03' || ch == '\x04') break;
+        else if (ch == 'q' && !blen) break;
+        else if ((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||(ch>='0'&&ch<='9')||ch=='-'||ch=='_'||ch==' ') { if(blen<254){buf[blen++]=ch;buf[blen]=0;sel=0;} }
+        printf("\033[J");
+    }
+    tcsetattr(STDIN_FILENO, TCSANOW, &old);
+    printf("\033[2B\033[K"); free(raw);
+    return 0;
+}
+
 /* ═══ MAIN DISPATCH ═══ */
 int main(int argc, char **argv) {
     init_paths();
@@ -1578,7 +1655,7 @@ int main(int argc, char **argv) {
     if (!strcmp(arg,"n")) return cmd_note(argc, argv);
     if (!strcmp(arg,"t")) return cmd_task(argc, argv);
     if (!strcmp(arg,"a")||!strcmp(arg,"ai")||!strcmp(arg,"aio")) return cmd_all(argc, argv);
-    if (!strcmp(arg,"i")) fallback_py(argc, argv);
+    if (!strcmp(arg,"i")) return cmd_i(argc, argv);
     if (!strcmp(arg,"gdrive")||!strcmp(arg,"gdr")) fallback_py(argc, argv);
     if (!strcmp(arg,"ask")) fallback_py(argc, argv);
     if (!strcmp(arg,"ui")) fallback_py(argc, argv);
