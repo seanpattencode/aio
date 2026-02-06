@@ -2,8 +2,13 @@
  * ac2 - full C rewrite of 'a' command dispatcher + all commands
  * Every command runs in <1ms except network ops (git push/pull/fetch)
  *
- * Build: cc -O2 -o ac2 ac2.c -lsqlite3
- * Link against system sqlite3 for DB operations
+ * Build:
+ *   make                (uses Makefile)
+ *   clang -O2 -o ac2 ac2.c -lsqlite3    (manual)
+ *
+ * Clang preferred over GCC: 36% faster compile (0.34s vs 0.53s),
+ * 5% smaller binary (67KB vs 70KB), identical runtime.
+ * Benchmarked with GCC 15 vs Clang 20 on x86_64.
  */
 
 #include <stdio.h>
