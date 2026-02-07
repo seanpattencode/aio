@@ -1426,6 +1426,15 @@ static int cmd_update(int argc, char **argv) {
                 "dash","all","backup","scan","copy","log","done","agent","tree","dir","web","ssh","run","hub",
                 "task","ui","review","note"};
             for (int i=0;i<(int)(sizeof(cmds)/sizeof(*cmds));i++) fprintf(f, "%s\n", cmds[i]);
+            /* SSH hosts */
+            char sd[P]; snprintf(sd, P, "%s/ssh", SROOT);
+            char sp[32][P]; int sn = listdir(sd, sp, 32);
+            for (int i=0,hi=0;i<sn;i++) {
+                kvs_t kv = kvfile(sp[i]);
+                const char *nm = kvget(&kv,"Name"); if (!nm) continue;
+                const char *ho = kvget(&kv,"Host");
+                fprintf(f, "ssh %d: %s (%s)\n", hi++, nm, ho?ho:"");
+            }
             fclose(f);
         }
         puts("\xe2\x9c\x93 Cache"); return 0;
