@@ -1240,12 +1240,24 @@ static int cmd_task(int argc,char**argv){
     if(*sub=='l'){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
         for(int i=0;i<n;i++){char ct[256];task_counts(T[i].d,ct,256);
             printf("  %d. P%s %.50s%s\n",i+1,T[i].p,T[i].t,ct);}return 0;}
-    if(!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"t")){
-        int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=0;
-        while(i<n){task_show(i,n);printf("\n  [d]archive  [n]ext  [p]ri  [q]uit  ");fflush(stdout);
+    if(!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
+        int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=0,show=1;
+        while(i<n){if(show)task_show(i,n);show=1;
+            printf("\n  [d]archive  [a]dd  [n]ext  [p]ri  [q]uit  ");fflush(stdout);
             int k=task_getkey();putchar('\n');
             if(k=='d'){do_archive(T[i].d);printf("\xe2\x9c\x93 Archived: %.40s\n",T[i].t);
                 sync_repo();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
+            else if(k=='a'){
+                struct stat st;if(stat(T[i].d,&st)||!S_ISDIR(st.st_mode)){printf("x Not a folder task\n");show=0;continue;}
+                char sd[P];snprintf(sd,P,"%s/task",T[i].d);
+                printf("  Text: ");fflush(stdout);
+                char buf[B];if(fgets(buf,B,stdin)){buf[strcspn(buf,"\n")]=0;if(buf[0]){
+                    mkdir(sd,0755);
+                    struct timespec tp;clock_gettime(CLOCK_REALTIME,&tp);
+                    char ts[32],fn[P];strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
+                    snprintf(fn,P,"%s/%s.%09ld_%s.txt",sd,ts,tp.tv_nsec,DEV);
+                    char fb[B];snprintf(fb,B,"Text: %s\nDevice: %s\nCreated: %s\n",buf,DEV,ts);writef(fn,fb);
+                    printf("\xe2\x9c\x93 Added\n    %s\n",buf);sync_repo();}}show=0;}
             else if(k=='p'){printf("  Priority (1-99999): ");fflush(stdout);
                 char buf[16];if(fgets(buf,16,stdin)){task_repri(i,atoi(buf));sync_repo();n=load_tasks(dir);i=0;}}
             else if(k=='q'||k==3||k==27)break;else i++;}
