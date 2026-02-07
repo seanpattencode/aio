@@ -38,7 +38,43 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <ctype.h>
-#include <sqlite3.h>
+#include <dlfcn.h>
+
+/* sqlite3 lazy loading: types here, symbols resolved via dlopen on first use */
+typedef struct sqlite3 sqlite3;
+typedef struct sqlite3_stmt sqlite3_stmt;
+#define SQLITE_ROW 100
+static int (*sqlite3_open)(const char*, sqlite3**);
+static int (*sqlite3_exec)(sqlite3*, const char*, int(*)(void*,int,char**,char**), void*, char**);
+static int (*sqlite3_prepare_v2)(sqlite3*, const char*, int, sqlite3_stmt**, const char**);
+static int (*sqlite3_step)(sqlite3_stmt*);
+static int (*sqlite3_column_int)(sqlite3_stmt*, int);
+static const unsigned char* (*sqlite3_column_text)(sqlite3_stmt*, int);
+static double (*sqlite3_column_double)(sqlite3_stmt*, int);
+static int (*sqlite3_finalize)(sqlite3_stmt*);
+static int (*sqlite3_reset)(sqlite3_stmt*);
+static int (*sqlite3_bind_text)(sqlite3_stmt*, int, const char*, int, void(*)(void*));
+static int (*sqlite3_bind_null)(sqlite3_stmt*, int);
+static int (*sqlite3_bind_double)(sqlite3_stmt*, int, double);
+static void *_sqlib;
+static void load_sqlite(void) {
+    if (_sqlib) return;
+    _sqlib = dlopen("libsqlite3.so.0", RTLD_LAZY);
+    if (!_sqlib) _sqlib = dlopen("libsqlite3.so", RTLD_LAZY);
+    if (!_sqlib) return;
+    *(void**)&sqlite3_open = dlsym(_sqlib, "sqlite3_open");
+    *(void**)&sqlite3_exec = dlsym(_sqlib, "sqlite3_exec");
+    *(void**)&sqlite3_prepare_v2 = dlsym(_sqlib, "sqlite3_prepare_v2");
+    *(void**)&sqlite3_step = dlsym(_sqlib, "sqlite3_step");
+    *(void**)&sqlite3_column_int = dlsym(_sqlib, "sqlite3_column_int");
+    *(void**)&sqlite3_column_text = dlsym(_sqlib, "sqlite3_column_text");
+    *(void**)&sqlite3_column_double = dlsym(_sqlib, "sqlite3_column_double");
+    *(void**)&sqlite3_finalize = dlsym(_sqlib, "sqlite3_finalize");
+    *(void**)&sqlite3_reset = dlsym(_sqlib, "sqlite3_reset");
+    *(void**)&sqlite3_bind_text = dlsym(_sqlib, "sqlite3_bind_text");
+    *(void**)&sqlite3_bind_null = dlsym(_sqlib, "sqlite3_bind_null");
+    *(void**)&sqlite3_bind_double = dlsym(_sqlib, "sqlite3_bind_double");
+}
 
 #define P 1024
 #define B 4096
@@ -193,6 +229,7 @@ static int listdir(const char *dir, char paths[][P], int max) {
 static sqlite3 *_db;
 static sqlite3 *dbopen(void) {
     if (_db) return _db;
+    load_sqlite();
     sqlite3_open(DBPATH, &_db);
     sqlite3_exec(_db, "PRAGMA journal_mode=WAL", 0, 0, 0);
     return _db;
@@ -1235,11 +1272,10 @@ static int task_getkey(void){
     tcsetattr(0,TCSAFLUSH,&raw);int c=getchar();tcsetattr(0,TCSAFLUSH,&old);return c;
 }
 static int cmd_task(int argc,char**argv){
-    char dir[P];snprintf(dir,P,"%s/tasks",SROOT);mkdirp(dir);const char*sub=argc>2?argv[2]:NULL;
+    char dir[P];snprintf(dir,P,"%s/tasks",SROOT);mkdir(dir,0755);const char*sub=argc>2?argv[2]:NULL;
     if(!sub){puts("l list | rev review | add <t> | d # | pri # N | <cat> # <t> | sync");return 0;}
     if(*sub=='l'){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
-        for(int i=0;i<n;i++){char ct[256];task_counts(T[i].d,ct,256);
-            printf("  %d. P%s %.50s%s\n",i+1,T[i].p,T[i].t,ct);}return 0;}
+        for(int i=0;i<n;i++)printf("  %d. P%s %.50s\n",i+1,T[i].p,T[i].t);return 0;}
     if(!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
         int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=0,show=1;
         while(i<n){if(show)task_show(i,n);show=1;
@@ -1806,14 +1842,22 @@ int main(int argc, char **argv) {
 
     if (argc < 2) return cmd_help(argc, argv);
 
-    /* Log every command */
+    /* Log every command (skip fork for fast read-only commands) */
     char acmd[B] = "";
     for (int i = 1; i < argc && strlen(acmd) < B - 256; i++) {
         if (i > 1) strcat(acmd, " ");
         strncat(acmd, argv[i], B - strlen(acmd) - 2);
     }
     char wd[P]; if (!getcwd(wd, P)) snprintf(wd, P, "%s", HOME);
-    alog(acmd, wd, NULL);
+    /* fast read-only: task l, help - skip alog fork to save ~0.5ms */
+    int fast_ro = 0;
+    if (argc >= 2) {
+        const char *a1 = argv[1];
+        if ((!strcmp(a1,"task")||!strcmp(a1,"t")||!strcmp(a1,"tas")) &&
+            (argc < 3 || argv[2][0]=='l'))
+            fast_ro = 1;
+    }
+    if (!fast_ro) alog(acmd, wd, NULL);
 
     const char *arg = argv[1];
 
