@@ -1,11 +1,11 @@
 # clang: 0.34s compile, 67KB binary
-# gcc:   0.53s compile, 70KB binary
-# runtime identical — dominated by process startup, not codegen
+# system sqlite3 (no ICU) = 2.5ms startup; micromamba sqlite3 (ICU) = 3.5ms
 CC = clang
 SQLITE_INC = $(HOME)/micromamba/include
-SQLITE_LIB = $(HOME)/micromamba/lib
 CFLAGS = -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result -I$(SQLITE_INC)
-LDFLAGS = -L$(SQLITE_LIB) -lsqlite3 -Wl,-rpath,$(SQLITE_LIB)
+SYS_SQLITE = /usr/lib/x86_64-linux-gnu/libsqlite3.so.0
+LDFLAGS = $(if $(wildcard $(SYS_SQLITE)),$(SYS_SQLITE),-L$(HOME)/micromamba/lib -lsqlite3 -Wl$(comma)-rpath$(comma)$(HOME)/micromamba/lib)
+comma := ,
 
 a: a.c
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
