@@ -1,21 +1,20 @@
 """aio hub - Scheduled jobs (RFC 5322 .txt storage)"""
 import sys, os, subprocess as sp, shutil, re
 from pathlib import Path
-from . _common import init_db, load_proj, load_apps, db, DEVICE_ID as DI, DATA_DIR, SYNC_ROOT
+from . _common import init_db, load_proj, load_apps, db, DEVICE_ID as DI, DATA_DIR, SYNC_ROOT, alog
 from .sync import sync
 
 HUB_DIR = SYNC_ROOT / 'hub'
 def _save_job(name, schedule, prompt, device, enabled=True, last_run=None):
     HUB_DIR.mkdir(parents=True, exist_ok=True)
     (HUB_DIR/f'{name}.txt').write_text(f"Name: {name}\nSchedule: {schedule}\nPrompt: {prompt}\nDevice: {device}\nEnabled: {enabled}\n"+(f"Last-Run: {last_run}\n" if last_run else ""))
-    sync('hub')
 def _load_jobs():
-    HUB_DIR.mkdir(parents=True, exist_ok=True); (HUB_DIR/'.git').exists() or sync('hub'); jobs = []
+    HUB_DIR.mkdir(parents=True, exist_ok=True); jobs = []
     for f in HUB_DIR.glob('*.txt'):
         d = {k.strip(): v.strip() for line in f.read_text().splitlines() if ':' in line for k, v in [line.split(':', 1)]}
         if 'Name' in d and 'Schedule' in d: jobs.append((0, d['Name'], d['Schedule'], d.get('Prompt',''), d.get('Device',DI), d.get('Enabled','true').lower()=='true', d.get('Last-Run')))
     return jobs
-def _rm_job(name): (HUB_DIR/f'{name}.txt').unlink(missing_ok=True); sync('hub')
+def _rm_job(name): (HUB_DIR/f'{name}.txt').unlink(missing_ok=True)
 
 def run():
     init_db()
@@ -73,7 +72,7 @@ def run():
         n, s = n or (tty and input("Name: ").strip().replace(' ','-')), s if ':' in s else (tty and input("Time (9:00am=daily, *:0/30=every 30min): ").strip())
         (e := "Missing name" if not n else "Bad sched (need : e.g. 9:00, *:0/30)" if ':' not in (s or '') else "Missing cmd" if not c else "") and sys.exit(f"✗ {e}")
         s = _pt(s) if s[0].isdigit() else s
-        _save_job(n, s, c, DI)
+        _save_job(n, s, c, DI); sync()
         cmd = c.replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../a.py")} ').replace('python ', f'{sys.executable} '); _install(n, s, cmd); print(f"✓ {n} @ {s}")
     elif wda == 'sync':
         [_uninstall(j[1]) for j in jobs]; mine = [j for j in jobs if j[4] == DI and j[5]]
@@ -89,7 +88,7 @@ def run():
         n = sys.argv[3] if len(sys.argv) > 3 else ''; j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else None
         new = sys.argv[4] if len(sys.argv) > 4 else (sys.stdin.isatty() and input(f"Name [{j[1]}]: ").strip() if j else '')
         if not j or not new: return print(f"x {n}?") if not j else None
-        _uninstall(j[1]); _rm_job(j[1]); _save_job(new, j[2], j[3], j[4], j[5], j[6])
+        _uninstall(j[1]); _rm_job(j[1]); _save_job(new, j[2], j[3], j[4], j[5], j[6]); sync()
         print(f"✓ {new} (run 'sync' to update timer)")
     elif wda in ('on', 'off', 'rm', 'run'):
         n = sys.argv[3] if len(sys.argv) > 3 else ''; j = jobs[int(n)] if n.isdigit() and int(n) < len(jobs) else next((x for x in jobs if x[1] == n), None)
@@ -100,14 +99,16 @@ def run():
                 if j[4].lower() not in hosts: print(f"x {j[4]} not in ssh hosts"); return
                 r = sp.run([sys.executable, __file__.replace('hub.py','../a.py'), 'ssh', hosts[j[4].lower()], 'aio', 'hub', wda, j[1]], capture_output=True, text=True)
                 print(r.stdout.strip() or f"x {j[4]} failed"); return
-            en = wda == 'on'; _save_job(j[1], j[2], j[3], j[4], en, j[6])
+            en = wda == 'on'; _save_job(j[1], j[2], j[3], j[4], en, j[6]); sync()
             _install(j[1], j[2], j[3]) if en else _uninstall(j[1]); print(f"✓ {j[1]} {wda}"); return
         if wda == 'rm':
-            _uninstall(j[1]); _rm_job(j[1])
+            _uninstall(j[1]); _rm_job(j[1]); sync()
             print(f"✓ rm {j[1]}")
         else:
             from datetime import datetime
             cmd = j[3].replace('aio ', f'{sys.executable} {os.path.abspath(__file__).replace("hub.py", "../a.py")} ').replace('python ', f'{sys.executable} ')
             print(f"Running {j[1]}...", flush=True); r = sp.run(cmd, shell=True, capture_output=True, text=True); out = r.stdout + r.stderr
             print(out) if out else None; open(LOG, 'a').write(f"\n[{datetime.now():%Y-%m-%d %I:%M:%S%p}] {j[1]}\n{out}")
-            _save_job(j[1], j[2], j[3], j[4], j[5], datetime.now().strftime('%Y-%m-%d %H:%M')); print(f"✓")
+            _save_job(j[1], j[2], j[3], j[4], j[5], datetime.now().strftime('%Y-%m-%d %H:%M'))
+            snippet = out.strip().split('\n')[-1][:80] if out.strip() else ''
+            alog(f"hub:{j[1]} → {snippet}" if snippet else f"hub:{j[1]}"); print(f"✓")

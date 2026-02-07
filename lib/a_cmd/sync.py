@@ -49,7 +49,7 @@ import os, subprocess as sp, time, shlex, threading
 from pathlib import Path
 from ._common import SYNC_ROOT, RCLONE_BACKUP_PATH, DEVICE_ID, get_rclone, _configured_remotes
 
-FOLDERS = 'common ssh login hub notes workspace docs tasks'.split()
+FOLDERS = 'common ssh login notes workspace docs tasks'.split()
 MAX_RETRIES = 3  # retry count for sync
 
 # =============================================================================
@@ -271,7 +271,7 @@ def run():
     status = "CONFLICT" if conflict else ("synced" if ok else "no changes")
     print(f"  {url}\n  Last: {t}\n  Status: {status}")
 
-    for folder in FOLDERS:
+    for folder in FOLDERS + ['hub']:
         p = SYNC_ROOT / folder
         if p.exists():
             count = len(list(p.glob('*.txt')))
