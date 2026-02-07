@@ -484,7 +484,7 @@ static void sync_repo(void) {
     char c[B*2];
     snprintf(c, sizeof(c),
         "git -C '%s' add -A 2>/dev/null && git -C '%s' commit -qm sync 2>/dev/null;"
-        "git -C '%s' pull --no-rebase -q origin main 2>/dev/null;"
+        "git -C '%s' pull --no-rebase --no-edit -q origin main 2>/dev/null;"
         "git -C '%s' push -q origin main 2>/dev/null", SROOT, SROOT, SROOT, SROOT);
     (void)!system(c);
 }
