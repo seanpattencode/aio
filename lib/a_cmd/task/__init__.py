@@ -1,5 +1,5 @@
-# Append-only tasks: PPPP-slug_timestamp/ with subdirs: task/, context/, prompt/
-# 4-letter priority ordinal (A=high Z=low, default MMMM)
+# Append-only tasks: NNNNN-slug_timestamp/ with subdirs: task/, context/, prompt/
+# 5-digit priority (00001=high, 99999=low, default 50000)
 # Subfolders are generic - any name works, 3 created by default
 # Bash TUI: a_cmd/task/t
 
@@ -11,9 +11,10 @@ from ..sync import _sync, ts
 TASK_DIR = SYNC_ROOT / 'tasks'
 T_SCRIPT = Path(__file__).parent / 't'
 SUBDIRS = ('task', 'context', 'prompt')
+DEF_PRI = '50000'
 
 def _pri(name):
-    return name[:4].upper() if len(name) > 4 and name[4] == '-' and name[:4].isalpha() else 'MMMM'
+    return name[:5] if len(name) > 5 and name[5] == '-' and name[:5].isdigit() else DEF_PRI
 
 def _first_line(f):
     t = f.read_text().strip().split('\n')[0]
@@ -43,6 +44,13 @@ def _slug(text):
     s = text[:20].replace(' ', '-').replace('/', '-').lower()
     return ''.join(c for c in s if c.isalnum() or c == '-')
 
+def _fmtpri(s):
+    """Normalize priority input to 5-digit zero-padded string"""
+    try:
+        n = max(0, min(99999, int(s)))
+        return f'{n:05d}'
+    except ValueError: return None
+
 def _counts(p):
     if not p.is_dir(): return ''
     parts = []
@@ -55,8 +63,13 @@ def _counts(p):
         if n: parts.append(f'{n} {pre.rstrip("_")}')
     return f' [{", ".join(parts)}]' if parts else ''
 
+def _rename_pri(p, np):
+    old = p.name
+    rest = old[6:] if len(old) > 5 and old[5] == '-' and old[:5].isdigit() else old
+    p.rename(TASK_DIR / f'{np}-{rest}')
+
 def _show_task(p, text, pri, idx, total):
-    print(f"\n\033[1m━━━ {idx}/{total} [{pri}] {text[:60]} ━━━\033[0m")
+    print(f"\n\033[1m━━━ {idx}/{total} [P{pri}] {text[:60]} ━━━\033[0m")
     if p.is_dir():
         for sd in sorted(p.iterdir()):
             if sd.is_dir() and not sd.name.startswith('.'):
@@ -68,7 +81,6 @@ def _show_task(p, text, pri, idx, total):
                     if body.startswith('Text: '): body = body[6:]
                     for line in body.split('\n'):
                         print(f"    {line}")
-        # legacy root files
         for f in sorted(p.glob('text_*.txt')) + sorted(p.glob('prompt_*.txt')):
             body = f.read_text().strip()
             if body.startswith('Text: '): body = body[6:]
@@ -92,9 +104,9 @@ def run():
     if not a:
         print("""a task l            list all tasks
 a task rev          review tasks by priority (full detail)
-a task add <t>      add task (MMMM default priority)
+a task add <t>      add task (default priority 50000)
 a task d #          archive task by number
-a task pri # XXXX   change priority (4 letters, A=high Z=low)
+a task pri # N      set priority (1=high, 99999=low)
 a task <cat> # <t>  add to subfolder (context, prompt, or any)
 a task t            interactive TUI (bash)
 a task sync         sync tasks repo
@@ -109,7 +121,7 @@ context: ~/projects/adata/git/tasks/""")
     if cmd in ('l', 'ls', 'list'):
         if not tasks: print("No tasks"); return
         for i, (p, text, pri) in enumerate(tasks, 1):
-            print(f"{i}. {pri} {text[:55]}{_counts(p)}")
+            print(f"{i}. P{pri} {text[:55]}{_counts(p)}")
         return
 
     if cmd in ('rev', 'review'):
@@ -126,32 +138,28 @@ context: ~/projects/adata/git/tasks/""")
                 print(f"\u2713 Archived: {text[:40]}")
                 tasks.pop(i); _sync(silent=True)
             elif k == 'p':
-                print("  Priority (4 letters): ", end='', flush=True)
-                np = input().strip().upper()[:4]
-                if np and np.isalpha():
-                    np = np.ljust(4, np[-1])
-                    old = p.name
-                    new = np + '-' + (old[5:] if len(old) > 4 and old[4] == '-' and old[:4].isalpha() else old)
-                    p.rename(TASK_DIR / new)
-                    print(f"\u2713 {np}"); _sync(silent=True)
+                print("  Priority (1-99999): ", end='', flush=True)
+                np = _fmtpri(input().strip())
+                if np:
+                    _rename_pri(p, np)
+                    print(f"\u2713 P{np}"); _sync(silent=True)
                     tasks = _tasks(); i = 0
-                else: print("x Invalid")
+                else: print("x Invalid number")
             elif k in ('q', '\x03', '\x1b'): break
             else: i += 1
         print("Done" if i >= len(tasks) else "")
         return
 
     if cmd == 'pri':
-        if len(a) < 3: print("Usage: a task pri <#> <XXXX>"); return
+        if len(a) < 3: print("Usage: a task pri <#> <priority>"); return
         try:
-            idx, np = int(a[1]) - 1, a[2].upper()[:4].ljust(4, a[2][-1].upper())
-            if not np.isalpha(): print("Letters only"); return
+            idx = int(a[1]) - 1
+            np = _fmtpri(a[2])
+            if not np: print("Invalid number"); return
             if 0 <= idx < len(tasks):
                 p, text, _ = tasks[idx]
-                old = p.name
-                new = np + '-' + (old[5:] if _pri(old) != 'MMMM' or (len(old) > 4 and old[4] == '-' and old[:4].isalpha()) else old)
-                p.rename(TASK_DIR / new)
-                print(f"\u2713 {np} {text[:40]}")
+                _rename_pri(p, np)
+                print(f"\u2713 P{np} {text[:40]}")
                 _sync(silent=True)
             else: print(f"Invalid: {a[1]}")
         except ValueError: print(f"Invalid: {a[1]}")
@@ -175,11 +183,11 @@ context: ~/projects/adata/git/tasks/""")
     if cmd in ('add', 'a') or cmd not in ('d', 'del', 'delete', 'sync', 'l', 'ls', 'list', '0', '1', 'p', 'do', 's', 't', 'h', '--help', '-h', 'pri', 'rev', 'review'):
         text = ' '.join(a[1:]) if cmd in ('add', 'a') else ' '.join(a)
         if not text: print("Usage: a task add <text>"); return
-        folder = TASK_DIR / f'MMMM-{_slug(text)}_{ts()}'
+        folder = TASK_DIR / f'{DEF_PRI}-{_slug(text)}_{ts()}'
         folder.mkdir()
         for sd in SUBDIRS: (folder / sd).mkdir()
         (folder / 'task' / f'{ts()}_{DEVICE_ID}.txt').write_text(text + '\n')
-        print(f"\u2713 MMMM {text}")
+        print(f"\u2713 P{DEF_PRI} {text}")
         _sync(silent=True)
         return
 

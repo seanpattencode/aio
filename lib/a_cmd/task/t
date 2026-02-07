@@ -1,5 +1,5 @@
 #!/bin/bash
-# Task review - supports PPPP-slug/ folders with task/context/prompt subdirs + legacy
+# Task review - supports NNNNN-slug/ folders with task/context/prompt subdirs + legacy
 D=~/projects/adata/git/tasks
 DEV=$(cat ~/.local/share/a/.device 2>/dev/null || hostname)
 
@@ -36,11 +36,11 @@ while [ $i -lt $n ]; do
   IFS=$'\t' read -r f t <<< "${tasks[$i]}"
   bn=$(basename "$f")
 
-  # Extract priority
-  pri="MMMM"
-  if [[ "$bn" =~ ^[A-Za-z]{4}- ]]; then pri="${bn:0:4}"; pri="${pri^^}"; fi
+  # Extract 5-digit priority
+  pri="50000"
+  if [[ "$bn" =~ ^[0-9]{5}- ]]; then pri="${bn:0:5}"; fi
 
-  echo -e "\n━━━ Task $((i+1))/$n [$pri] ━━━"
+  echo -e "\n━━━ Task $((i+1))/$n [P$pri] ━━━"
   if [ -d "$f" ]; then
     # Count files in each subfolder
     counts=""
@@ -82,7 +82,7 @@ while [ $i -lt $n ]; do
           mkdir -p "$f/task"
           echo "$newt" > "$f/task/$(date +%Y%m%dT%H%M%S)_${DEV}.txt"
         else
-          td="$D/MMMM-$(basename "${f%.txt}")"
+          td="$D/50000-$(basename "${f%.txt}")"
           mkdir -p "$td/task" "$td/context" "$td/prompt"
           mv "$f" "$td/task/migrated.txt"
           echo "$newt" > "$td/task/$(date +%Y%m%dT%H%M%S)_${DEV}.txt"
@@ -105,17 +105,15 @@ while [ $i -lt $n ]; do
         echo "✓ prompt added"
       fi;;
     r)
-      read -p "Priority (4 letters, A=high Z=low): " newpri
+      read -p "Priority (1-99999): " newpri
       if [ -n "$newpri" ] && [ -d "$f" ]; then
-        newpri="${newpri^^}"
-        newpri=$(printf '%-4s' "$newpri" | tr ' ' "${newpri: -1}")
-        newpri="${newpri:0:4}"
+        newpri=$(printf '%05d' "$newpri" 2>/dev/null)
         old=$(basename "$f")
-        if [[ "$old" =~ ^[A-Za-z]{4}- ]]; then new="${newpri}-${old:5}"
+        if [[ "$old" =~ ^[0-9]{5}- ]]; then new="${newpri}-${old:6}"
         else new="${newpri}-${old}"; fi
         mv "$f" "$D/$new"
         f="$D/$new"
-        echo "✓ priority: $newpri"
+        echo "✓ P$newpri"
       fi;;
     v)
       if [ -d "$f" ]; then

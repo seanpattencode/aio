@@ -1164,10 +1164,10 @@ static int load_tasks(const char *dir) {
     DIR *d=opendir(dir); if(!d) return 0; struct dirent *e; int n=0;
     while((e=readdir(d))&&n<256) { if(e->d_name[0]=='.'||!strcmp(e->d_name,"README.md")) continue;
         char fp[P]; snprintf(fp,P,"%s/%s",dir,e->d_name); const char *t=NULL;
-        /* extract 4-letter priority */
-        const char *nm=e->d_name; if(strlen(nm)>4&&nm[4]=='-'&&isalpha(nm[0])&&isalpha(nm[1])&&isalpha(nm[2])&&isalpha(nm[3]))
-            {char p[5]={toupper(nm[0]),toupper(nm[1]),toupper(nm[2]),toupper(nm[3]),0};snprintf(_tp[n],8,"%s",p);}
-        else snprintf(_tp[n],8,"MMMM");
+        /* extract 5-digit priority */
+        const char *nm=e->d_name; if(strlen(nm)>5&&nm[5]=='-'&&isdigit(nm[0])&&isdigit(nm[1])&&isdigit(nm[2])&&isdigit(nm[3])&&isdigit(nm[4]))
+            snprintf(_tp[n],8,"%.5s",nm);
+        else snprintf(_tp[n],8,"50000");
         if(e->d_type==DT_DIR) {
             /* new structure: task/ subfolder first */
             char tsub[P]; snprintf(tsub,P,"%s/task",fp);
@@ -1193,7 +1193,7 @@ static void task_add(const char *dir, const char *t) {
     char sl[64]; snprintf(sl,64,"%.32s",t); for(char *p=sl;*p;p++) if(*p==' '||*p=='/')*p='-'; else if(*p>='A'&&*p<='Z')*p+=32;
     struct timespec tp; clock_gettime(CLOCK_REALTIME,&tp); time_t now=tp.tv_sec;
     char ts[32],td[P],fn[P],buf[B]; strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&now));
-    snprintf(td,P,"%s/MMMM-%s_%s",dir,sl,ts); mkdirp(td);
+    snprintf(td,P,"%s/50000-%s_%s",dir,sl,ts); mkdirp(td);
     char sd[P]; snprintf(sd,P,"%s/task",td);mkdirp(sd); snprintf(sd,P,"%s/context",td);mkdirp(sd); snprintf(sd,P,"%s/prompt",td);mkdirp(sd);
     snprintf(fn,P,"%s/task/%s.%09ld_%s.txt",td,ts,tp.tv_nsec,DEV);
     snprintf(buf,B,"Text: %s\nDevice: %s\nCreated: %s\n",t,DEV,ts); writef(fn,buf);
@@ -1204,23 +1204,24 @@ static int cmd_task(int argc, char **argv) {
         "a task rev          review by priority (full detail)\n"
         "a task add <t>      add task\n"
         "a task d #          archive task\n"
-        "a task pri # XXXX   set priority (4 letters, A=high Z=low)\n"
+        "a task pri # N      set priority (1=high, 99999=low)\n"
         "a task <cat> # <t>  add to subfolder (context, prompt, ...)\n"
         "a task sync         sync");return 0;}
     if(*sub=='l'){sync_repo();int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
-        for(int i=0;i<n;i++) printf("  %d. %s %.55s\n",i+1,_tp[i],_tt[i]);return 0;}
-    if(!strcmp(sub,"pri")){if(argc<5){puts("a task pri # XXXX");return 1;}
+        for(int i=0;i<n;i++) printf("  %d. P%s %.55s\n",i+1,_tp[i],_tt[i]);return 0;}
+    if(!strcmp(sub,"pri")){if(argc<5){puts("a task pri # N");return 1;}
         int n=load_tasks(dir),x=atoi(argv[3])-1; if(x<0||x>=n){puts("x Invalid");return 1;}
-        char np[5]; for(int i=0;i<4;i++) np[i]=toupper(argv[4][i<(int)strlen(argv[4])?i:(int)strlen(argv[4])-1]); np[4]=0;
+        int pv=atoi(argv[4]); if(pv<0)pv=0; if(pv>99999)pv=99999;
+        char np[8]; snprintf(np,8,"%05d",pv);
         char *bn=strrchr(_td[x],'/'); if(!bn){puts("x Error");return 1;} bn++;
         char old[P],new[P]; snprintf(old,P,"%s",bn);
-        if(strlen(old)>4&&old[4]=='-'&&isalpha(old[0])) snprintf(new,P,"%s-%s",np,old+5);
+        if(strlen(old)>5&&old[5]=='-'&&isdigit(old[0])) snprintf(new,P,"%s-%s",np,old+6);
         else snprintf(new,P,"%s-%s",np,old);
         char src[P],dst[P]; snprintf(src,P,"%s",_td[x]); snprintf(dst,P,"%.*s/%s",(int)(bn-1-_td[x]),_td[x],new);
-        rename(src,dst);sync_repo();printf("\xe2\x9c\x93 %s %.40s\n",np,_tt[x]);return 0;}
+        rename(src,dst);sync_repo();printf("\xe2\x9c\x93 P%s %.40s\n",np,_tt[x]);return 0;}
     if(!strcmp(sub,"add")||!strcmp(sub,"a")){if(argc<4){puts("a task add <text>");return 1;}
         char t[B]="";for(int i=3;i<argc;i++){if(i>3)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
-        task_add(dir,t);sync_repo();printf("\xe2\x9c\x93 MMMM %s\n",t);return 0;}
+        task_add(dir,t);sync_repo();printf("\xe2\x9c\x93 P50000 %s\n",t);return 0;}
     if(*sub=='d'){if(argc<4){puts("a task d #");return 1;} int n=load_tasks(dir),x=atoi(argv[3])-1;
         if(x<0||x>=n){puts("x Invalid");return 1;} do_archive(_td[x]);sync_repo();printf("\xe2\x9c\x93 %.40s\n",_tt[x]);return 0;}
     if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
@@ -1228,7 +1229,7 @@ static int cmd_task(int argc, char **argv) {
     if(!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"t")||(argc>3&&argv[3][0]>='0'&&argv[3][0]<='9'
         &&strcmp(sub,"add")&&strcmp(sub,"a")&&*sub!='d')) fallback_py(argc,argv);
     char t[B]="";for(int i=2;i<argc;i++){if(i>2)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
-    task_add(dir,t);sync_repo();printf("\xe2\x9c\x93 MMMM %s\n",t);return 0;
+    task_add(dir,t);sync_repo();printf("\xe2\x9c\x93 P50000 %s\n",t);return 0;
 }
 
 /* ── ssh ── */
