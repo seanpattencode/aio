@@ -1,5 +1,5 @@
 #!/bin/bash
-# Task review - supports folders (text_*.txt, prompt_*.txt) and legacy .txt
+# Task review - supports PPPP-slug/ folders with task/context/prompt subdirs + legacy
 D=~/projects/adata/git/tasks
 DEV=$(cat ~/.local/share/a/.device 2>/dev/null || hostname)
 
@@ -7,36 +7,59 @@ case "$1" in
   -h|--help|h) echo "t - review tasks
 d     delete task
 n     next task
-a     add text candidate
+a     add text to task/
+c     add context
 p     add prompt
+r     set priority
 s     search
 l     list all
-v     view all candidates
+v     view all files
 Enter quit"; exit;;
 esac
 
-# Get tasks (folders first by mtime, then legacy .txt)
+# Get tasks sorted by name (priority prefix sorts naturally)
 tasks=()
 while IFS= read -r -d '' f; do
   if [ -d "$f" ]; then
-    latest=$(ls -t "$f"/text_*.txt 2>/dev/null | head -1)
+    # New structure: task/ subfolder
+    latest=$(ls -t "$f"/task/*.txt 2>/dev/null | head -1)
+    # Legacy: text_*.txt at root
+    [ -z "$latest" ] && latest=$(ls -t "$f"/text_*.txt 2>/dev/null | head -1)
     [ -n "$latest" ] && tasks+=("$f"$'\t'"$(head -1 "$latest")")
   elif [ -f "$f" ] && [[ "$f" == *.txt ]]; then
     tasks+=("$f"$'\t'"$(head -1 "$f")")
   fi
-done < <(find "$D" -maxdepth 1 \( -type d -o -name "*.txt" \) ! -name "." ! -name "*.txt" -print0 2>/dev/null; find "$D" -maxdepth 1 -name "*.txt" -print0 2>/dev/null)
+done < <(find "$D" -maxdepth 1 \( -type d -o -name "*.txt" \) ! -name "." ! -name "README.md" ! -path "$D" -print0 2>/dev/null | sort -z)
 
 n=${#tasks[@]}; i=0
 while [ $i -lt $n ]; do
   IFS=$'\t' read -r f t <<< "${tasks[$i]}"
+  bn=$(basename "$f")
 
-  # Show task
-  echo -e "\n━━━ Task $((i+1))/$n ━━━"
+  # Extract priority
+  pri="MMMM"
+  if [[ "$bn" =~ ^[A-Za-z]{4}- ]]; then pri="${bn:0:4}"; pri="${pri^^}"; fi
+
+  echo -e "\n━━━ Task $((i+1))/$n [$pri] ━━━"
   if [ -d "$f" ]; then
-    pc=$(ls "$f"/prompt_*.txt 2>/dev/null | wc -l)
+    # Count files in each subfolder
+    counts=""
+    for sd in "$f"/*/; do
+      [ -d "$sd" ] || continue
+      sn=$(basename "$sd")
+      [[ "$sn" == .* ]] && continue
+      nc=$(ls "$sd"/*.txt 2>/dev/null | wc -l)
+      [ "$nc" -gt 0 ] && counts+="$nc $sn, "
+    done
+    # Legacy counts
     tc=$(ls "$f"/text_*.txt 2>/dev/null | wc -l)
-    echo -e "[$tc texts, $pc prompts]\n"
-    for tf in $(ls -t "$f"/text_*.txt 2>/dev/null); do
+    pc=$(ls "$f"/prompt_*.txt 2>/dev/null | wc -l)
+    [ "$tc" -gt 0 ] && counts+="$tc text, "
+    [ "$pc" -gt 0 ] && counts+="$pc prompt, "
+    counts="${counts%, }"
+    [ -n "$counts" ] && echo -e "[$counts]\n"
+    # Show task text
+    for tf in $(ls -t "$f"/task/*.txt 2>/dev/null) $(ls -t "$f"/text_*.txt 2>/dev/null); do
       echo "• $(head -1 "$tf")"
     done
   else
@@ -44,42 +67,67 @@ while [ $i -lt $n ]; do
   fi
 
   echo
-  read -sn1 -p "[d]el [n]ext [a]dd text [p]rompt [v]iew [s]earch [l]ist [Enter=quit]: " c; echo
+  read -sn1 -p "[d]el [n]ext [a]dd [c]tx [p]rompt [r]epri [v]iew [s]earch [l]ist [Enter=quit]: " c; echo
   case $c in
     d)
       mkdir -p "$D/.archive"
       mv "$f" "$D/.archive/"
-      echo "✓ archived to .archive/$(basename "$f")"
+      echo "✓ archived"
       unset 'tasks[i]'; tasks=("${tasks[@]}"); ((n--));;
     n) ((i++));;
     a)
-      read -p "New text: " newt
+      read -p "Task text: " newt
       if [ -n "$newt" ]; then
-        if [ ! -d "$f" ]; then
-          # Migrate legacy to folder
-          td="$D/$(basename "${f%.txt}")"
-          mkdir -p "$td"
-          mv "$f" "$td/text_00000000_migrated.txt"
+        if [ -d "$f" ]; then
+          mkdir -p "$f/task"
+          echo "$newt" > "$f/task/$(date +%Y%m%dT%H%M%S)_${DEV}.txt"
+        else
+          td="$D/MMMM-$(basename "${f%.txt}")"
+          mkdir -p "$td/task" "$td/context" "$td/prompt"
+          mv "$f" "$td/task/migrated.txt"
+          echo "$newt" > "$td/task/$(date +%Y%m%dT%H%M%S)_${DEV}.txt"
           f="$td"
         fi
-        echo "$newt" > "$f/text_$(date +%m%d%H%M%S)_${DEV}.txt"
-        echo "✓ text added"
+        echo "✓ task text added"
+      fi;;
+    c)
+      read -p "Context: " newc
+      if [ -n "$newc" ] && [ -d "$f" ]; then
+        mkdir -p "$f/context"
+        echo "$newc" > "$f/context/$(date +%Y%m%dT%H%M%S)_${DEV}.txt"
+        echo "✓ context added"
       fi;;
     p)
       read -p "Prompt: " newp
-      if [ -n "$newp" ]; then
-        if [ ! -d "$f" ]; then
-          td="$D/$(basename "${f%.txt}")"
-          mkdir -p "$td"
-          mv "$f" "$td/text_00000000_migrated.txt"
-          f="$td"
-        fi
-        echo "$newp" > "$f/prompt_$(date +%m%d%H%M%S)_${DEV}.txt"
+      if [ -n "$newp" ] && [ -d "$f" ]; then
+        mkdir -p "$f/prompt"
+        echo "$newp" > "$f/prompt/$(date +%Y%m%dT%H%M%S)_${DEV}.txt"
         echo "✓ prompt added"
+      fi;;
+    r)
+      read -p "Priority (4 letters, A=high Z=low): " newpri
+      if [ -n "$newpri" ] && [ -d "$f" ]; then
+        newpri="${newpri^^}"
+        newpri=$(printf '%-4s' "$newpri" | tr ' ' "${newpri: -1}")
+        newpri="${newpri:0:4}"
+        old=$(basename "$f")
+        if [[ "$old" =~ ^[A-Za-z]{4}- ]]; then new="${newpri}-${old:5}"
+        else new="${newpri}-${old}"; fi
+        mv "$f" "$D/$new"
+        f="$D/$new"
+        echo "✓ priority: $newpri"
       fi;;
     v)
       if [ -d "$f" ]; then
         echo -e "\n=== $(basename "$f") ==="
+        for sd in "$f"/*/; do
+          [ -d "$sd" ] || continue
+          for tf in $(ls "$sd"/*.txt 2>/dev/null | sort); do
+            echo -e "\n[$(basename "$sd")/$(basename "$tf" .txt)]"
+            cat "$tf"
+          done
+        done
+        # Legacy files at root
         for tf in $(ls "$f"/*.txt 2>/dev/null | sort); do
           echo -e "\n[$(basename "$tf" .txt)]"
           cat "$tf"
