@@ -10,8 +10,8 @@ def run():
     sel = sys.argv[2] if len(sys.argv) > 2 else None
     if sel and sel.isdigit():
         total = 0
-        for i, L in enumerate(sp.run(['git', 'log', f'-{sel}', '--pretty=%H %s'], capture_output=True, text=True).stdout.strip().split('\n')):
-            h, m = L.split(' ', 1); t = _tok(sp.run(['git', 'show', h, '--pretty='], capture_output=True, text=True).stdout); total += t; print(f"  {i}  {t:>+6}  {m[:55]}")
+        for i, L in enumerate(sp.run(['git', 'log', f'-{sel}', '--pretty=%H %cd %s', '--date=format:%I:%M%p'], capture_output=True, text=True).stdout.strip().split('\n')):
+            h, rest = L.split(' ', 1); ts, m = rest.split(' ', 1); t = _tok(sp.run(['git', 'show', h, '--pretty='], capture_output=True, text=True).stdout); total += t; print(f"  {i}  {ts}  {t:>+6}  {m[:55]}")
         print(f"\nTotal: {total:+} tokens")
         return
     sp.run(['git', 'fetch', 'origin'], capture_output=True); cwd = os.getcwd()
@@ -21,7 +21,8 @@ def run():
     uncommitted = sp.run(['git', 'diff', 'HEAD', '--diff-filter=d'], capture_output=True, text=True).stdout
     diff = committed + uncommitted
     untracked = sp.run(['git', 'ls-files', '--others', '--exclude-standard'], capture_output=True, text=True).stdout.strip()
-    print(f"{b} -> {target}" if sel else f"{cwd}\n{b} -> {target}")
+    t = sp.run(['git', 'log', '-1', '--format=%cd', '--date=format:%Y-%m-%d %I:%M:%S %p'], capture_output=True, text=True).stdout.strip()
+    print(f"{b} -> {target}" if sel else f"{cwd}\n{b} -> {target}\n{t}")
     if not diff and not untracked: print("No changes"); return
     try: enc = __import__('tiktoken').get_encoding('cl100k_base').encode; tok = lambda s: len(enc(s))
     except: tok = lambda s: len(s) // 4

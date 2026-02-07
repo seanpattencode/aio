@@ -761,13 +761,15 @@ static int cmd_diff(int argc, char **argv) {
     const char *sel = argc > 2 ? argv[2] : NULL;
     /* Token history mode */
     if (sel && sel[0] >= '0' && sel[0] <= '9') {
-        int n = atoi(sel); char c[256]; snprintf(c, 256, "git log -%d --pretty=%%H\\ %%s", n);
+        int n = atoi(sel); char c[256]; snprintf(c, 256, "git log -%d --pretty=%%H\\ %%cd\\ %%s --date=format:%%I:%%M%%p", n);
         FILE *fp = popen(c, "r"); if (!fp) return 1;
         char line[512]; int total = 0, i = 0;
         while (fgets(line, 512, fp)) {
             line[strcspn(line,"\n")] = 0;
             char *sp = strchr(line, ' '); if (!sp) continue;
-            *sp = 0; char *hash = line, *msg = sp + 1;
+            *sp = 0; char *hash = line, *ts = sp + 1;
+            sp = strchr(ts, ' '); if (!sp) continue;
+            *sp = 0; char *msg = sp + 1;
             char dc[256]; snprintf(dc, 256, "git show %.40s --pretty=", hash);
             FILE *dp = popen(dc, "r"); int ab = 0, db_ = 0;
             if (dp) { char dl[4096]; while (fgets(dl, 4096, dp)) { int l = strlen(dl);
@@ -776,7 +778,7 @@ static int cmd_diff(int argc, char **argv) {
             } pclose(dp); }
             int tok = (ab - db_) / 4; total += tok;
             if (strlen(msg) > 55) { msg[52]='.'; msg[53]='.'; msg[54]='.'; msg[55]=0; }
-            printf("  %d  %+6d  %s\n", i++, tok, msg);
+            printf("  %d  %s  %+6d  %s\n", i++, ts, tok, msg);
         }
         pclose(fp); printf("\nTotal: %+d tokens\n", total); return 0;
     }
