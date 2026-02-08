@@ -1275,14 +1275,14 @@ static void task_show(int i,int n){
         if(!strncmp(bn,"prompt_",7))continue;char ht[48];
         if(all[j].ts[0]!='0')ts_human(all[j].ts,ht,48);else snprintf(ht,48,"(original)");
         printf("\n  \033[90m%s\033[0m  text\n",ht);task_printbody(all[j].n);}
-    for(int j=0;j<na;j++){const char*bn=strrchr(all[j].n,'/');bn=bn?bn+1:"";
+    int pc=2;for(int j=0;j<na;j++){const char*bn=strrchr(all[j].n,'/');bn=bn?bn+1:"";
         if(strncmp(bn,"prompt_",7))continue;char ht[48];
         if(all[j].ts[0]!='0')ts_human(all[j].ts,ht,48);
         else{struct stat fs;if(!stat(all[j].n,&fs)){struct tm*mt=localtime(&fs.st_mtime);
             int h=mt->tm_hour%12;if(!h)h=12;
             strftime(ht,48,"%b %-d",mt);char tmp[32];snprintf(tmp,32," %d:%02d%s",h,mt->tm_min,mt->tm_hour>=12?"pm":"am");
             strncat(ht,tmp,48-strlen(ht)-1);}else snprintf(ht,48,"");}
-        printf("\n  \033[90m%s\033[0m  \033[35mprompt\033[0m\n",ht);task_printbody(all[j].n);}
+        printf("\n  \033[90m%s\033[0m  \033[35mprompt #%d\033[0m\n",ht,pc);task_printbody(all[j].n);pc++;}
     /* show all sessions */
     if(ns){for(int j=0;j<ns;j++){
             char ht[48];ts_human(ss[j].ts,ht,48);
