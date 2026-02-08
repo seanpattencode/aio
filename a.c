@@ -1364,7 +1364,7 @@ static int cmd_task(int argc,char**argv){
                     printf("\xe2\x9c\x93 Added\n");sync_bg();}}
                 /* re-show task so new addition is visible */
                 task_show(i,n);show=0;}
-            else if(k=='c'){
+            else if(k=='c'){docreate:
                 {struct stat st;if(!stat(T[i].d,&st)&&!S_ISDIR(st.st_mode))task_todir(T[i].d);}
                 printf("  Name: ");fflush(stdout);
                 char nm[64];if(!fgets(nm,64,stdin)||!nm[0]||nm[0]=='\n'){show=0;continue;}
@@ -1386,9 +1386,10 @@ static int cmd_task(int argc,char**argv){
                 printf("\xe2\x9c\x93 Added prompt: %s\n",nm);
                 task_show(i,n);show=0;}
             else if(k=='r'){
-                /* pick prompt candidate */
-                printf("  Prompt #: ");fflush(stdout);
+                printf("  Prompt # or [n]ew: ");fflush(stdout);
                 char pb[8];if(!fgets(pb,8,stdin)||!pb[0]||pb[0]=='\n'){show=0;continue;}
+                pb[strcspn(pb,"\n")]=0;
+                if(*pb=='n'||*pb=='c'){k='c';goto docreate;}
                 int ci=atoi(pb);if(ci<1){show=0;continue;}
                 /* collect task text */
                 char body[B]="";int bl=0;
