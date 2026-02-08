@@ -1249,6 +1249,8 @@ static int load_sessions(const char*td,Sess*ss,int max){
     for(int a=0;a<ns-1;a++)for(int b=a+1;b<ns;b++)if(strcmp(ss[a].ts,ss[b].ts)>0){Sess tmp=ss[a];ss[a]=ss[b];ss[b]=tmp;}
     return ns;
 }
+static void task_todir(char*p){char tmp[P];snprintf(tmp,P,"%s.tmp",p);rename(p,tmp);mkdir(p,0755);
+    char dst[P];snprintf(dst,P,"%s/task.txt",p);rename(tmp,dst);}
 static void task_show(int i,int n){
     Sess ss[32];int ns=load_sessions(T[i].d,ss,32);
     /* headline status: any LIVE? else any REVIEW? else not run */
@@ -1349,7 +1351,7 @@ static int cmd_task(int argc,char**argv){
             if(k=='e'){do_archive(T[i].d);printf("\xe2\x9c\x93 Archived: %.40s\n",T[i].t);
                 sync_bg();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
             else if(k=='a'){
-                struct stat st;if(stat(T[i].d,&st)||!S_ISDIR(st.st_mode)){printf("x Not a folder task\n");show=0;continue;}
+                {struct stat st;if(!stat(T[i].d,&st)&&!S_ISDIR(st.st_mode))task_todir(T[i].d);}
                 char sd[P];snprintf(sd,P,"%s/task",T[i].d);
                 printf("  Text: ");fflush(stdout);
                 char buf[B];if(fgets(buf,B,stdin)){buf[strcspn(buf,"\n")]=0;if(buf[0]){
@@ -1362,7 +1364,7 @@ static int cmd_task(int argc,char**argv){
                 /* re-show task so new addition is visible */
                 task_show(i,n);show=0;}
             else if(k=='c'){
-                struct stat st;if(stat(T[i].d,&st)||!S_ISDIR(st.st_mode)){printf("x Not a folder task\n");show=0;continue;}
+                {struct stat st;if(!stat(T[i].d,&st)&&!S_ISDIR(st.st_mode))task_todir(T[i].d);}
                 printf("  Name: ");fflush(stdout);
                 char nm[64];if(!fgets(nm,64,stdin)||!nm[0]||nm[0]=='\n'){show=0;continue;}
                 nm[strcspn(nm,"\n")]=0;
@@ -1545,7 +1547,7 @@ static int cmd_task(int argc,char**argv){
         printf("Prompt: %s\n",pf);execvp("a",(char*[]){"a","c",r,NULL});return 1;}
     if(argc>4&&isdigit(argv[3][0])){
         int n=load_tasks(dir),x=atoi(argv[3])-1;if(x<0||x>=n){puts("x Invalid");return 1;}
-        struct stat st;if(stat(T[x].d,&st)||!S_ISDIR(st.st_mode)){puts("x Not a folder task");return 1;}
+        {struct stat st;if(!stat(T[x].d,&st)&&!S_ISDIR(st.st_mode))task_todir(T[x].d);}
         char sd[P];snprintf(sd,P,"%s/%s",T[x].d,sub);mkdirp(sd);
         struct timespec tp;clock_gettime(CLOCK_REALTIME,&tp);
         char ts[32],fn[P];strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
