@@ -1360,7 +1360,7 @@ static int cmd_task(int argc,char**argv){
                     char ts[32],fn[P];strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
                     snprintf(fn,P,"%s/%s.%09ld_%s.txt",sd,ts,tp.tv_nsec,DEV);
                     char fb[B];snprintf(fb,B,"Text: %s\nDevice: %s\nCreated: %s\n",buf,DEV,ts);writef(fn,fb);
-                    printf("\xe2\x9c\x93 Added\n");sync_repo();}}
+                    printf("\xe2\x9c\x93 Added\n");sync_bg();}}
                 /* re-show task so new addition is visible */
                 task_show(i,n);show=0;}
             else if(k=='c'){
