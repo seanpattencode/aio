@@ -1178,11 +1178,11 @@ static int load_tasks(const char*dir){
         if(tl>255)tl=255;for(int i=0;i<tl;i++)T[n].t[i]=s[i]=='-'||s[i]=='_'?' ':s[i];T[n].t[tl]=0;n++;
     }closedir(d);qsort(T,n,sizeof(Tk),tcmp);return n;
 }
-static void task_add(const char*dir,const char*t){
+static void task_add(const char*dir,const char*t,int pri){
     char sl[64];snprintf(sl,64,"%.32s",t);for(char*p=sl;*p;p++)*p=*p==' '||*p=='/'?'-':*p>='A'&&*p<='Z'?*p+32:*p;
     struct timespec tp;clock_gettime(CLOCK_REALTIME,&tp);
     char ts[32],td[P],fn[P],buf[B];strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
-    snprintf(td,P,"%s/50000-%s_%s",dir,sl,ts);mkdir(td,0755);
+    snprintf(td,P,"%s/%05d-%s_%s",dir,pri,sl,ts);mkdir(td,0755);
     char sd[P];snprintf(sd,P,"%s/task",td);mkdir(sd,0755);
     snprintf(fn,P,"%s/task/%s.%09ld_%s.txt",td,ts,tp.tv_nsec,DEV);
     snprintf(buf,B,"Text: %s\nDevice: %s\nCreated: %s\n",t,DEV,ts);writef(fn,buf);
@@ -1206,21 +1206,80 @@ static int task_counts(const char*dir,char*out,int sz){
     int p=snprintf(out,sz," [");for(int i=0;i<nd;i++)p+=snprintf(out+p,sz-p,"%s%d %s",i?", ":"",s[i].c,s[i].n);
     snprintf(out+p,sz-p,"]");return nd;
 }
-typedef struct{char n[64];int t;}Ent;
-static int entcmp(const void*a,const void*b){const Ent*x=a,*y=b;return x->t!=y->t?x->t-y->t:strcmp(x->n,y->n);}
+typedef struct{char n[256];char ts[32];}Ent;
+static int entcmp(const void*a,const void*b){return strcmp(((Ent*)a)->ts,((Ent*)b)->ts);}
+static void ts_human(const char*ts,char*out,int sz){
+    /* "20260207T033024" → "Feb 7 3:30am" */
+    if(!ts||strlen(ts)<15||ts[8]!='T'){snprintf(out,sz,"(original)");return;}
+    struct tm t={0};
+    t.tm_year=(ts[0]-'0')*1000+(ts[1]-'0')*100+(ts[2]-'0')*10+(ts[3]-'0')-1900;
+    t.tm_mon=(ts[4]-'0')*10+(ts[5]-'0')-1;t.tm_mday=(ts[6]-'0')*10+(ts[7]-'0');
+    t.tm_hour=(ts[9]-'0')*10+(ts[10]-'0');t.tm_min=(ts[11]-'0')*10+(ts[12]-'0');
+    int h=t.tm_hour;const char*ap=h>=12?"pm":"am";h=h%12;if(!h)h=12;
+    strftime(out,sz,"%b %-d",mktime(&t)?&t:&t);
+    char tmp[32];snprintf(tmp,32," %d:%02d%s",h,t.tm_min,ap);
+    strncat(out,tmp,sz-strlen(out)-1);
+}
+typedef struct{char sid[128];char tmx[128];char ts[32];int st;}Sess;
+static int load_sessions(const char*td,Sess*ss,int max){
+    DIR*d=opendir(td);if(!d)return 0;struct dirent*e;int ns=0;
+    while((e=readdir(d))&&ns<max){
+        if(strncmp(e->d_name,"session_",8)||!strstr(e->d_name,".txt"))continue;
+        char fp[P];snprintf(fp,P,"%s/%s",td,e->d_name);
+        size_t l;char*r=readf(fp,&l);if(!r)continue;
+        ss[ns].sid[0]=ss[ns].tmx[0]=ss[ns].ts[0]=0;
+        for(char*p=r;;){char*nl=strchr(p,'\n');if(nl)*nl=0;
+            if(!strncmp(p,"SessionID: ",11))snprintf(ss[ns].sid,128,"%s",p+11);
+            if(!strncmp(p,"TmuxSession: ",13))snprintf(ss[ns].tmx,128,"%s",p+13);
+            if(!strncmp(p,"Started: ",9))snprintf(ss[ns].ts,32,"%s",p+9);
+            if(!nl)break;p=nl+1;}
+        free(r);
+        /* check live or review */
+        ss[ns].st=2;
+        if(ss[ns].tmx[0]){char cmd[P];snprintf(cmd,P,"tmux has-session -t '%s' 2>/dev/null",ss[ns].tmx);
+            if(!system(cmd))ss[ns].st=1;}
+        ns++;}
+    closedir(d);
+    /* sort by timestamp ascending */
+    for(int a=0;a<ns-1;a++)for(int b=a+1;b<ns;b++)if(strcmp(ss[a].ts,ss[b].ts)>0){Sess tmp=ss[a];ss[a]=ss[b];ss[b]=tmp;}
+    return ns;
+}
 static void task_show(int i,int n){
-    printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 %d/%d [P%s] %.60s \xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\033[0m\n",i+1,n,T[i].p,T[i].t);
+    Sess ss[32];int ns=load_sessions(T[i].d,ss,32);
+    /* headline status: any LIVE? else any REVIEW? else not run */
+    int best=0;for(int j=0;j<ns;j++)if(ss[j].st==1){best=1;break;}else best=2;
+    const char*sl=best==0?"\033[90mnot run\033[0m":best==1?"\033[32mLIVE\033[0m":"\033[33mREVIEW\033[0m";
+    printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 %d/%d [P%s] %.50s\033[0m  %s\n",i+1,n,T[i].p,T[i].t,sl);
     struct stat st;if(stat(T[i].d,&st)||!S_ISDIR(st.st_mode)){task_printbody(T[i].d);return;}
-    DIR*d=opendir(T[i].d);if(!d)return;struct dirent*e;Ent ent[128];int ne=0;
-    while((e=readdir(d))&&ne<128){if(e->d_name[0]=='.')continue;strcpy(ent[ne].n,e->d_name);ent[ne].t=e->d_type==DT_DIR?0:1;ne++;}
-    closedir(d);qsort(ent,ne,sizeof(Ent),entcmp);
-    for(int j=0;j<ne;j++){char fp[P];snprintf(fp,P,"%s/%s",T[i].d,ent[j].n);
-        if(!ent[j].t){DIR*s=opendir(fp);if(!s)continue;struct dirent*f;char fl[64][256];int nf=0;
-            while((f=readdir(s))&&nf<64)if(f->d_type==DT_REG&&strstr(f->d_name,".txt"))strcpy(fl[nf++],f->d_name);
-            closedir(s);if(!nf)continue;qsort(fl,nf,256,(int(*)(const void*,const void*))strcmp);
-            printf("\n  \033[36m%s/\033[0m (%d)\n",ent[j].n,nf);
-            for(int k=0;k<nf;k++){char ffp[P];snprintf(ffp,P,"%s/%s",fp,fl[k]);task_printbody(ffp);}
-        }else if(strstr(ent[j].n,".txt")){printf("\n  \033[33m%s\033[0m\n",ent[j].n);task_printbody(fp);}}
+    /* collect all non-session .txt files with timestamps for chrono sort */
+    Ent all[256];int na=0;
+    DIR*d=opendir(T[i].d);if(!d)return;struct dirent*e;
+    while((e=readdir(d))&&na<256){if(e->d_name[0]=='.'||!strncmp(e->d_name,"session_",8))continue;
+        char fp[P];snprintf(fp,P,"%s/%s",T[i].d,e->d_name);
+        if(e->d_type==DT_REG&&strstr(e->d_name,".txt")){
+            snprintf(all[na].n,256,"%s",fp);
+            const char*u=strchr(e->d_name,'_');
+            if(u&&strlen(u+1)>=15)snprintf(all[na].ts,32,"%.15s",u+1);
+            else snprintf(all[na].ts,32,"0");
+            na++;
+        }else if(e->d_type==DT_DIR){
+            DIR*s=opendir(fp);if(!s)continue;struct dirent*f;
+            while((f=readdir(s))&&na<256){if(f->d_type!=DT_REG||!strstr(f->d_name,".txt"))continue;
+                snprintf(all[na].n,256,"%s/%s",fp,f->d_name);
+                const char*v=f->d_name;if(strlen(v)>=15&&v[8]=='T')snprintf(all[na].ts,32,"%.15s",v);
+                else snprintf(all[na].ts,32,"0");
+                na++;}
+            closedir(s);}}
+    closedir(d);qsort(all,na,sizeof(Ent),entcmp);
+    for(int j=0;j<na;j++){char ht[48];
+        if(all[j].ts[0]!='0')ts_human(all[j].ts,ht,48);else snprintf(ht,48,"(original)");
+        printf("\n  \033[90m%s\033[0m\n",ht);task_printbody(all[j].n);}
+    /* show all sessions */
+    if(ns){printf("\n  \033[1mSessions:\033[0m\n");
+        for(int j=0;j<ns;j++){
+            char ht[48];ts_human(ss[j].ts,ht,48);
+            const char*stl=ss[j].st==1?"\033[32mLIVE\033[0m":"\033[33mREVIEW\033[0m";
+            printf("  %s  %s  claude -r %s\n",stl,ht,ss[j].sid);}}
 }
 static void task_repri(int x,int pv){
     if(pv<0)pv=0;if(pv>99999)pv=99999;char np[8];snprintf(np,8,"%05d",pv);
@@ -1243,7 +1302,7 @@ static int cmd_task(int argc,char**argv){
     if(!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
         int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=0,show=1;
         while(i<n){if(show)task_show(i,n);show=1;
-            printf("\n  [d]archive  [a]dd  [n]ext  [p]ri  [q]uit  ");fflush(stdout);
+            printf("\n  [d]archive  [a]dd  [r]un claude  [g]o  [b]ack  [n]ext  [p]ri  [q]uit  ");fflush(stdout);
             int k=task_getkey();putchar('\n');
             if(k=='d'){do_archive(T[i].d);printf("\xe2\x9c\x93 Archived: %.40s\n",T[i].t);
                 sync_repo();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
@@ -1257,17 +1316,78 @@ static int cmd_task(int argc,char**argv){
                     char ts[32],fn[P];strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
                     snprintf(fn,P,"%s/%s.%09ld_%s.txt",sd,ts,tp.tv_nsec,DEV);
                     char fb[B];snprintf(fb,B,"Text: %s\nDevice: %s\nCreated: %s\n",buf,DEV,ts);writef(fn,fb);
-                    printf("\xe2\x9c\x93 Added\n    %s\n",buf);sync_repo();}}show=0;}
+                    printf("\xe2\x9c\x93 Added\n");sync_repo();}}
+                /* re-show task so new addition is visible */
+                task_show(i,n);show=0;}
+            else if(k=='r'){
+                /* run task with claude */
+                char sid[64];sid[0]=0;
+                {char ub[48];if(!pcmd("uuidgen",ub,48))
+                    {ub[strcspn(ub,"\n")]=0;snprintf(sid,64,"%s",ub);}}
+                struct timespec tp;clock_gettime(CLOCK_REALTIME,&tp);
+                char tss[32];strftime(tss,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
+                char tmx[64];snprintf(tmx,64,"task-%d-%ld",i+1,tp.tv_sec);
+                /* collect task text */
+                char body[B]="";int bl=0;
+                struct stat ss;if(!stat(T[i].d,&ss)&&S_ISDIR(ss.st_mode)){
+                    DIR*dd=opendir(T[i].d);struct dirent*ee;
+                    while(dd&&(ee=readdir(dd))){if(ee->d_name[0]=='.')continue;
+                        char fp[P];snprintf(fp,P,"%s/%s",T[i].d,ee->d_name);
+                        if(ee->d_type==DT_REG&&strstr(ee->d_name,".txt")&&!strstr(ee->d_name,"session")){
+                            size_t fl;char*fc=readf(fp,&fl);if(fc){bl+=snprintf(body+bl,B-bl,"%s\n",fc);free(fc);}}
+                        else if(ee->d_type==DT_DIR){DIR*sd=opendir(fp);struct dirent*ff;
+                            while(sd&&(ff=readdir(sd))){if(ff->d_type!=DT_REG||!strstr(ff->d_name,".txt"))continue;
+                                char sfp[P];snprintf(sfp,P,"%s/%s",fp,ff->d_name);
+                                size_t fl;char*fc=readf(sfp,&fl);if(fc){bl+=snprintf(body+bl,B-bl,"%s\n",fc);free(fc);}}
+                            if(sd)closedir(sd);}}
+                    if(dd)closedir(dd);
+                }else{bl=snprintf(body,B,"%s",T[i].t);}
+                /* write session file (one per run, append-only) */
+                char sf[P];snprintf(sf,P,"%s/session_%s_%s.txt",T[i].d,tss,DEV);
+                char sm[B];snprintf(sm,B,"SessionID: %s\nTmuxSession: %s\nModel: sonnet\nStarted: %s\nDevice: %s\n",sid,tmx,tss,DEV);
+                writef(sf,sm);
+                /* write prompt to file (avoids shell quoting issues with newlines/quotes) */
+                char pf[P];snprintf(pf,P,"/tmp/a_prompt_%s.txt",tss);
+                writef(pf,body);
+                /* show full prompt */
+                printf("\n\033[1m\xe2\x94\x80\xe2\x94\x80 Prompt to claude (sonnet) \xe2\x94\x80\xe2\x94\x80\033[0m\n");
+                printf("\033[36m%s\033[0m\n",body);
+                printf("\033[1m\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\033[0m\n");
+                /* spawn tmux — use shell wrapper to read prompt from file */
+                char cmd[B];snprintf(cmd,B,
+                    "tmux new-session -d -s '%s' "
+                    "\"bash -c 'claude --session-id %s --model sonnet --dangerously-skip-permissions -p \\\"$(cat %s)\\\"; sleep 5'\"",
+                    tmx,sid,pf);
+                system(cmd);
+                printf("\xe2\x9c\x93 Running with claude (sonnet)\n  tmux attach -t %s\n  claude -r %s\n",tmx,sid);
+                show=0;}
+            else if(k=='g'){
+                /* go: attach most recent live, or resume most recent dead */
+                Sess ss[32];int ns=load_sessions(T[i].d,ss,32);
+                if(!ns){printf("  Not run yet. Press [r] to run with claude.\n");show=0;}
+                else{/* pick most recent live, else most recent review (last in sorted list) */
+                    int pick=-1;
+                    for(int j=ns-1;j>=0;j--)if(ss[j].st==1){pick=j;break;}
+                    if(pick<0)pick=ns-1;
+                    if(ss[pick].st==1){char cmd[P];snprintf(cmd,P,"tmux attach -t '%s'",ss[pick].tmx);
+                        system(cmd);}
+                    else{char cmd[P];snprintf(cmd,P,"claude -r %s",ss[pick].sid);
+                        printf("  Resuming claude session...\n");system(cmd);}
+                    show=0;}}
             else if(k=='p'){printf("  Priority (1-99999): ");fflush(stdout);
                 char buf[16];if(fgets(buf,16,stdin)){task_repri(i,atoi(buf));sync_repo();n=load_tasks(dir);i=0;}}
+            else if(k=='b'){if(i>0)i--;else{printf("  (first task)\n");show=0;}}
             else if(k=='q'||k==3||k==27)break;else i++;}
         if(i>=n)puts("Done");return 0;}
     if(!strcmp(sub,"pri")){if(argc<5){puts("a task pri # N");return 1;}
         int n=load_tasks(dir),x=atoi(argv[3])-1;if(x<0||x>=n){puts("x Invalid");return 1;}
         task_repri(x,atoi(argv[4]));sync_bg();return 0;}
-    if(!strcmp(sub,"add")||!strcmp(sub,"a")){if(argc<4){puts("a task add <text>");return 1;}
-        char t[B]="";for(int i=3;i<argc;i++){if(i>3)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
-        task_add(dir,t);printf("\xe2\x9c\x93 P50000 %s\n",t);sync_bg();return 0;}
+    if(!strcmp(sub,"add")||!strcmp(sub,"a")){if(argc<4){puts("a task add [PPPPP] <text>");return 1;}
+        int pri=50000,si=3;
+        if(strlen(argv[3])==5&&isdigit(argv[3][0])&&isdigit(argv[3][1])&&isdigit(argv[3][2])&&isdigit(argv[3][3])&&isdigit(argv[3][4])){
+            pri=atoi(argv[3]);si=4;if(si>=argc){puts("a task add [PPPPP] <text>");return 1;}}
+        char t[B]="";for(int i=si;i<argc;i++){if(i>si)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
+        task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();return 0;}
     if(*sub=='d'){if(argc<4){puts("a task d #");return 1;}int n=load_tasks(dir),x=atoi(argv[3])-1;
         if(x<0||x>=n){puts("x Invalid");return 1;}do_archive(T[x].d);printf("\xe2\x9c\x93 %.40s\n",T[x].t);sync_bg();return 0;}
     if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
@@ -1287,8 +1407,11 @@ static int cmd_task(int argc,char**argv){
         char t[B]="";for(int i=4;i<argc;i++){if(i>4)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
         snprintf(fn,P,"%s/%s.%09ld_%s.txt",sd,ts,tp.tv_nsec,DEV);writef(fn,t);
         printf("\xe2\x9c\x93 %s: %.40s\n",sub,t);sync_bg();return 0;}
-    char t[B]="";for(int i=2;i<argc;i++){if(i>2)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
-    task_add(dir,t);printf("\xe2\x9c\x93 P50000 %s\n",t);sync_bg();return 0;
+    {int pri=50000,si=2;
+    if(argc>2&&strlen(argv[2])==5&&isdigit(argv[2][0])&&isdigit(argv[2][1])&&isdigit(argv[2][2])&&isdigit(argv[2][3])&&isdigit(argv[2][4])){
+        pri=atoi(argv[2]);si=3;if(si>=argc){puts("a task [PPPPP] <text>");return 1;}}
+    char t[B]="";for(int i=si;i<argc;i++){if(i>si)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
+    task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();return 0;}
 }
 
 /* ── ssh ── */
