@@ -1347,7 +1347,7 @@ static int cmd_task(int argc,char**argv){
             printf("\n  [d]archive  [a]dd text  [c]add prompt  [r]un claude  [g]o  [b]ack  [n]ext  [p]ri  [q]uit  ");fflush(stdout);
             int k=task_getkey();putchar('\n');
             if(k=='d'){do_archive(T[i].d);printf("\xe2\x9c\x93 Archived: %.40s\n",T[i].t);
-                sync_repo();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
+                sync_bg();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
             else if(k=='a'){
                 struct stat st;if(stat(T[i].d,&st)||!S_ISDIR(st.st_mode)){printf("x Not a folder task\n");show=0;continue;}
                 char sd[P];snprintf(sd,P,"%s/task",T[i].d);
