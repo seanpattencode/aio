@@ -1206,6 +1206,10 @@ static int task_counts(const char*dir,char*out,int sz){
     int p=snprintf(out,sz," [");for(int i=0;i<nd;i++)p+=snprintf(out+p,sz-p,"%s%d %s",i?", ":"",s[i].c,s[i].n);
     snprintf(out+p,sz-p,"]");return nd;
 }
+static int task_dl(const char*td){char df[P];snprintf(df,P,"%s/deadline.txt",td);
+    size_t l;char*c=readf(df,&l);if(!c)return-1;struct tm d={0};
+    if(sscanf(c,"%d-%d-%d",&d.tm_year,&d.tm_mon,&d.tm_mday)!=3){free(c);return-1;}
+    d.tm_year-=1900;d.tm_mon--;free(c);return(int)((mktime(&d)-time(NULL))/86400);}
 typedef struct{char n[256];char ts[32];}Ent;
 static int entcmp(const void*a,const void*b){return strcmp(((Ent*)a)->ts,((Ent*)b)->ts);}
 static void ts_human(const char*ts,char*out,int sz){
@@ -1250,7 +1254,8 @@ static void task_show(int i,int n){
     /* headline status: any LIVE? else any REVIEW? else not run */
     int best=0;for(int j=0;j<ns;j++)if(ss[j].st==1){best=1;break;}else best=2;
     const char*sl=best==0?"\033[90mnot run\033[0m":best==1?"\033[32mLIVE\033[0m":"\033[33mREVIEW\033[0m";
-    printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 %d/%d [P%s] %.50s\033[0m  %s\n",i+1,n,T[i].p,T[i].t,sl);
+    int dd=task_dl(T[i].d);char dv[32]="";if(dd>=0)snprintf(dv,32,"  %s%dd\033[0m",dd<=1?"\033[31m":dd<=7?"\033[33m":"\033[90m",dd);
+    printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 %d/%d [P%s] %.50s\033[0m  %s%s\n",i+1,n,T[i].p,T[i].t,sl,dv);
     struct stat st;if(stat(T[i].d,&st)||!S_ISDIR(st.st_mode)){task_printbody(T[i].d);return;}
     /* collect all non-session .txt files with timestamps for chrono sort */
     Ent all[256];int na=0;
@@ -1325,6 +1330,8 @@ static int cmd_task(int argc,char**argv){
         printf("  a task add <t>    add task (prefix 5-digit priority, default 50000)\n");
         printf("  a task d #        archive task #\n");
         printf("  a task pri # N    set priority of task # to N\n");
+        printf("  a task deadline # YYYY-MM-DD  set deadline\n");
+        printf("  a task due        list by deadline\n");
         printf("  a task sync       sync tasks\n");
         printf("\n  Tasks:   %s\n",dir);
         char ctxdir[P];snprintf(ctxdir,P,"%s/context",SROOT);
@@ -1334,8 +1341,8 @@ static int cmd_task(int argc,char**argv){
     if(*sub=='l'){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
         for(int i=0;i<n;i++){char ct[256];task_counts(T[i].d,ct,256);
             printf("  %d. P%s %.50s%s\n",i+1,T[i].p,T[i].t,ct);}return 0;}
-    if(!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
-        int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=0,show=1;
+    if(isdigit(*sub)||!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
+        int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=isdigit(*sub)?atoi(sub)-1:argc>3?atoi(argv[3])-1:0;if(i<0||i>=n)i=0;int show=1;
         while(i<n){if(show)task_show(i,n);show=1;
             printf("\n  [d]archive  [a]dd text  [c]add prompt  [r]un claude  [g]o  [b]ack  [n]ext  [p]ri  [q]uit  ");fflush(stdout);
             int k=task_getkey();putchar('\n');
@@ -1513,8 +1520,16 @@ static int cmd_task(int argc,char**argv){
             pri=atoi(argv[3]);si=4;if(si>=argc){puts("a task add [PPPPP] <text>");return 1;}}
         char t[B]="";for(int i=si;i<argc;i++){if(i>si)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
         task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();return 0;}
-    if(*sub=='d'){if(argc<4){puts("a task d #");return 1;}int n=load_tasks(dir),x=atoi(argv[3])-1;
+    if(*sub=='d'&&!sub[1]){if(argc<4){puts("a task d #");return 1;}int n=load_tasks(dir),x=atoi(argv[3])-1;
         if(x<0||x>=n){puts("x Invalid");return 1;}do_archive(T[x].d);printf("\xe2\x9c\x93 %.40s\n",T[x].t);sync_bg();return 0;}
+    if(!strcmp(sub,"deadline")){if(argc<5){puts("a task deadline # YYYY-MM-DD");return 1;}
+        int n=load_tasks(dir),x=atoi(argv[3])-1;if(x<0||x>=n){puts("x Invalid");return 1;}
+        char df[P];snprintf(df,P,"%s/deadline.txt",T[x].d);writef(df,argv[4]);printf("\xe2\x9c\x93 %s\n",argv[4]);sync_bg();return 0;}
+    if(!strcmp(sub,"due")){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
+        int ix[512],dl[512],nd=0;for(int i=0;i<n;i++){int d=task_dl(T[i].d);if(d>=0){ix[nd]=i;dl[nd]=d;nd++;}}
+        if(!nd){puts("No deadlines");return 0;}
+        for(int a=0;a<nd-1;a++)for(int b=a+1;b<nd;b++)if(dl[a]>dl[b]){int t=ix[a];ix[a]=ix[b];ix[b]=t;t=dl[a];dl[a]=dl[b];dl[b]=t;}
+        for(int j=0;j<nd;j++){int i=ix[j];printf("  %s%dd\033[0m P%s %.50s\n",dl[j]<=1?"\033[31m":dl[j]<=7?"\033[33m":"\033[90m",dl[j],T[i].p,T[i].t);}return 0;}
     if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
     if(!strcmp(sub,"0")||!strcmp(sub,"s")||!strcmp(sub,"p")||!strcmp(sub,"do")){
         const char*x=*sub=='0'?"priority":!strcmp(sub,"s")?"suggest":!strcmp(sub,"p")?"plan":"do";
