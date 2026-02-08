@@ -1346,7 +1346,7 @@ static int cmd_task(int argc,char**argv){
     if(isdigit(*sub)||!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
         int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}int i=isdigit(*sub)?atoi(sub)-1:argc>3?atoi(argv[3])-1:0;if(i<0||i>=n)i=0;int show=1;
         while(i<n){if(show)task_show(i,n);show=1;
-            printf("\n  [e]archive [a]dd [c]prompt [r]un [g]o [d]eadline [p]ri  j:next k:back [q]uit  ");fflush(stdout);
+            printf("\n  [e]archive [a]dd [c]prompt [r]un [g]o [d]eadline [p]ri  [j]next [k]back [q]uit  ");fflush(stdout);
             int k=task_getkey();putchar('\n');
             if(k=='e'){do_archive(T[i].d);printf("\xe2\x9c\x93 Archived: %.40s\n",T[i].t);
                 sync_bg();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
