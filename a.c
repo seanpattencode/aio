@@ -697,6 +697,14 @@ static int cmd_project_num(int argc, char **argv, int idx) {
     printf("x Invalid index: %d\n", idx); return 1;
 }
 
+/* ── setup ── */
+static int cmd_setup(int argc, char **argv) {
+    char cwd[P]; if (!getcwd(cwd, P)) strcpy(cwd, ".");
+    if (git_in_repo(cwd)) { puts("x Already a git repo"); return 1; }
+    char c[B]; snprintf(c, B, "cd '%s' && git init && git add -A && git commit -m 'init' && gh repo create '%s' --private --source . --push", cwd, bname(cwd));
+    return system(c) >> 8;
+}
+
 /* ── push ── */
 static int cmd_push(int argc, char **argv) {
     char cwd[P]; if (!getcwd(cwd, P)) strcpy(cwd, ".");
@@ -719,7 +727,9 @@ static int cmd_push(int argc, char **argv) {
             }
             return 0;
         }
-        fallback_py(argc, argv);
+        printf("Not a git repo. Set up as private GitHub repo? [y/n]: ");
+        char buf2[8]; if (fgets(buf2,8,stdin) && buf2[0]=='y') return cmd_setup(argc, argv);
+        return 0;
     }
     /* Check dirty */
     char dirty[64] = ""; pcmd("git status --porcelain 2>/dev/null", dirty, 64);
@@ -1781,7 +1791,7 @@ static void gen_icache(void) {
     static const char *cmds[] = {"help","update","jobs","kill","attach","cleanup","config","ls","diff","send","watch",
         "push","pull","revert","set","install","uninstall","deps","prompt","gdrive","add","remove","move",
         "dash","all","backup","scan","copy","log","done","agent","tree","dir","web","ssh","run","hub",
-        "task","ui","review","note"};
+        "task","ui","review","note","setup"};
     for (int i=0;i<(int)(sizeof(cmds)/sizeof(*cmds));i++) fprintf(f, "%s\n", cmds[i]);
     char sd[P]; snprintf(sd, P, "%s/ssh", SROOT);
     char sp[32][P]; int sn = listdir(sd, sp, 32);
@@ -2159,6 +2169,7 @@ int main(int argc, char **argv) {
     if (!strcmp(arg,"backup")||!strcmp(arg,"bak")) return cmd_backup();
     if (!strcmp(arg,"web")) return cmd_web(argc, argv);
     if (!strcmp(arg,"repo")) return cmd_repo(argc, argv);
+    if (!strcmp(arg,"setup")||!strcmp(arg,"set up")) return cmd_setup(argc, argv);
     if (!strcmp(arg,"install")||!strcmp(arg,"ins")) return cmd_install();
     if (!strcmp(arg,"uninstall")||!strcmp(arg,"uni")) return cmd_uninstall();
     if (!strcmp(arg,"deps")||!strcmp(arg,"dep")) return cmd_deps();
