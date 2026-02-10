@@ -1808,6 +1808,9 @@ static int cmd_update(int argc, char **argv) {
         puts("Downloading...");
         snprintf(c, B, "git -C '%s' pull --ff-only 2>/dev/null", SDIR); (void)!system(c);
     }
+    /* Self-build: prefer clang, fall back to gcc */
+    snprintf(c, B, "cd '%s' && { command -v clang >/dev/null 2>&1 && clang -O2 -o a a.c -lsqlite3 || gcc -O2 -o a a.c -lsqlite3; }", SDIR);
+    if (system(c) == 0) puts("\xe2\x9c\x93 Built"); else puts("x Build failed");
     /* Refresh shell + caches */
     snprintf(c, B, "bash '%s/install.sh' --shell 2>/dev/null", SDIR); (void)!system(c);
     init_db(); load_cfg(); list_all(1, 1);
