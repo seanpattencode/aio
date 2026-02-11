@@ -1626,7 +1626,7 @@ static int cmd_ssh(int argc, char **argv) {
         for (int i = 0; i < nh; i++)
             printf("  %d. %s: %s%s\n", i, hosts[i].name, hosts[i].host, hosts[i].pw[0]?" [pw]":"");
         if (!nh) puts("  (none)");
-        puts("\nConnect: a ssh <#>\nRun:     a ssh <#> <cmd>\nSetup:   a ssh setup");
+        puts("\nConnect: a ssh <#>\nRun:     a ssh <#> <cmd>\nSetup:   a ssh setup\nAdd:     a ssh add          (interactive: host, name, password)");
         return 0;
     }
     /* start/stop/status */
@@ -1831,7 +1831,7 @@ static int cmd_update(int argc, char **argv) {
         snprintf(c, B, "git -C '%s' pull --ff-only 2>/dev/null", SDIR); (void)!system(c);
     }
     /* Self-build: prefer clang, fall back to gcc */
-    snprintf(c, B, "cd '%s' && { command -v clang >/dev/null 2>&1 && clang -O2 -o a a.c -lsqlite3 || gcc -O2 -o a a.c -lsqlite3; }", SDIR);
+    snprintf(c, B, "cd '%s' && SF=; [ -d \"$HOME/micromamba/include\" ] && SF=\"-I$HOME/micromamba/include -L$HOME/micromamba/lib -Wl,-rpath,$HOME/micromamba/lib\"; { command -v clang >/dev/null 2>&1 && clang -O2 $SF -o a a.c -lsqlite3 || gcc -O2 $SF -o a a.c -lsqlite3; }", SDIR);
     if (system(c) == 0) puts("\xe2\x9c\x93 Built"); else puts("x Build failed");
     /* Refresh shell + caches */
     snprintf(c, B, "bash '%s/install.sh' --shell 2>/dev/null", SDIR); (void)!system(c);
