@@ -2,10 +2,8 @@
  * a.c - monolithic C rewrite of 'a' AI agent session manager
  *
  * Build:
- *   make                (uses Makefile, -Werror -Weverything)
- *   clang -std=c17 -Werror -Weverything -Wno-padded -Wno-disabled-macro-expansion
- *     -Wno-reserved-id-macro -Wno-documentation -Wno-declaration-after-statement
- *     -Wno-unsafe-buffer-usage -O2 -o a a.c -lsqlite3
+ *   make          release: -Werror -Weverything -O2 + hardening
+ *   make debug    + ASan/UBSan/IntSan -O1 -g
  *
  * Clang preferred over GCC: 36% faster compile (0.34s vs 0.53s),
  * 5% smaller binary (67KB vs 70KB), identical runtime.
@@ -1395,7 +1393,7 @@ static int cmd_task(int argc,char**argv){
                 pt[strcspn(pt,"\n")]=0;
                 printf("  Folder [cwd]: ");fflush(stdout);
                 char fd[P];if(!fgets(fd,P,stdin))fd[0]=0;fd[strcspn(fd,"\n")]=0;
-                if(!fd[0])getcwd(fd,P);
+                if(!fd[0])(void)!getcwd(fd,P);
                 printf("  Model [opus]: ");fflush(stdout);
                 char md[64];if(!fgets(md,64,stdin))md[0]=0;md[strcspn(md,"\n")]=0;
                 if(!md[0])snprintf(md,64,"opus");
@@ -1429,7 +1427,7 @@ static int cmd_task(int argc,char**argv){
                 }else{bl=snprintf(body,B,"%s",T[i].t);}
                 /* build prompt from candidate */
                 char prompt[B],pmodel[64]="opus",pfolder[P]="";
-                getcwd(pfolder,P);
+                (void)!getcwd(pfolder,P);
                 if(ci==1){snprintf(prompt,B,"%s",body);}
                 else{int cp=2;DIR*pd=opendir(T[i].d);struct dirent*pe;int found=0;
                     while(pd&&(pe=readdir(pd))){
@@ -1514,7 +1512,7 @@ static int cmd_task(int argc,char**argv){
                 char rs[B];snprintf(rs,B,"#!/bin/sh\ncd '%s'\nclaude --session-id %s --model %s --dangerously-skip-permissions \"$(cat %s)\"\n",pfolder,sid,pmodel,pf);
                 writef(rf,rs);chmod(rf,0755);
                 char cmd[B];snprintf(cmd,B,"tmux new-session -d -s '%s' '%s'",tmx,rf);
-                system(cmd);
+                (void)!system(cmd);
                 printf("\xe2\x9c\x93 Running with claude (%s)\n  tmux attach -t %s\n  cd %s && claude -r %s\n",pmodel,tmx,pfolder,sid);
                 break;}/* end preview loop */
                 show=0;}
@@ -1527,9 +1525,9 @@ static int cmd_task(int argc,char**argv){
                     for(int j=ns-1;j>=0;j--)if(ss[j].st==1){pick=j;break;}
                     if(pick<0)pick=ns-1;
                     if(ss[pick].st==1){char cmd[P];snprintf(cmd,P,"tmux attach -t '%s'",ss[pick].tmx);
-                        system(cmd);}
+                        (void)!system(cmd);}
                     else{char cmd[P];snprintf(cmd,P,"claude -r %s",ss[pick].sid);
-                        printf("  Resuming claude session...\n");system(cmd);}
+                        printf("  Resuming claude session...\n");(void)!system(cmd);}
                     show=0;}}
             else if(k=='p'){printf("  Priority (1-99999): ");fflush(stdout);
                 char buf[16];if(fgets(buf,16,stdin)){task_repri(i,atoi(buf));sync_bg();n=load_tasks(dir);}}
@@ -1571,7 +1569,7 @@ static int cmd_task(int argc,char**argv){
         clock_gettime(CLOCK_MONOTONIC,&t0);int n=0;for(int j=0;j<100;j++)n=load_tasks(dir);
         clock_gettime(CLOCK_MONOTONIC,&t1);
         printf("load_tasks(%d): %.0f us avg (x100)\n",n,((double)(t1.tv_sec-t0.tv_sec)*1e9+(double)(t1.tv_nsec-t0.tv_nsec))/100/1e3);
-        fflush(stdout);int fd=dup(1);freopen("/dev/null","w",stdout);
+        fflush(stdout);int fd=dup(1);(void)!freopen("/dev/null","w",stdout);
         int m=n<10?n:10;
         clock_gettime(CLOCK_MONOTONIC,&t0);for(int j=0;j<m;j++)task_show(j,n);
         clock_gettime(CLOCK_MONOTONIC,&t1);fflush(stdout);dup2(fd,1);close(fd);stdout=fdopen(1,"w");
