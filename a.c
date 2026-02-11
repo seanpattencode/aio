@@ -17,7 +17,7 @@ static int cat(const char *p){
 
 static _Noreturn void py(int c,char**v){
 	char**a=calloc(c+2,sizeof*a);
-	a[0]="python3"; a[1]=SRC"/a.py";
+	a[0]="python3"; a[1]=SRC"/archive/a.py";
 	memcpy(a+2,v+1,(c-1)*sizeof*a);
 	execvp("python3",a);
 	perror("a"); _exit(1);
