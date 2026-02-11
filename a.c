@@ -1585,14 +1585,10 @@ static int cmd_ssh(int argc, char **argv) {
     if (!strcmp(sub,"self")) {
         char user[128]="",ip[128]="",port[8]="22",host[256];
         const char*u=getenv("USER");if(!u)u=getenv("LOGNAME");if(u)snprintf(user,128,"%s",u);
-        /* detect LAN IP */
-        char ipcmd[128];
-#ifdef __APPLE__
-        snprintf(ipcmd,128,"ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null");
-#else
-        snprintf(ipcmd,128,"hostname -I 2>/dev/null | awk '{print $1}'");
-#endif
-        pcmd(ipcmd,ip,128);ip[strcspn(ip,"\n")]=0;
+        /* detect LAN IP: try hostname -I, then ifconfig for 192.168.x, then any non-loopback */
+        pcmd("hostname -I 2>/dev/null | awk '{print $1}'",ip,128);ip[strcspn(ip,"\n")]=0;
+        if(!ip[0]){pcmd("ifconfig 2>/dev/null | grep 'inet ' | grep -v 127 | grep '192\\.' | awk '{print $2}' | head -1",ip,128);ip[strcspn(ip,"\n")]=0;}
+        if(!ip[0]){pcmd("ifconfig 2>/dev/null | grep 'inet ' | grep -v 127 | awk '{print $2}' | head -1",ip,128);ip[strcspn(ip,"\n")]=0;}
         /* detect sshd port */
         char pp[64];if(!pcmd("grep -m1 '^Port ' /etc/ssh/sshd_config 2>/dev/null || grep -m1 '^Port ' $PREFIX/etc/ssh/sshd_config 2>/dev/null",pp,64)){
             char*sp=pp;while(*sp&&!isdigit((unsigned char)*sp))sp++;pp[strcspn(pp,"\n")]=0;if(*sp)snprintf(port,8,"%s",sp);}
