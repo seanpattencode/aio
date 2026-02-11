@@ -1,15 +1,13 @@
 /*
  * a.c - monolithic C rewrite of 'a' AI agent session manager
  *
- * Build (parallel split — strict warnings add zero overhead):
+ * Build (parallel split — zero overhead from strict checks):
  *   make          two clang passes run simultaneously:
- *                   1) -Werror -Weverything -fsyntax-only  (validate)
- *                   2) -O2 + hardening -w                  (emit binary)
- *                 the syntax-only pass (~50ms) finishes inside the real
- *                 compile (~600ms), so warnings are free. The binary
- *                 contains only hardening (stack-protector, FORTIFY_SOURCE,
- *                 auto-var-init=zero) with no warning-related overhead.
- *   make debug    + ASan/UBSan/IntSan -O1 -g
+ *                   1) -Werror -Weverything + hardening -fsyntax-only (validate)
+ *                   2) -O2 -w bare                                    (emit binary)
+ *                 validation finishes inside the compile, so all checks
+ *                 are free. Binary is pure -O2 with no extra codegen.
+ *   make debug    all flags combined + ASan/UBSan/IntSan -O1 -g
  *
  * Sections (grep for ═══ or ──):
  *   GLOBALS, INIT PATHS, UTILITIES, RFC 5322 KEY:VALUE PARSER,
