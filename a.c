@@ -2,8 +2,10 @@
  * a.c - monolithic C rewrite of 'a' AI agent session manager
  *
  * Build:
- *   make                (uses Makefile)
- *   clang -O2 -o a a.c -lsqlite3      (manual)
+ *   make                (uses Makefile, -Werror -Weverything)
+ *   clang -std=c17 -Werror -Weverything -Wno-padded -Wno-disabled-macro-expansion
+ *     -Wno-reserved-id-macro -Wno-documentation -Wno-declaration-after-statement
+ *     -Wno-unsafe-buffer-usage -O2 -o a a.c -lsqlite3
  *
  * Clang preferred over GCC: 36% faster compile (0.34s vs 0.53s),
  * 5% smaller binary (67KB vs 70KB), identical runtime.
@@ -24,6 +26,7 @@
  *
  * Dispatch: MAIN DISPATCH (switch on first arg)
  */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,16 +128,17 @@ static void mkdirp(const char *p) { char c[P*2]; snprintf(c, sizeof(c), "mkdir -
 static char *readf(const char *p, size_t *len) {
     int fd = open(p, O_RDONLY); if (fd < 0) return NULL;
     struct stat s; if (fstat(fd, &s) < 0) { close(fd); return NULL; }
-    char *b = malloc(s.st_size + 1); if (!b) { close(fd); return NULL; }
-    ssize_t n = read(fd, b, s.st_size); close(fd);
+    size_t sz = (size_t)s.st_size;
+    char *b = malloc(sz + 1); if (!b) { close(fd); return NULL; }
+    ssize_t n = read(fd, b, sz); close(fd);
     if (n < 0) { free(b); return NULL; }
-    b[n] = 0; if (len) *len = n; return b;
+    b[n] = 0; if (len) *len = (size_t)n; return b;
 }
 
 static int catf(const char *p) {
     int fd = open(p, O_RDONLY); if (fd < 0) return -1;
     char b[8192]; ssize_t n;
-    while ((n = read(fd, b, sizeof(b))) > 0) (void)!write(STDOUT_FILENO, b, n);
+    while ((n = read(fd, b, sizeof(b))) > 0) (void)!write(STDOUT_FILENO, b, (size_t)n);
     close(fd); return 0;
 }
 
@@ -162,12 +166,12 @@ static kvs_t kvparse(const char *data) {
     kvs_t r = {.n = 0}; const char *p = data;
     while (*p && r.n < 16) {
         const char *nl = strchr(p, '\n'); if (!nl) nl = p + strlen(p);
-        const char *c = memchr(p, ':', nl - p);
+        const char *c = memchr(p, ':', (size_t)(nl - p));
         if (c && c > p) {
-            int kl = (int)(c - p); if (kl > 31) kl = 31;
+            size_t kl = (size_t)(c - p); if (kl > 31) kl = 31;
             memcpy(r.i[r.n].k, p, kl); r.i[r.n].k[kl] = 0;
             const char *v = c + 1; while (*v == ' ' && v < nl) v++;
-            int vl = (int)(nl - v); if (vl > 511) vl = 511;
+            size_t vl = (size_t)(nl - v); if (vl > 511) vl = 511;
             memcpy(r.i[r.n].v, v, vl); r.i[r.n].v[vl] = 0;
             r.n++;
         }
@@ -199,12 +203,12 @@ static int listdir(const char *dir, char paths[][P], int max) {
 }
 
 /* ═══ SQLITE ═══ */
-static sqlite3 *_db;
+static sqlite3 *adb;
 static sqlite3 *dbopen(void) {
-    if (_db) return _db;
-    sqlite3_open(DBPATH, &_db);
-    sqlite3_exec(_db, "PRAGMA journal_mode=WAL", 0, 0, 0);
-    return _db;
+    if (adb) return adb;
+    sqlite3_open(DBPATH, &adb);
+    sqlite3_exec(adb, "PRAGMA journal_mode=WAL", 0, 0, 0);
+    return adb;
 }
 
 static void init_db(void) {
@@ -302,7 +306,7 @@ static const char *cfget(const char *key) {
     return "";
 }
 
-static int pj_cmp(const void *a, const void *b) { return strcmp(((proj_t*)a)->name, ((proj_t*)b)->name); }
+static int pj_cmp(const void *a, const void *b) { return strcmp(((const proj_t*)a)->name, ((const proj_t*)b)->name); }
 
 static void load_proj(void) {
     NPJ = 0;
@@ -322,10 +326,10 @@ static void load_proj(void) {
         snprintf(PJ[NPJ].repo, 512, "%s", re ? re : "");
         NPJ++;
     }
-    qsort(PJ, NPJ, sizeof(proj_t), pj_cmp);
+    qsort(PJ, (size_t)NPJ, sizeof(proj_t), pj_cmp);
 }
 
-static int ap_cmp(const void *a, const void *b) { return strcmp(((app_t*)a)->name, ((app_t*)b)->name); }
+static int ap_cmp(const void *a, const void *b) { return strcmp(((const app_t*)a)->name, ((const app_t*)b)->name); }
 
 static void load_apps(void) {
     NAP = 0;
@@ -341,7 +345,7 @@ static void load_apps(void) {
         snprintf(AP[NAP].cmd, 512, "%s", cm);
         NAP++;
     }
-    qsort(AP, NAP, sizeof(app_t), ap_cmp);
+    qsort(AP, (size_t)NAP, sizeof(app_t), ap_cmp);
 }
 
 static void load_sess(void) {
@@ -507,7 +511,7 @@ static void sync_bg(void) {
 /* ═══ FALLBACK ═══ */
 __attribute__((noreturn))
 static void fallback_py(int argc, char **argv) {
-    char **na = malloc((argc + 3) * sizeof(char *));
+    char **na = malloc(((unsigned)argc + 3) * sizeof(char *));
     na[0] = "python3"; na[1] = PYPATH;
     for (int i = 1; i < argc; i++) na[i + 1] = argv[i];
     na[argc + 1] = NULL;
@@ -538,7 +542,7 @@ static void create_sess(const char *sn, const char *wd, const char *cmd) {
     sqlite3_stmt *st;
     sqlite3_prepare_v2(dbopen(), "INSERT OR REPLACE INTO agent_logs VALUES(?,?,?,?)", -1, &st, 0);
     sqlite3_bind_text(st, 1, sn, -1, 0); sqlite3_bind_null(st, 2);
-    sqlite3_bind_double(st, 3, (double)time(NULL)); sqlite3_bind_text(st, 4, DEV, -1, 0);
+    time_t now = time(NULL); sqlite3_bind_double(st, 3, (double)now); sqlite3_bind_text(st, 4, DEV, -1, 0);
     sqlite3_step(st); sqlite3_finalize(st);
 }
 
@@ -549,7 +553,7 @@ static void send_prefix_bg(const char *sn, const char *agent, const char *wd) {
     /* Check for AGENTS.md */
     char af[P]; snprintf(af, P, "%s/AGENTS.md", wd);
     char *amd = readf(af, NULL);
-    if (amd) { int n = strlen(pre); snprintf(pre + n, B - n, "%s ", amd); free(amd); }
+    if (amd) { size_t n = strlen(pre); snprintf(pre + n, (size_t)(B - (int)n), "%s ", amd); free(amd); }
     if (!pre[0]) return;
     if (fork() == 0) {
         setsid();
@@ -569,13 +573,13 @@ static void send_prefix_bg(const char *sn, const char *agent, const char *wd) {
 
 /* ═══ COMMANDS ═══ */
 
-static int cmd_help(int argc, char **argv) {
+static int cmd_help(int argc, char **argv) { (void)argc; (void)argv;
     char p[P]; snprintf(p, P, "%s/help_cache.txt", DDIR);
     if (catf(p) < 0) { init_db(); load_cfg(); printf("%s\n", HELP_SHORT); list_all(1, 0); }
     return 0;
 }
 
-static int cmd_help_full(int argc, char **argv) {
+static int cmd_help_full(int argc, char **argv) { (void)argc; (void)argv;
     init_db(); load_cfg(); printf("%s\n", HELP_FULL); list_all(1, 0); return 0;
 }
 
@@ -677,7 +681,7 @@ static int cmd_e(int argc, char **argv) {
 }
 
 /* ── project_num ── */
-static int cmd_project_num(int argc, char **argv, int idx) {
+static int cmd_project_num(int argc, char **argv, int idx) { (void)argc; (void)argv;
     init_db(); load_cfg(); load_proj(); load_apps();
     if (idx >= 0 && idx < NPJ) {
         proj_t *p=&PJ[idx]; char c[B];
@@ -693,12 +697,12 @@ static int cmd_project_num(int argc, char **argv, int idx) {
         return 0;
     }
     int ai = idx - NPJ;
-    if (ai>=0 && ai<NAP) { char ex[B],*p,*e; snprintf(ex,B,"%s",AP[ai].cmd); while((p=strchr(ex,'{'))&&(e=strchr(p,'}'))){ *e=0;for(int j=0;j<NPJ;j++)if(!strcmp(PJ[j].name,p+1)){*p=0;char t[B];snprintf(t,B,"%s%s%s",ex,PJ[j].path,e+1);snprintf(ex,B,"%s",t);break;}} return printf("> %s\n",AP[ai].name),system(ex)>>8; }
+    if (ai>=0 && ai<NAP) { char ex[B],*p,*e; snprintf(ex,B,"%s",AP[ai].cmd); while((p=strchr(ex,'{'))&&(e=strchr(p,'}'))){ *e=0;for(int j=0;j<NPJ;j++)if(!strcmp(PJ[j].name,p+1)){*p=0;char t[B];snprintf(t,B,"%s%s%s",ex,PJ[j].path,e+1);snprintf(ex,B,"%s",t);break;}} printf("> %s\n",AP[ai].name); return system(ex)>>8; }
     printf("x Invalid index: %d\n", idx); return 1;
 }
 
 /* ── setup ── */
-static int cmd_setup(int argc, char **argv) {
+static int cmd_setup(int argc, char **argv) { (void)argc; (void)argv;
     char cwd[P]; if (!getcwd(cwd, P)) strcpy(cwd, ".");
     if (git_in_repo(cwd)) { puts("x Already a git repo"); return 1; }
     char c[B]; snprintf(c, B, "cd '%s' && git init && git add -A && git commit -m 'init' && gh repo create '%s' --private --source . --push", cwd, bname(cwd));
@@ -799,7 +803,7 @@ static int cmd_diff(int argc, char **argv) {
             *sp = 0; char *msg = sp + 1;
             char dc[256]; snprintf(dc, 256, "git show %.40s --pretty=", hash);
             FILE *dp = popen(dc, "r"); int ab = 0, db_ = 0;
-            if (dp) { char dl[4096]; while (fgets(dl, 4096, dp)) { int l = strlen(dl);
+            if (dp) { char dl[4096]; while (fgets(dl, 4096, dp)) { int l = (int)strlen(dl);
                 if (dl[0]=='+' && dl[1]!='+') ab += l-1;
                 else if (dl[0]=='-' && dl[1]!='-') db_ += l-1;
             } pclose(dp); }
@@ -814,7 +818,7 @@ static int cmd_diff(int argc, char **argv) {
 }
 
 /* ── revert ── */
-static int cmd_revert(int argc, char **argv) {
+static int cmd_revert(int argc, char **argv) { (void)argc; (void)argv;
     char cwd[P]; if (!getcwd(cwd, P)) strcpy(cwd, ".");
     if (!git_in_repo(cwd)) { puts("x Not a git repo"); return 1; }
     char c[B], out[B*4]; snprintf(c, B, "git -C '%s' log --format='%%h %%ad %%s' --date=format:'%%m/%%d %%H:%%M' -15", cwd);
@@ -1153,13 +1157,13 @@ static void note_save(const char *d, const char *t) {
     snprintf(fn,P,"%s/%08x_%s.%09ld.txt",d,(unsigned)(tp.tv_nsec^(unsigned)now),ts,tp.tv_nsec);
     snprintf(buf,B,"Text: %s\nStatus: pending\nDevice: %s\nCreated: %s\n",t,DEV,ts); writef(fn,buf);
 }
-static char _np[256][P],_nt[256][512];
+static char gnp[256][P],gnt[256][512];
 static int load_notes(const char *dir, const char *f) {
     DIR *d=opendir(dir); if(!d) return 0; struct dirent *e; int n=0;
     while((e=readdir(d))) { if(e->d_name[0]=='.'||!strstr(e->d_name,".txt")) continue;
         char fp[P]; snprintf(fp,P,"%s/%s",dir,e->d_name); kvs_t kv=kvfile(fp);
         const char *t=kvget(&kv,"Text"),*s=kvget(&kv,"Status");
-        if(t&&(!s||!strcmp(s,"pending"))&&(!f||strcasestr(t,f))){if(n<256){snprintf(_np[n],P,"%s",fp);snprintf(_nt[n],512,"%s",t);} n++;}
+        if(t&&(!s||!strcmp(s,"pending"))&&(!f||strcasestr(t,f))){if(n<256){snprintf(gnp[n],P,"%s",fp);snprintf(gnt[n],512,"%s",t);} n++;}
     } closedir(d); return n;
 }
 static int cmd_note(int argc, char **argv) {
@@ -1167,12 +1171,12 @@ static int cmd_note(int argc, char **argv) {
     if(argc>2&&argv[2][0]!='?'){char t[B]="";for(int i=2;i<argc;i++){if(i>2)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
         note_save(dir,t);sync_repo();puts("\xe2\x9c\x93");return 0;}
     sync_repo(); const char *f=(argc>2&&argv[2][0]=='?')?argv[2]+1:NULL; int n=load_notes(dir,f);
-    if(!n){puts("a n <text>");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(_nt[i]);return 0;}
+    if(!n){puts("a n <text>");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(gnt[i]);return 0;}
     printf("Notes: %d pending\n  %s\n\n[a]ck [d]el [s]earch [q]uit | type=add\n",n,dir);
     for(int i=0,s=n<256?n:256;i<s;){
-        printf("\n[%d/%d] %s\n> ",i+1,n,_nt[i]); char line[B]; if(!fgets(line,B,stdin)) break; line[strcspn(line,"\n")]=0;
+        printf("\n[%d/%d] %s\n> ",i+1,n,gnt[i]); char line[B]; if(!fgets(line,B,stdin)) break; line[strcspn(line,"\n")]=0;
         if(line[0]=='q'&&!line[1]) break;
-        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(_np[i]);sync_repo();puts("\xe2\x9c\x93");memmove(_np+i,_np+i+1,(s-i-1)*P);memmove(_nt+i,_nt+i+1,(s-i-1)*512);n--;s=n<256?n:256;continue;}
+        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(gnp[i]);sync_repo();puts("\xe2\x9c\x93");memmove(gnp+i,gnp+i+1,(size_t)(s-i-1)*P);memmove(gnt+i,gnt+i+1,(size_t)(s-i-1)*512);n--;s=n<256?n:256;continue;}
         if(line[0]=='s'&&!line[1]){printf("search: ");char q[128];if(fgets(q,128,stdin)){q[strcspn(q,"\n")]=0;n=load_notes(dir,q);s=n<256?n:256;i=0;printf("%d results\n",n);}continue;}
         if(line[0]){note_save(dir,line);sync_repo();n=load_notes(dir,NULL);s=n<256?n:256;printf("\xe2\x9c\x93 [%d]\n",n);continue;}
         i++;
@@ -1181,19 +1185,19 @@ static int cmd_note(int argc, char **argv) {
 /* ── task ── */
 typedef struct{char d[P],t[256],p[8];}Tk;
 static Tk T[256];
-static int tcmp(const void*a,const void*b){int c=strcmp(((Tk*)a)->p,((Tk*)b)->p);return c?c:strcmp(((Tk*)a)->d,((Tk*)b)->d);}
+static int tcmp(const void*a,const void*b){int c=strcmp(((const Tk*)a)->p,((const Tk*)b)->p);return c?c:strcmp(((const Tk*)a)->d,((const Tk*)b)->d);}
 static int load_tasks(const char*dir){
     DIR*d=opendir(dir);if(!d)return 0;struct dirent*e;int n=0;
     while((e=readdir(d))&&n<256){
         if(e->d_name[0]=='.'||!strcmp(e->d_name,"README.md"))continue;
         const char*nm=e->d_name;snprintf(T[n].d,P,"%s/%s",dir,nm);
         int hp=strlen(nm)>5&&nm[5]=='-'&&isdigit(nm[0])&&isdigit(nm[1])&&isdigit(nm[2])&&isdigit(nm[3])&&isdigit(nm[4]);
-        if(hp)memcpy(T[n].p,nm,5),T[n].p[5]=0;else strcpy(T[n].p,"50000");
+        if(hp){memcpy(T[n].p,nm,5);T[n].p[5]=0;}else strcpy(T[n].p,"50000");
         const char*s=hp?nm+6:nm;int tl;
         const char*u=strchr(s,'_');const char*x=strstr(s,".txt");
         tl=u?(int)(u-s):x?(int)(x-s):(int)strlen(s);
         if(tl>255)tl=255;for(int i=0;i<tl;i++)T[n].t[i]=s[i]=='-'||s[i]=='_'?' ':s[i];T[n].t[tl]=0;n++;
-    }closedir(d);qsort(T,n,sizeof(Tk),tcmp);return n;
+    }closedir(d);qsort(T,(size_t)n,sizeof(Tk),tcmp);return n;
 }
 static void task_add(const char*dir,const char*t,int pri){
     char sl[64];snprintf(sl,64,"%.32s",t);for(char*p=sl;*p;p++)*p=*p==' '||*p=='/'?'-':*p>='A'&&*p<='Z'?*p+32:*p;
@@ -1220,10 +1224,10 @@ static int task_counts(const char*dir,char*out,int sz){
     }closedir(d);if(!nd){*out=0;return 0;}
     for(int i=0;i<nd-1;i++)for(int j=i+1;j<nd;j++)if(strcmp(s[i].n,s[j].n)>0){
         char tn[64];int tc;memcpy(tn,s[i].n,64);tc=s[i].c;memcpy(s[i].n,s[j].n,64);s[i].c=s[j].c;memcpy(s[j].n,tn,64);s[j].c=tc;}
-    int p=snprintf(out,sz," [");for(int i=0;i<nd;i++)p+=snprintf(out+p,sz-p,"%s%d %s",i?", ":"",s[i].c,s[i].n);
-    snprintf(out+p,sz-p,"]");return nd;
+    int p=snprintf(out,(size_t)sz," [");for(int i=0;i<nd;i++)p+=snprintf(out+p,(size_t)(sz-p),"%s%d %s",i?", ":"",s[i].c,s[i].n);
+    snprintf(out+p,(size_t)(sz-p),"]");return nd;
 }
-static void dl_norm(const char*in,char*out,int sz){
+static void dl_norm(const char*in,char*out,size_t sz){
     int y,m,d,h=23,mi=59;time_t now=time(NULL);struct tm*t=localtime(&now);
     if(sscanf(in,"%d-%d-%d %d:%d",&y,&m,&d,&h,&mi)>=3){snprintf(out,sz,"%04d-%02d-%02d %02d:%02d",y,m,d,h,mi);}
     else if(sscanf(in,"%d-%d %d:%d",&m,&d,&h,&mi)>=2){snprintf(out,sz,"%04d-%02d-%02d %02d:%02d",t->tm_year+1900,m,d,h,mi);}
@@ -1233,8 +1237,8 @@ static int task_dl(const char*td){char df[P];snprintf(df,P,"%s/deadline.txt",td)
     if(sscanf(c,"%d-%d-%d %d:%d",&d.tm_year,&d.tm_mon,&d.tm_mday,&h,&mi)<3){free(c);return-1;}
     d.tm_year-=1900;d.tm_mon--;d.tm_hour=h;d.tm_min=mi;free(c);return(int)((mktime(&d)-time(NULL))/86400);}
 typedef struct{char n[256];char ts[32];}Ent;
-static int entcmp(const void*a,const void*b){return strcmp(((Ent*)a)->ts,((Ent*)b)->ts);}
-static void ts_human(const char*ts,char*out,int sz){
+static int entcmp(const void*a,const void*b){return strcmp(((const Ent*)a)->ts,((const Ent*)b)->ts);}
+static void ts_human(const char*ts,char*out,size_t sz){
     /* "20260207T033024" → "Feb 7 3:30am" */
     if(!ts||strlen(ts)<15||ts[8]!='T'){snprintf(out,sz,"(original)");return;}
     struct tm t={0};
@@ -1295,7 +1299,7 @@ static void task_show(int i,int n){
                 else snprintf(all[na].ts,32,"0");
                 na++;}
             closedir(s);}}
-    closedir(d);qsort(all,na,sizeof(Ent),entcmp);
+    closedir(d);qsort(all,(size_t)na,sizeof(Ent),entcmp);
     for(int j=0;j<na;j++){char ht[48];
         if(all[j].ts[0]!='0')ts_human(all[j].ts,ht,48);else snprintf(ht,48,"(original)");
         printf("\n  \033[90m%s\033[0m  text\n",ht);task_printbody(all[j].n);}
@@ -1336,7 +1340,7 @@ static void task_repri(int x,int pv){
 }
 static int task_getkey(void){
     struct termios old,raw;tcgetattr(0,&old);raw=old;
-    raw.c_lflag&=~(ICANON|ECHO);raw.c_cc[VMIN]=1;raw.c_cc[VTIME]=0;
+    raw.c_lflag&=~(tcflag_t)(ICANON|ECHO);raw.c_cc[VMIN]=1;raw.c_cc[VTIME]=0;
     tcsetattr(0,TCSAFLUSH,&raw);int c=getchar();tcsetattr(0,TCSAFLUSH,&old);return c;
 }
 static int cmd_task(int argc,char**argv){
@@ -1358,10 +1362,10 @@ static int cmd_task(int argc,char**argv){
     if(*sub=='l'){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
         for(int i=0;i<n;i++){char ct[256];task_counts(T[i].d,ct,256);
             printf("  %d. P%s %.50s%s\n",i+1,T[i].p,T[i].t,ct);}return 0;}
-    int _rn=0;
+    int grn=0;
     if(0){review:;} /* due r jumps here with T[] pre-loaded */
-    if(_rn||isdigit(*sub)||!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
-        int n=_rn?_rn:load_tasks(dir);if(!n){puts("No tasks");return 0;}
+    if(grn||isdigit(*sub)||!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
+        int n=grn?grn:load_tasks(dir);if(!n){puts("No tasks");return 0;}
         {int i=isdigit(*sub)?atoi(sub)-1:argc>3?atoi(argv[3])-1:0;if(i<0||i>=n)i=0;int show=1;
         while(i<n){if(show)task_show(i,n);show=1;
             printf("\n  [e]archive [a]dd [c]prompt [r]un [g]o [d]eadline [p]ri  [j]next [k]back [q]uit  ");fflush(stdout);
@@ -1415,11 +1419,11 @@ static int cmd_task(int argc,char**argv){
                     while(dd&&(ee=readdir(dd))){if(ee->d_name[0]=='.')continue;
                         char fp[P];snprintf(fp,P,"%s/%s",T[i].d,ee->d_name);
                         if(ee->d_type==DT_REG&&strstr(ee->d_name,".txt")&&!strstr(ee->d_name,"session")&&!strstr(ee->d_name,"prompt_")){
-                            size_t fl;char*fc=readf(fp,&fl);if(fc){bl+=snprintf(body+bl,B-bl,"%s\n",fc);free(fc);}}
+                            size_t fl;char*fc=readf(fp,&fl);if(fc){bl+=snprintf(body+bl,(size_t)(B-bl),"%s\n",fc);free(fc);}}
                         else if(ee->d_type==DT_DIR&&strncmp(ee->d_name,"prompt_",7)){DIR*sd=opendir(fp);struct dirent*ff;
                             while(sd&&(ff=readdir(sd))){if(ff->d_type!=DT_REG||!strstr(ff->d_name,".txt"))continue;
                                 char sfp[P];snprintf(sfp,P,"%s/%s",fp,ff->d_name);
-                                size_t fl;char*fc=readf(sfp,&fl);if(fc){bl+=snprintf(body+bl,B-bl,"%s\n",fc);free(fc);}}
+                                size_t fl;char*fc=readf(sfp,&fl);if(fc){bl+=snprintf(body+bl,(size_t)(B-bl),"%s\n",fc);free(fc);}}
                             if(sd)closedir(sd);}}
                     if(dd)closedir(dd);
                 }else{bl=snprintf(body,B,"%s",T[i].t);}
@@ -1468,8 +1472,8 @@ static int cmd_task(int argc,char**argv){
                 for(int j=0;j<nctx;j++){if(!ctxon[j])continue;
                     char cf[P];snprintf(cf,P,"%s/%s",ctxdir,ctxn[j]);
                     size_t cl;char*cc=readf(cf,&cl);
-                    if(cc){fl+=snprintf(fprompt+fl,B-fl,"%s\n",cc);free(cc);}}
-                fl+=snprintf(fprompt+fl,B-fl,"%s",prompt);
+                    if(cc){fl+=snprintf(fprompt+fl,(size_t)(B-fl),"%s\n",cc);free(cc);}}
+                fl+=snprintf(fprompt+fl,(size_t)(B-fl),"%s",prompt);
                 printf("\n\033[1m\xe2\x94\x80\xe2\x94\x80 Preview \xe2\x94\x80\xe2\x94\x80\033[0m\n");
                 struct stat fs;int fok=!stat(pfolder,&fs)&&S_ISDIR(fs.st_mode);
                 printf("  \033[1mFolder:\033[0m  %s%s\n",pfolder,fok?"":" \033[31m(not found)\033[0m");
@@ -1560,18 +1564,18 @@ static int cmd_task(int argc,char**argv){
         for(int i=0;i<n;i++){int d=task_dl(T[i].d);if(d>=0){ix[nd]=i;dl[nd]=d;nd++;}}
         if(!nd){puts("No deadlines");return 0;}
         for(int a=0;a<nd-1;a++)for(int b=a+1;b<nd;b++)if(dl[a]>dl[b]){int t=ix[a];ix[a]=ix[b];ix[b]=t;t=dl[a];dl[a]=dl[b];dl[b]=t;}
-        Tk D[256];for(int j=0;j<nd;j++)D[j]=T[ix[j]];memcpy(T,D,nd*sizeof(Tk));
-        if(argc>3&&(*argv[3]=='r'||*argv[3]=='t')){sub="r";_rn=nd;goto review;}
+        Tk D[256];for(int j=0;j<nd;j++)D[j]=T[ix[j]];memcpy(T,D,(size_t)nd*sizeof(Tk));
+        if(argc>3&&(*argv[3]=='r'||*argv[3]=='t')){sub="r";grn=nd;goto review;}
         for(int j=0;j<nd;j++)printf("  %s%dd\033[0m P%s %.50s\n",dl[j]<=1?"\033[31m":dl[j]<=7?"\033[33m":"\033[90m",dl[j],T[j].p,T[j].t);return 0;}
     if(!strcmp(sub,"bench")){struct timespec t0,t1;
-        clock_gettime(CLOCK_MONOTONIC,&t0);int n;for(int j=0;j<100;j++)n=load_tasks(dir);
+        clock_gettime(CLOCK_MONOTONIC,&t0);int n=0;for(int j=0;j<100;j++)n=load_tasks(dir);
         clock_gettime(CLOCK_MONOTONIC,&t1);
-        printf("load_tasks(%d): %.0f us avg (x100)\n",n,((t1.tv_sec-t0.tv_sec)*1e9+(t1.tv_nsec-t0.tv_nsec))/100/1e3);
+        printf("load_tasks(%d): %.0f us avg (x100)\n",n,((double)(t1.tv_sec-t0.tv_sec)*1e9+(double)(t1.tv_nsec-t0.tv_nsec))/100/1e3);
         fflush(stdout);int fd=dup(1);freopen("/dev/null","w",stdout);
         int m=n<10?n:10;
         clock_gettime(CLOCK_MONOTONIC,&t0);for(int j=0;j<m;j++)task_show(j,n);
         clock_gettime(CLOCK_MONOTONIC,&t1);fflush(stdout);dup2(fd,1);close(fd);stdout=fdopen(1,"w");
-        double us=((t1.tv_sec-t0.tv_sec)*1e9+(t1.tv_nsec-t0.tv_nsec))/1e3;
+        double us=((double)(t1.tv_sec-t0.tv_sec)*1e9+(double)(t1.tv_nsec-t0.tv_nsec))/1e3;
         printf("task_show(x%d): %.0f us total, %.0f us/task\n",m,us,us/m);
         return 0;}
     if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
@@ -1799,7 +1803,7 @@ static void gen_icache(void) {
     for (int i=0,hi=0;i<sn;i++) {
         kvs_t kv = kvfile(sp[i]);
         const char *nm = kvget(&kv,"Name"); if (!nm) continue;
-        fprintf(f, "ssh %d: %s (%s)\n", hi++, nm, kvget(&kv,"Host")?:"");
+        const char *host = kvget(&kv,"Host"); fprintf(f, "ssh %d: %s (%s)\n", hi++, nm, host?host:"");
     }
     fclose(f);
 }
@@ -1948,7 +1952,7 @@ static int cmd_sess(int argc, char **argv) {
         if (is_prompt && prompt[0]) {
             const char *dp = cfget("default_prompt");
             char full[B]; snprintf(full, B, "%s%s%s", dp[0]?dp:"", dp[0]?" ":"", prompt);
-            int cl = strlen(cmd); snprintf(cmd + cl, (int)sizeof(cmd) - cl, " '%s'", full);
+            size_t cl = strlen(cmd); snprintf(cmd + cl, sizeof(cmd) - cl, " '%s'", full);
         }
         /* Split pane */
         char c[B*2]; snprintf(c, sizeof(c), "tmux split-window -hfP -F '#{pane_id}' -c '%s' '%s'", wd, cmd);
@@ -1978,7 +1982,7 @@ static int cmd_sess(int argc, char **argv) {
     if (is_prompt && prompt[0]) {
         const char *dp = cfget("default_prompt");
         char full[B]; snprintf(full, B, "%s%s%s", dp[0]?dp:"", dp[0]?" ":"", prompt);
-        int cl = strlen(cmd); snprintf(cmd + cl, (int)sizeof(cmd) - cl, " '%s'", full);
+        size_t cl = strlen(cmd); snprintf(cmd + cl, sizeof(cmd) - cl, " '%s'", full);
     }
     create_sess(sn, wd, cmd);
     if (!is_prompt) send_prefix_bg(sn, s->name, wd);
@@ -1993,7 +1997,7 @@ static int cmd_wt_plus(int argc, char **argv) { fallback_py(argc, argv); }
 static int cmd_wt(int argc, char **argv) { fallback_py(argc, argv); }
 
 /* ── dir_file ── */
-static int cmd_dir_file(int argc, char **argv) {
+static int cmd_dir_file(int argc, char **argv) { (void)argc;
     const char *arg = argv[1];
     char expanded[P];
     if (arg[0] == '/' && !strncmp(arg, "/projects/", 10)) {
@@ -2012,7 +2016,7 @@ static int cmd_dir_file(int argc, char **argv) {
 }
 
 /* ── interactive picker ── */
-static int cmd_i(int argc, char **argv) {
+static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
     init_db(); gen_icache();
     char cache[P]; snprintf(cache, P, "%s/i_cache.txt", DDIR);
     size_t len; char *raw = readf(cache, &len);
@@ -2020,7 +2024,7 @@ static int cmd_i(int argc, char **argv) {
     /* Parse lines */
     char *lines[512]; int n = 0;
     for (char *p = raw, *end = raw + len; p < end && n < 512;) {
-        char *nl = memchr(p, '\n', end - p);
+        char *nl = memchr(p, '\n', (size_t)(end - p));
         if (!nl) nl = end;
         if (nl > p && p[0] != '<' && p[0] != '=' && p[0] != '>' && p[0] != '#') { *nl = 0; lines[n++] = p; }
         p = nl + 1;
@@ -2033,7 +2037,7 @@ static int cmd_i(int argc, char **argv) {
     /* Raw mode */
     struct termios old, raw_t;
     tcgetattr(STDIN_FILENO, &old); raw_t = old;
-    raw_t.c_lflag &= ~(ICANON | ECHO);
+    raw_t.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
     raw_t.c_cc[VMIN] = 1; raw_t.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &raw_t);
     char buf[256] = ""; int blen = 0, sel = 0;
@@ -2087,7 +2091,7 @@ static int cmd_i(int argc, char **argv) {
 }
 
 /* ═══ ACTIVITY LOG ═══ */
-static void alog(const char *cmd, const char *cwd, const char *extra) {
+static void alog(const char *cmd, const char *cwd, const char *extra) { (void)extra;
     pid_t p=fork();if(p<0)return;if(p>0){waitpid(p,NULL,WNOHANG);return;} /* parent returns instantly */
     if(fork()>0)_exit(0); setsid(); /* double-fork, child is orphan */
     char dir[P]; snprintf(dir, P, "%s/git/activity", AROOT);
