@@ -1583,14 +1583,15 @@ static int cmd_task(int argc,char**argv){
         while(l>0&&(r[l-1]=='\n'||r[l-1]==' '))r[--l]=0;
         printf("Prompt: %s\n",pf);execvp("a",(char*[]){"a","c",r,NULL});return 1;}
     if(argc>4&&isdigit(argv[3][0])){
-        int n=load_tasks(dir),x=atoi(argv[3])-1;if(x<0||x>=n){puts("x Invalid");return 1;}
+        int n=load_tasks(dir),x=atoi(argv[3])-1;
+        if(x>=0&&x<n){
         {struct stat st;if(!stat(T[x].d,&st)&&!S_ISDIR(st.st_mode))task_todir(T[x].d);}
         char sd[P];snprintf(sd,P,"%s/%s",T[x].d,sub);mkdirp(sd);
         struct timespec tp;clock_gettime(CLOCK_REALTIME,&tp);
         char ts[32],fn[P];strftime(ts,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
         char t[B]="";for(int i=4;i<argc;i++){if(i>4)strcat(t," ");strncat(t,argv[i],B-strlen(t)-2);}
         snprintf(fn,P,"%s/%s.%09ld_%s.txt",sd,ts,tp.tv_nsec,DEV);writef(fn,t);
-        printf("\xe2\x9c\x93 %s: %.40s\n",sub,t);sync_bg();return 0;}
+        printf("\xe2\x9c\x93 %s: %.40s\n",sub,t);sync_bg();return 0;}}
     {int pri=50000,si=2;
     if(argc>2&&strlen(argv[2])==5&&isdigit(argv[2][0])&&isdigit(argv[2][1])&&isdigit(argv[2][2])&&isdigit(argv[2][3])&&isdigit(argv[2][4])){
         pri=atoi(argv[2]);si=3;if(si>=argc){puts("a task [PPPPP] <text>");return 1;}}
