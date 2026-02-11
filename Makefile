@@ -7,13 +7,14 @@ WARN = -std=c17 -Werror -Weverything \
        --system-header-prefix=/usr/include \
        -isystem /usr/local/include -isystem $(SQLITE_INC)
 HARDEN = -fstack-protector-strong -ftrivial-auto-var-init=zero -D_FORTIFY_SOURCE=2
-CFLAGS = $(WARN) $(HARDEN) -O2
 SYS_SQLITE = /usr/lib/x86_64-linux-gnu/libsqlite3.so.0
 LDFLAGS = $(if $(wildcard $(SYS_SQLITE)),$(SYS_SQLITE),-L$(HOME)/micromamba/lib -lsqlite3 -Wl$(comma)-rpath$(comma)$(HOME)/micromamba/lib)
 comma := ,
 
 a: a.c
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+	$(CC) $(WARN) -fsyntax-only $< & P1=$$!; \
+	$(CC) -isystem $(SQLITE_INC) $(HARDEN) -O2 -w -o $@ $< $(LDFLAGS) & P2=$$!; \
+	wait $$P1 && wait $$P2
 
 debug: a.c
 	$(CC) $(WARN) $(HARDEN) -O1 -g -fsanitize=address,undefined,integer -o a $< $(LDFLAGS)
