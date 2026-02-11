@@ -1589,9 +1589,10 @@ static int cmd_ssh(int argc, char **argv) {
         pcmd("hostname -I 2>/dev/null | awk '{print $1}'",ip,128);ip[strcspn(ip,"\n")]=0;
         if(!ip[0]){pcmd("ifconfig 2>/dev/null | grep 'inet ' | grep -v 127 | grep '192\\.' | awk '{print $2}' | head -1",ip,128);ip[strcspn(ip,"\n")]=0;}
         if(!ip[0]){pcmd("ifconfig 2>/dev/null | grep 'inet ' | grep -v 127 | awk '{print $2}' | head -1",ip,128);ip[strcspn(ip,"\n")]=0;}
-        /* detect sshd port */
-        char pp[64];if(!pcmd("grep -m1 '^Port ' /etc/ssh/sshd_config 2>/dev/null || grep -m1 '^Port ' $PREFIX/etc/ssh/sshd_config 2>/dev/null",pp,64)){
-            char*sp=pp;while(*sp&&!isdigit((unsigned char)*sp))sp++;pp[strcspn(pp,"\n")]=0;if(*sp)snprintf(port,8,"%s",sp);}
+        /* detect sshd port: Termux defaults to 8022 */
+        if(access("/data/data/com.termux",F_OK)==0)snprintf(port,8,"8022");
+        else{char pp[64];if(!pcmd("grep -m1 '^Port ' /etc/ssh/sshd_config 2>/dev/null",pp,64)){
+            char*sp=pp;while(*sp&&!isdigit((unsigned char)*sp))sp++;pp[strcspn(pp,"\n")]=0;if(*sp)snprintf(port,8,"%s",sp);}}
         if(!strcmp(port,"22"))snprintf(host,256,"%s@%s",user,ip);
         else snprintf(host,256,"%s@%s:%s",user,ip,port);
         printf("Name: %s\nHost: %s\n",DEV,host);
