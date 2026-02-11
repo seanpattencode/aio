@@ -17,8 +17,11 @@ static int cat(const char *p){
 
 static _Noreturn void py(int c,char**v){
 	setenv("PYTHONPATH",SRC"/lib",1);
-	char**a=calloc(c+2,sizeof*a);
-	a[0]="python3"; a[1]=SRC"/archive/a.py";
+	char**a=calloc(c+3,sizeof*a);
+	a[0]="python3"; a[1]="-c";
+	/* Build: from a_cmd.CMD import run; import sys; sys.argv=ARGV; run() */
+	/* Or just run archive/a.py with correct PYTHONPATH already set */
+	a[1]=SRC"/lib/a_main.py";
 	memcpy(a+2,v+1,(c-1)*sizeof*a);
 	execvp("python3",a);
 	perror("a"); _exit(1);
