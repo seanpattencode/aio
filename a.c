@@ -24,7 +24,9 @@
  *
  * Dispatch: MAIN DISPATCH (switch on first arg)
  */
+#ifndef __APPLE__
 #define _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,7 +77,7 @@ static void init_paths(void) {
     char self[P]; ssize_t n = -1;
 #ifdef __APPLE__
     uint32_t sz = P - 1;
-    if (_NSGetExecutablePath(self, &sz) == 0) { n = strlen(self); char rp[P]; if (realpath(self, rp)) { snprintf(self, P, "%s", rp); n = strlen(self); } }
+    if (_NSGetExecutablePath(self, &sz) == 0) { n = (ssize_t)strlen(self); char rp[P]; if (realpath(self, rp)) { snprintf(self, P, "%s", rp); n = (ssize_t)strlen(self); } }
 #else
     n = readlink("/proc/self/exe", self, P - 1);
 #endif

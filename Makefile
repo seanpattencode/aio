@@ -24,8 +24,13 @@ WARN = -std=c17 -Werror -Weverything \
        -Wno-unsafe-buffer-usage -Wno-used-but-marked-unused \
        --system-header-prefix=/usr/include \
        -isystem /usr/local/include
-HARDEN = -fstack-protector-strong -ftrivial-auto-var-init=zero -D_FORTIFY_SOURCE=2 \
-         -fstack-clash-protection -fcf-protection
+ifeq ($(shell uname),Darwin)
+WARN += -Wno-poison-system-directories
+endif
+HARDEN = -fstack-protector-strong -ftrivial-auto-var-init=zero -D_FORTIFY_SOURCE=2
+ifneq ($(shell uname),Darwin)
+HARDEN += -fstack-clash-protection -fcf-protection
+endif
 LINK_HARDEN = -Wl,-z,relro,-z,now
 
 a: a.c
