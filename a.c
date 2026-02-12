@@ -1595,9 +1595,8 @@ static int cmd_ssh(int argc, char **argv) {
         char cmd[B]="";for(int i=3;i<argc;i++){if(i>3)strcat(cmd," ");strncat(cmd,argv[i],B-strlen(cmd)-2);}
         char qc[B];snprintf(qc,B,"'bash -ic '\"'\"'%s'\"'\"''",cmd);
         for(int i=0;i<nh;i++){char hp[256],port[8];ssh_parse(H[i].host,hp,port);
-            char out[B];snprintf(out,B,"-oConnectTimeout=5");
             char c[B*2];int n=0;if(H[i].pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",H[i].pw);
-            snprintf(c+n,sizeof(c)-(size_t)n,"ssh %s -oStrictHostKeyChecking=no -p %s '%s' %s 2>&1",out,port,hp,qc);
+            snprintf(c+n,sizeof(c)-(size_t)n,"ssh -oConnectTimeout=5 -oStrictHostKeyChecking=no -p %s '%s' %s 2>&1",port,hp,qc);
             char o[B];int r=pcmd(c,o,B);printf("\n%s %s\n",r==0?"\xe2\x9c\x93":"x",H[i].name);if(o[0])printf("%s",o);}
         return 0;}
     /* resolve host by # or name */
@@ -1606,6 +1605,10 @@ static int cmd_ssh(int argc, char **argv) {
     else{for(int i=0;i<nh;i++)if(!strcmp(H[i].name,sub)){idx=i;break;}}
     if(idx<0||idx>=nh){printf("x No host %s\n",sub);return 1;}
     char hp[256],port[8];ssh_parse(H[idx].host,hp,port);
+    /* auto-prompt + save password if key auth fails */
+    if(!H[idx].pw[0]){char tc[B];snprintf(tc,B,"ssh -oBatchMode=yes -oConnectTimeout=3 -p %s '%s' true 2>/dev/null",port,hp);
+        if(system(tc)){char pw[256];printf("Password for %s: ",H[idx].name);
+            if(fgets(pw,256,stdin)){pw[strcspn(pw,"\n")]=0;if(pw[0]){snprintf(H[idx].pw,256,"%s",pw);ssh_save(dir,H[idx].name,H[idx].host,pw);}}}}
     if(argc>3){char cmd[B]="";for(int i=3;i<argc;i++){if(i>3)strcat(cmd," ");strncat(cmd,argv[i],B-strlen(cmd)-2);}
         char qc[B];snprintf(qc,B,"'bash -ic '\"'\"'%s'\"'\"''",cmd);
         ssh_cmd(H[idx].pw,hp,port,"-tt",qc);return 0;}
