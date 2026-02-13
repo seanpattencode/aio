@@ -14,8 +14,8 @@ static int cmd_set(int argc, char **argv) {
 
 /* ── install ── */
 static int cmd_install(void) {
-    char s[P]; snprintf(s, P, "%s/install.sh", SDIR);
-    if (fexists(s)) execlp("bash", "bash", s, (char*)NULL);
+    char s[P]; snprintf(s, P, "%s/a.c", SDIR);
+    execlp("bash", "bash", s, "install", (char*)NULL);
     return 1;
 }
 

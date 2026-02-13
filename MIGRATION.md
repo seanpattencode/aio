@@ -18,7 +18,7 @@ Data directory restructured from flat `a-sync/` to `adata/` with 4 tiers:
 ### 1. Install the tool
 ```bash
 gh repo clone seanpattencode/a ~/projects/a
-cd ~/projects/a && make && bash install.sh
+cd ~/projects/a && bash a.c install
 ```
 
 ### 2. Pull auth from gdrive (if another device already set up)
@@ -62,7 +62,7 @@ mv ~/projects/adata/git/backup ~/projects/adata/backup/local-archive
 ln -s ~/projects/adata/git ~/projects/a-sync
 
 # Update tool and rebuild
-cd ~/projects/a && git pull && make && bash install.sh
+cd ~/projects/a && git pull && bash a.c install
 ```
 
 ## GDrive accounts
