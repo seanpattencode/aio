@@ -275,8 +275,8 @@ exit 0
  *   logs/push.ok                instant push flag (valid 10 min)
  * ~/.local/bin/a              symlink to compiled binary
  *
- * ~/projects/adata/           AROOT — synced data (4-tier)
- *   git/                      SROOT — git push/pull, all devices, text <15M
+ * ~/projects/adata/           AROOT — synced data (4-tier, NOT a git repo)
+ *   git/                      SROOT — only this subdir is a git repo
  *     activity/                 command log (one .txt per invocation)
  *     notes/                    quick notes (.txt, key:value)
  *     tasks/                    task dirs (priority-slug/, prompts, sessions)
