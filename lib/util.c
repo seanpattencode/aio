@@ -1,7 +1,7 @@
 /* ═══ UTILITIES ═══ */
 static int fexists(const char *p) { struct stat s; return stat(p, &s) == 0; }
 static int dexists(const char *p) { struct stat s; return stat(p, &s) == 0 && S_ISDIR(s.st_mode); }
-static void mkdirp(const char *p) { char c[P*2]; snprintf(c, sizeof(c), "mkdir -p '%s'", p); (void)!system(c); }
+static void mkdirp(const char *p) { char t[P]; snprintf(t,P,"%s",p); for(char*s=t+1;*s;s++) if(*s=='/'){*s=0;mkdir(t,0755);*s='/';} mkdir(t,0755); }
 
 static char *readf(const char *p, size_t *len) {
     int fd = open(p, O_RDONLY); if (fd < 0) return NULL;

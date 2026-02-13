@@ -60,10 +60,11 @@ _shell_funcs() {
     for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
         touch "$RC"
         grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
-        sed -i -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
+        sed -i -e '/^_ADD=/d' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
+        echo "_ADD=\"$D/adata/local\"" >> "$RC"
         cat >> "$RC" << 'AFUNC'
 a() {
-    local dd; dd="$(dirname "$(readlink -f "$(type -P a)")")/adata/local"
+    local dd="$_ADD"
     [[ -z "$1" ]] && { [[ -f $dd/help_cache.txt ]] && printf '%s\n' "$(<"$dd/help_cache.txt")" || command a; return; }
     if [[ "$1" =~ ^[0-9]+$ ]]; then
         local -a lines; mapfile -t lines < $dd/projects.txt 2>/dev/null

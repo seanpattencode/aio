@@ -25,7 +25,7 @@ static void init_paths(void) {
     /* All local state lives in adata/ — if it's not in adata, nobody knows
      * where it is. Maximum visibility for humans and LLMs. */
     snprintf(DDIR, P, "%s/local", AROOT);
-    { char mc[P*2]; snprintf(mc, sizeof(mc), "mkdir -p '%s'", DDIR); (void)!system(mc); }
+    { char tmp[P]; snprintf(tmp,P,"%s",DDIR); for(char*p=tmp+1;*p;p++) if(*p=='/'){*p=0;mkdir(tmp,0755);*p='/';} mkdir(tmp,0755); }
     /* One-time migration: old sibling ~/projects/adata/ → inside project dir */
     char old_sib[P]; snprintf(old_sib, P, "%.*s/adata", (int)(strlen(SDIR) - strlen("/a")), SDIR);
     /* only migrate if old sibling exists and new doesn't have .device yet */
