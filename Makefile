@@ -61,10 +61,19 @@ a: a.c
 debug: a.c
 	$(CC) $(WARN) $(HARDEN) $(SRC_DEF) $(LINK_HARDEN) -O1 -g -fsanitize=address,undefined,integer -o a $< $(LDFLAGS)
 
-# Static analyzer — slow (~4s), not part of default build.
-# Catches use-after-free, null deref, leaks at compile time.
+# Static analyzer — slow, not part of default build.
+# Runs with full WARN flags + all security/unix/nullability/taint checkers.
+# Closest thing to Rust's borrow checker + type safety in C:
+#   core.*          use-after-free, null deref, uninitialized, stack escape
+#   unix.*          malloc leaks, double-free, mismatched dealloc, bad cstrings
+#   security.*      insecure APIs, pointer arithmetic, cert rules
+#   nullability.*   null passed/returned where nonnull expected
+#   optin.taint.*   tainted (attacker-controlled) data in alloc/div/injection
+#   optin.portability.UnixAPI  implementation-defined POSIX behavior
+ANALYZE_CHECKERS = security,unix,nullability,optin.taint,optin.portability.UnixAPI
 analyze: a.c
-	$(CC) $(SRC_DEF) --analyze $<
+	$(CC) $(WARN) $(SRC_DEF) --analyze \
+		-Xanalyzer -analyzer-checker=$(ANALYZE_CHECKERS) $<
 
 clean:
 	rm -f a
