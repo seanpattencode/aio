@@ -23,6 +23,9 @@
 # total build time = bare compile time.
 #
 #   make          clean -O3 binary, validated by -Weverything + hardening
+#   make analyze  clang static analyzer (~4s) — deep checks like Rust's
+#                 borrow checker: use-after-free, null deref, leaks.
+#                 Not in default build because it's slow. Run on demand.
 #   make debug    single pass: all flags + ASan/UBSan/IntSan -O1 -g
 
 CC = clang
@@ -58,7 +61,12 @@ a: a.c
 debug: a.c
 	$(CC) $(WARN) $(HARDEN) $(SRC_DEF) $(LINK_HARDEN) -O1 -g -fsanitize=address,undefined,integer -o a $< $(LDFLAGS)
 
+# Static analyzer — slow (~4s), not part of default build.
+# Catches use-after-free, null deref, leaks at compile time.
+analyze: a.c
+	$(CC) $(SRC_DEF) --analyze $<
+
 clean:
 	rm -f a
 
-.PHONY: clean debug
+.PHONY: clean debug analyze
