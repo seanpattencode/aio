@@ -230,6 +230,13 @@ exit 0
  *
  * Add a command:  write lib/foo.c, add #include + dispatch line here.
  * Remove:         delete the file, delete two lines.
+ *
+ * References:
+ *   Dispatch — Linux syscall table: string→function pointer, same pattern.
+ *     https://github.com/torvalds/linux/blob/master/arch/x86/entry/syscall_64.c
+ *   Amalgamation — SQLite mksqlite3c.tcl: concatenates 100+ .c/.h into one
+ *     sqlite3.c translation unit. Same idea, we just use #include directly.
+ *     https://sqlite.org/src/file?ci=tip&name=tool/mksqlite3c.tcl
  */
 #ifndef __APPLE__
 #define _GNU_SOURCE
