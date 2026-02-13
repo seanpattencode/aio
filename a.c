@@ -566,11 +566,8 @@ static int cmd_x(void) {
 static int cmd_web(int argc, char **argv) {
     char url[B] = "https://google.com";
     if (argc > 2) {
-        snprintf(url, B, "https://google.com/search?q=");
-        for (int i = 2; i < argc; i++) {
-            if (i > 2) strcat(url, "+");
-            strncat(url, argv[i], B - strlen(url) - 2);
-        }
+        int l=snprintf(url,B,"https://google.com/search?q=");
+        for(int i=2;i<argc&&l<B-1;i++) l+=snprintf(url+l,(size_t)(B-l),"%s%s",i>2?"+":"",argv[i]);
     }
     char c[B]; snprintf(c, B, "xdg-open '%s' 2>/dev/null &", url); (void)!system(c);
     return 0;
@@ -632,7 +629,7 @@ static int cmd_e(int argc, char **argv) {
     if (getenv("TMUX")) execlp("e", "e", ".", (char*)NULL);
     else {
         init_db(); load_cfg();
-        char wd[P]; if (!getcwd(wd, P)) strcpy(wd, HOME);
+        char wd[P]; if(!getcwd(wd,P)) snprintf(wd,P,"%s",HOME);
         create_sess("edit", wd, "e .");
         execlp("tmux", "tmux", "attach", "-t", "edit", (char*)NULL);
     }
@@ -645,7 +642,7 @@ static int cmd_project_num(int argc, char **argv, int idx) { (void)argc; (void)a
     if (idx >= 0 && idx < NPJ) {
         proj_t *p=&PJ[idx]; char c[B];
         if (!dexists(p->path) && p->repo[0]) {
-            strcpy(c,p->path); char *sl=strrchr(c,'/'); if(sl)*sl=0;
+            snprintf(c,B,"%s",p->path); char *sl=strrchr(c,'/'); if(sl)*sl=0;
             if(!dexists(c))snprintf(p->path,512,"%s/projects/%s",HOME,p->name);
             printf("Cloning %s...\n", p->repo);
             snprintf(c, B, "git clone '%s' '%s'", p->repo, p->path); (void)!system(c);
@@ -670,9 +667,9 @@ static int cmd_setup(int argc, char **argv) { (void)argc; (void)argv;
 
 /* ── push ── */
 static int cmd_push(int argc, char **argv) {
-    char cwd[P]; if (!getcwd(cwd, P)) strcpy(cwd, ".");
-    char msg[B] = "";
-    if (argc > 2) { for (int i = 2; i < argc; i++) { if (i>2) strcat(msg," "); strncat(msg, argv[i], B-strlen(msg)-2); } }
+    char cwd[P]; if(!getcwd(cwd,P)) snprintf(cwd,P,".");
+    char msg[B]="";
+    if(argc>2)for(int i=2,l=0;i<argc;i++) l+=snprintf(msg+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
     else snprintf(msg, B, "Update %s", bname(cwd));
 
     if (!git_in_repo(cwd)) {
@@ -706,7 +703,7 @@ static int cmd_push(int argc, char **argv) {
             "cd '%s' && git add -A && git commit -m \"%s\" --allow-empty 2>/dev/null; git push 2>/dev/null; touch '%s'",
             cwd, msg, ok);
         if (fork() == 0) { setsid();
-            int null = open("/dev/null", O_RDWR); dup2(null,0); dup2(null,1); dup2(null,2); if(null>2)close(null);
+            int n=open("/dev/null",O_RDWR); if(n>=0){dup2(n,0);dup2(n,1);dup2(n,2);close(n);}
             execl("/bin/sh","sh","-c",c,(char*)NULL); _exit(1);
         }
         printf("%s %s\n", tag, msg); return 0;
@@ -858,7 +855,7 @@ static int cmd_config(int argc, char **argv) {
     }
     const char *key = argv[2];
     if (argc > 3) {
-        char val[B] = ""; for (int i=3;i<argc;i++) { if(i>3) strcat(val," "); strncat(val,argv[i],B-strlen(val)-2); }
+        char val[B]=""; for(int i=3,l=0;i<argc;i++) l+=snprintf(val+l,(size_t)(B-l),"%s%s",i>3?" ":"",argv[i]);
         if (!strcmp(val,"off")||!strcmp(val,"none")||!strcmp(val,"\"\"")||!strcmp(val,"''")) val[0]=0;
         cfset(key, val);
         load_cfg(); list_all(1, 1);
@@ -871,7 +868,7 @@ static int cmd_config(int argc, char **argv) {
 static int cmd_prompt(int argc, char **argv) {
     init_db(); load_cfg();
     char val[B] = "";
-    if (argc > 2) { for (int i=2;i<argc;i++) { if(i>2) strcat(val," "); strncat(val,argv[i],B-strlen(val)-2); } }
+    if(argc>2)for(int i=2,l=0;i<argc;i++) l+=snprintf(val+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
     else {
         printf("Current: %s\n", cfget("default_prompt")[0] ? cfget("default_prompt") : "(none)");
         printf("New (empty to clear): "); if (!fgets(val, B, stdin)) return 0;
@@ -981,11 +978,11 @@ static int cmd_send(int argc, char **argv) {
     if (argc < 4) { puts("Usage: a send <session> <prompt> [--wait] [--no-enter]"); return 1; }
     const char *sn = argv[2];
     if (!tm_has(sn)) { printf("x Session %s not found\n", sn); return 1; }
-    char prompt[B] = ""; int wait = 0, enter = 1;
+    char prompt[B]=""; int pl=0,wait=0,enter=1;
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i],"--wait")) wait = 1;
         else if (!strcmp(argv[i],"--no-enter")) enter = 0;
-        else { if(prompt[0]) strcat(prompt," "); strncat(prompt,argv[i],B-strlen(prompt)-2); }
+        else { pl+=snprintf(prompt+pl,(size_t)(B-pl),"%s%s",pl?" ":"",argv[i]); }
     }
     tm_send(sn, prompt);
     if (enter) { usleep(100000); char c[B]; snprintf(c, B, "tmux send-keys -t '%s' Enter", sn); (void)!system(c); }
@@ -1335,7 +1332,7 @@ static int cmd_task(int argc,char**argv){
                 printf("  Prompt # or [n]ew: ");fflush(stdout);
                 char pb[8];if(!fgets(pb,8,stdin)||!pb[0]||pb[0]=='\n'){show=0;continue;}
                 pb[strcspn(pb,"\n")]=0;
-                if(*pb=='n'||*pb=='c'){k='c';goto docreate;}
+                if(*pb=='n'||*pb=='c')goto docreate;
                 int ci=atoi(pb);if(ci<1){show=0;continue;}
                 /* collect task text */
                 char body[B]="";int bl=0;
@@ -1351,7 +1348,7 @@ static int cmd_task(int argc,char**argv){
                                 size_t fl;char*fc=readf(sfp,&fl);if(fc){bl+=snprintf(body+bl,(size_t)(B-bl),"%s\n",fc);free(fc);}}
                             if(sd)closedir(sd);}}
                     if(dd)closedir(dd);
-                }else{bl=snprintf(body,B,"%s",T[i].t);}
+                }else{snprintf(body,B,"%s",T[i].t);}
                 /* build prompt from candidate */
                 char prompt[B],pmodel[64]="opus",pfolder[P]="";
                 (void)!getcwd(pfolder,P);
@@ -1398,7 +1395,7 @@ static int cmd_task(int argc,char**argv){
                     char cf[P];snprintf(cf,P,"%s/%s",ctxdir,ctxn[j]);
                     size_t cl;char*cc=readf(cf,&cl);
                     if(cc){fl+=snprintf(fprompt+fl,(size_t)(B-fl),"%s\n",cc);free(cc);}}
-                fl+=snprintf(fprompt+fl,(size_t)(B-fl),"%s",prompt);
+                snprintf(fprompt+fl,(size_t)(B-fl),"%s",prompt);
                 printf("\n\033[1m\xe2\x94\x80\xe2\x94\x80 Preview \xe2\x94\x80\xe2\x94\x80\033[0m\n");
                 struct stat fs;int fok=!stat(pfolder,&fs)&&S_ISDIR(fs.st_mode);
                 printf("  \033[1mFolder:\033[0m  %s%s\n",pfolder,fok?"":" \033[31m(not found)\033[0m");

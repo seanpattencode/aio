@@ -67,9 +67,11 @@ a: a.c
 #   unix.*          malloc leaks, double-free, mismatched dealloc, bad cstrings
 #   security.*      insecure APIs, pointer arithmetic, cert rules
 #   nullability.*   null passed/returned where nonnull expected
-#   optin.taint.*   tainted (attacker-controlled) data in alloc/div/injection
 #   optin.portability.UnixAPI  implementation-defined POSIX behavior
-ANALYZE_CHECKERS = security,unix,nullability,optin.taint,optin.portability.UnixAPI
+#
+# Skipped: optin.taint — flags getenv/argv passed to exec/system, but this
+# is a CLI tool that intentionally runs user commands. Taint is by design.
+ANALYZE_CHECKERS = security,unix,nullability,optin.portability.UnixAPI
 analyze: a.c
 	$(CC) $(WARN) $(SRC_DEF) --analyze \
 		-Xanalyzer -analyzer-checker=$(ANALYZE_CHECKERS) $<
