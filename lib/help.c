@@ -106,23 +106,23 @@ static int cmd_help_full(int argc, char **argv) { (void)argc; (void)argv;
     init_db(); load_cfg(); printf("%s\n", HELP_FULL); list_all(1, 0); return 0;
 }
 
-static int cmd_hi(void) { for (int i = 1; i <= 10; i++) printf("%d\n", i); puts("hi"); return 0; }
+static int cmd_hi(int argc, char **argv) { (void)argc;(void)argv; for (int i = 1; i <= 10; i++) printf("%d\n", i); puts("hi"); return 0; }
 
-static int cmd_done(void) {
+static int cmd_done(int argc, char **argv) { (void)argc;(void)argv;
     char p[P]; snprintf(p, P, "%s/.done", DDIR);
     int fd = open(p, O_WRONLY|O_CREAT|O_TRUNC, 0644); if (fd >= 0) close(fd);
     puts("\xe2\x9c\x93 done"); return 0;
 }
 
-static int cmd_dir(void) {
+static int cmd_dir(int argc, char **argv) { (void)argc;(void)argv;
     char cwd[P]; if (getcwd(cwd, P)) puts(cwd);
     execlp("ls", "ls", (char*)NULL); return 1;
 }
 
-static int cmd_backup(void) { puts("backup: sync system removed, rewrite pending"); return 0; }
-static int cmd_rebuild(void) { puts("rebuild: sync system removed, rewrite pending"); return 0; }
+static int cmd_backup(int argc, char **argv) { (void)argc;(void)argv; puts("backup: sync system removed, rewrite pending"); return 0; }
+static int cmd_rebuild(int argc, char **argv) { (void)argc;(void)argv; puts("rebuild: sync system removed, rewrite pending"); return 0; }
 
-static int cmd_x(void) {
+static int cmd_x(int argc, char **argv) { (void)argc;(void)argv;
     (void)!system("tmux kill-server 2>/dev/null");
     puts("\xe2\x9c\x93 All sessions killed"); return 0;
 }

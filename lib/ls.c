@@ -48,7 +48,7 @@ static int cmd_kill(int argc, char **argv) {
 }
 
 /* ── copy ── */
-static int cmd_copy(void) {
+static int cmd_copy(int argc, char **argv) { (void)argc;(void)argv;
     if (!getenv("TMUX")) { puts("x Not in tmux"); return 1; }
     (void)!system("tmux capture-pane -pJ -S -99 > /tmp/ac_copy.tmp");
     /* Simplified: copy last output block */
@@ -75,7 +75,7 @@ static int cmd_copy(void) {
 }
 
 /* ── dash ── */
-static int cmd_dash(void) {
+static int cmd_dash(int argc, char **argv) { (void)argc;(void)argv;
     char wd[P]; if(!getcwd(wd,P)) snprintf(wd,P,"%s",HOME);
     if (!tm_has("dash")) {
         char c[B];

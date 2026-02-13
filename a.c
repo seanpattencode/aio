@@ -232,7 +232,9 @@ exit 0
  * Remove:         delete the file, delete two lines.
  *
  * References:
- *   Dispatch — Linux syscall table: string→function pointer, same pattern.
+ *   Dispatch — sorted table + bsearch, inspired by Linux syscall_64.c
+ *     (integer→function via switch/jump table). Our analog: sorted string→
+ *     function table, O(log n). ~90 aliases, ~50 commands.
  *     https://github.com/torvalds/linux/blob/master/arch/x86/entry/syscall_64.c
  *   Amalgamation — SQLite mksqlite3c.tcl: concatenates 100+ .c/.h into one
  *     sqlite3.c translation unit. Same idea, we just use #include directly.
@@ -328,7 +330,61 @@ static void alog(const char *cmd, const char *cwd, const char *extra);
 #include "lib/agent.c"    /* autonomous agent + multi-run */
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
 
-/* ═══ MAIN DISPATCH ═══ */
+/* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
+static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
+static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
+static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
+static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
+static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
+
+/* ═══ DISPATCH TABLE — sorted for bsearch, every alias is one entry ═══ */
+typedef struct { const char *n; int (*fn)(int, char**); } cmd_t;
+static int cmd_cmp(const void *a, const void *b) {
+    return strcmp(((const cmd_t *)a)->n, ((const cmd_t *)b)->n);
+}
+static const cmd_t CMDS[] = {
+    {"--help",cmd_help_full},{"-h",cmd_help_full},
+    {"a",cmd_all},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
+    {"aio",cmd_all},{"all",cmd_all},{"ask",cmd_ask},
+    {"att",cmd_attach},{"attach",cmd_attach},
+    {"bak",cmd_backup},{"backup",cmd_backup},
+    {"cle",cmd_cleanup},{"cleanup",cmd_cleanup},
+    {"con",cmd_config},{"config",cmd_config},
+    {"cop",cmd_copy},{"copy",cmd_copy},
+    {"das",cmd_dash},{"dash",cmd_dash},
+    {"dep",cmd_deps},{"deps",cmd_deps},
+    {"dif",cmd_diff},{"diff",cmd_diff},{"dir",cmd_dir},
+    {"doc",cmd_docs},{"docs",cmd_docs},{"done",cmd_done},
+    {"e",cmd_e},{"gdr",cmd_gdrive},{"gdrive",cmd_gdrive},
+    {"hel",cmd_help_full},{"help",cmd_help_full},{"hi",cmd_hi},
+    {"hub",cmd_hub},{"i",cmd_i},
+    {"ins",cmd_install},{"install",cmd_install},
+    {"job",cmd_jobs},{"jobs",cmd_jobs},
+    {"kil",cmd_kill},{"kill",cmd_kill},{"killall",cmd_kill},
+    {"log",cmd_log},{"login",cmd_login},{"logs",cmd_log},{"ls",cmd_ls},
+    {"mono",cmd_mono},{"monolith",cmd_mono},
+    {"mov",cmd_move},{"move",cmd_move},
+    {"n",cmd_note},{"note",cmd_note},
+    {"p",cmd_push},{"pro",cmd_prompt},{"prompt",cmd_prompt},
+    {"pul",cmd_pull},{"pull",cmd_pull},{"pus",cmd_push},{"push",cmd_push},
+    {"rebuild",cmd_rebuild},
+    {"rem",cmd_remove},{"remove",cmd_remove},{"repo",cmd_repo},
+    {"rev",cmd_revert},{"revert",cmd_revert},{"review",cmd_review},
+    {"rm",cmd_remove},{"run",cmd_run},
+    {"sca",cmd_scan},{"scan",cmd_scan},
+    {"sen",cmd_send},{"send",cmd_send},
+    {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
+    {"ssh",cmd_ssh},{"syn",cmd_sync},{"sync",cmd_sync},
+    {"t",cmd_task},{"tas",cmd_task},{"task",cmd_task},
+    {"tre",cmd_tree},{"tree",cmd_tree},
+    {"ui",cmd_ui},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
+    {"upd",cmd_update},{"update",cmd_update},
+    {"wat",cmd_watch},{"watch",cmd_watch},{"web",cmd_web},
+    {"wor",cmd_work},{"work",cmd_work},{"x",cmd_x},
+};
+#define NCMDS (sizeof(CMDS)/sizeof(*CMDS))
+
+/* ═══ MAIN ═══ */
 int main(int argc, char **argv) {
     init_paths();
     G_argc = argc; G_argv = argv;
@@ -342,104 +398,42 @@ int main(int argc, char **argv) {
 
     const char *arg = argv[1];
 
-    /* Numeric = project number */
+    /* "a 3" — jump to project by number */
     { const char *p = arg; while (*p >= '0' && *p <= '9') p++;
       if (*p == '\0' && p != arg) { init_db(); return cmd_project_num(argc, argv, atoi(arg)); } }
 
-    /* Special aliases from CMDS dict */
-    if (!strcmp(arg,"help")||!strcmp(arg,"hel")||!strcmp(arg,"--help")||!strcmp(arg,"-h"))
-        return cmd_help_full(argc, argv);
-    if (!strcmp(arg,"killall")) return cmd_kill(argc, argv);
-    if (!strcmp(arg,"p")) return cmd_push(argc, argv);
-    if (!strcmp(arg,"rm")) return cmd_remove(argc, argv);
-    if (!strcmp(arg,"n")) return cmd_note(argc, argv);
-    if (!strcmp(arg,"t")) return cmd_task(argc, argv);
-    if (!strcmp(arg,"a")||!strcmp(arg,"ai")||!strcmp(arg,"aio")) return cmd_all(argc, argv);
-    if (!strcmp(arg,"i")) return cmd_i(argc, argv);
-    if (!strcmp(arg,"gdrive")||!strcmp(arg,"gdr")) fallback_py("gdrive", argc, argv);
-    if (!strcmp(arg,"ask")) fallback_py("ask", argc, argv);
-    if (!strcmp(arg,"ui")) fallback_py("ui/__init__", argc, argv);
-    if (!strcmp(arg,"mono")||!strcmp(arg,"monolith")) fallback_py("mono", argc, argv);
-    if (!strcmp(arg,"rebuild")) return cmd_rebuild();
-    if (!strcmp(arg,"logs")) return cmd_log(argc, argv);
+    /* Table lookup — O(log n) bsearch over sorted command table */
+    { cmd_t key = {arg, NULL};
+      const cmd_t *c = bsearch(&key, CMDS, NCMDS, sizeof(*CMDS), cmd_cmp);
+      if (c) return c->fn(argc, argv); }
 
-    /* Exact + alias match */
-    if (!strcmp(arg,"push")||!strcmp(arg,"pus")) return cmd_push(argc, argv);
-    if (!strcmp(arg,"pull")||!strcmp(arg,"pul")) return cmd_pull(argc, argv);
-    if (!strcmp(arg,"diff")||!strcmp(arg,"dif")) return cmd_diff(argc, argv);
-    if (!strcmp(arg,"revert")||!strcmp(arg,"rev")) return cmd_revert(argc, argv);
-    if (!strcmp(arg,"ls")) return cmd_ls(argc, argv);
-    if (!strcmp(arg,"kill")||!strcmp(arg,"kil")) return cmd_kill(argc, argv);
-    if (!strcmp(arg,"config")||!strcmp(arg,"con")) return cmd_config(argc, argv);
-    if (!strcmp(arg,"prompt")||!strcmp(arg,"pro")) return cmd_prompt(argc, argv);
-    if (!strcmp(arg,"set")||!strcmp(arg,"settings")) return cmd_set(argc, argv);
-    if (!strcmp(arg,"add")) return cmd_add(argc, argv);
-    if (!strcmp(arg,"remove")||!strcmp(arg,"rem")) return cmd_remove(argc, argv);
-    if (!strcmp(arg,"move")||!strcmp(arg,"mov")) return cmd_move(argc, argv);
-    if (!strcmp(arg,"scan")||!strcmp(arg,"sca")) return cmd_scan(argc, argv);
-    if (!strcmp(arg,"done")) return cmd_done();
-    if (!strcmp(arg,"hi")) return cmd_hi();
-    if (!strcmp(arg,"dir")) return cmd_dir();
-    if (!strcmp(arg,"backup")||!strcmp(arg,"bak")) return cmd_backup();
-    if (!strcmp(arg,"web")) return cmd_web(argc, argv);
-    if (!strcmp(arg,"repo")) return cmd_repo(argc, argv);
-    if (!strcmp(arg,"setup")||!strcmp(arg,"set up")) return cmd_setup(argc, argv);
-    if (!strcmp(arg,"install")||!strcmp(arg,"ins")) return cmd_install();
-    if (!strcmp(arg,"uninstall")||!strcmp(arg,"uni")) return cmd_uninstall();
-    if (!strcmp(arg,"deps")||!strcmp(arg,"dep")) return cmd_deps();
-    if (!strcmp(arg,"e")) return cmd_e(argc, argv);
-    if (!strcmp(arg,"x")) return cmd_x();
-    if (!strcmp(arg,"copy")||!strcmp(arg,"cop")) return cmd_copy();
-    if (!strcmp(arg,"dash")||!strcmp(arg,"das")) return cmd_dash();
-    if (!strcmp(arg,"attach")||!strcmp(arg,"att")) return cmd_attach(argc, argv);
-    if (!strcmp(arg,"watch")||!strcmp(arg,"wat")) return cmd_watch(argc, argv);
-    if (!strcmp(arg,"send")||!strcmp(arg,"sen")) return cmd_send(argc, argv);
-    if (!strcmp(arg,"jobs")||!strcmp(arg,"job")) return cmd_jobs(argc, argv);
-    if (!strcmp(arg,"cleanup")||!strcmp(arg,"cle")) return cmd_cleanup(argc, argv);
-    if (!strcmp(arg,"tree")||!strcmp(arg,"tre")) return cmd_tree(argc, argv);
-    if (!strcmp(arg,"note")) return cmd_note(argc, argv);
-    if (!strcmp(arg,"task")||!strcmp(arg,"tas")) return cmd_task(argc, argv);
-    if (!strcmp(arg,"ssh")) return cmd_ssh(argc, argv);
-    if (!strcmp(arg,"hub")) return cmd_hub(argc, argv);
-    if (!strcmp(arg,"log")) return cmd_log(argc, argv);
-    if (!strcmp(arg,"login")) return cmd_login(argc, argv);
-    if (!strcmp(arg,"sync")||!strcmp(arg,"syn")) return cmd_sync(argc, argv);
-    if (!strcmp(arg,"update")||!strcmp(arg,"upd")) return cmd_update(argc, argv);
-    if (!strcmp(arg,"review")) return cmd_review(argc, argv);
-    if (!strcmp(arg,"docs")||!strcmp(arg,"doc")) return cmd_docs(argc, argv);
-    if (!strcmp(arg,"run")) return cmd_run(argc, argv);
-    if (!strcmp(arg,"agent")) return cmd_agent(argc, argv);
-    if (!strcmp(arg,"work")||!strcmp(arg,"wor")) { fallback_py("work", argc, argv); }
-    if (!strcmp(arg,"all")) return cmd_all(argc, argv);
+    /* "a x.foo" — experimental Python modules */
+    if (arg[0] == 'x' && arg[1] == '.')
+        { char mod[P]; snprintf(mod, P, "experimental/%s", arg + 2); fallback_py(mod, argc, argv); }
 
-    /* x.* experimental commands */
-    if (arg[0] == 'x' && arg[1] == '.') {
-        char mod[P]; snprintf(mod, P, "experimental/%s", arg + 2);
-        fallback_py(mod, argc, argv);
-    }
-
-    /* Worktree: key++ */
+    /* "a c++" — create worktree for session key */
     { size_t l = strlen(arg);
       if (l >= 3 && arg[l-1] == '+' && arg[l-2] == '+' && arg[0] != 'w')
           return cmd_wt_plus(argc, argv); }
 
-    /* Worktree: w* */
-    if (arg[0] == 'w' && strcmp(arg,"watch") && strcmp(arg,"web") && !fexists(arg))
+    /* "a wfoo" — w-prefix not in table = worktree */
+    if (arg[0] == 'w' && !fexists(arg))
         return cmd_wt(argc, argv);
 
-    /* Directory or file */
+    /* "a /some/path" or "a file.py" — open directory or file */
     if (dexists(arg) || fexists(arg)) return cmd_dir_file(argc, argv);
     { char ep[P]; snprintf(ep, P, "%s%s", HOME, arg);
       if (arg[0] == '/' && dexists(ep)) return cmd_dir_file(argc, argv); }
 
-    /* Session key check */
+    /* "a c" — session key from sessions.txt */
     { init_db(); load_cfg(); load_sess();
       if (find_sess(arg)) return cmd_sess(argc, argv); }
 
-    /* Short session-like keys (1-3 chars) */
+    /* 1-3 char keys not in table — try as session */
     if (strlen(arg) <= 3 && arg[0] >= 'a' && arg[0] <= 'z')
         return cmd_sess(argc, argv);
 
-    /* Unknown - try python */
-    fallback_py("sess", argc, argv);
+    /* Not a command — error in C, no silent Python fallback */
+    fprintf(stderr, "a: '%s' is not a command. See 'a help'.\n", arg);
+    return 1;
 }

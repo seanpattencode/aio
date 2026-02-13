@@ -13,14 +13,14 @@ static int cmd_set(int argc, char **argv) {
 }
 
 /* ── install ── */
-static int cmd_install(void) {
+static int cmd_install(int argc, char **argv) { (void)argc;(void)argv;
     char s[P]; snprintf(s, P, "%s/a.c", SDIR);
     execlp("bash", "bash", s, "install", (char*)NULL);
     return 1;
 }
 
 /* ── uninstall ── */
-static int cmd_uninstall(void) {
+static int cmd_uninstall(int argc, char **argv) { (void)argc;(void)argv;
     printf("Uninstall aio? (y/n): "); char buf[16];
     if (!fgets(buf, 16, stdin) || (buf[0] != 'y' && buf[0] != 'Y')) return 0;
     char p[P];
@@ -30,7 +30,7 @@ static int cmd_uninstall(void) {
 }
 
 /* ── deps ── */
-static int cmd_deps(void) {
+static int cmd_deps(int argc, char **argv) { (void)argc;(void)argv;
     (void)!system("which tmux >/dev/null 2>&1 || sudo apt-get install -y tmux 2>/dev/null");
     printf("%s tmux\n", system("which tmux >/dev/null 2>&1") == 0 ? "\xe2\x9c\x93" : "x");
     (void)!system("which node >/dev/null 2>&1 || sudo apt-get install -y nodejs npm 2>/dev/null");
