@@ -22,7 +22,7 @@
 # free — Pass 2 always takes longer, so Pass 1 finishes first and
 # total build time = bare compile time.
 #
-#   make          clean -O3 binary, validated by -Weverything + hardening
+#   make          clean -O3 binary, validated by -Weverything + hardening (~700ms)
 #   make analyze  static analyzer (~4s) — use-after-free, null deref, leaks, taint
 #
 # No runtime sanitizers (ASan/TSan/MSan). They require exercising every
