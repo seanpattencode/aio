@@ -51,9 +51,9 @@ _warn_flags() {
     $CC -Werror -Wno-implicit-void-ptr-cast -x c -c /dev/null -o /dev/null 2>/dev/null && WARN+=" -Wno-implicit-void-ptr-cast" || :
     $CC -Werror -Wno-nullable-to-nonnull-conversion -x c -c /dev/null -o /dev/null 2>/dev/null && WARN+=" -Wno-nullable-to-nonnull-conversion" || :
     $CC -Werror -Wno-poison-system-directories -x c -c /dev/null -o /dev/null 2>/dev/null && WARN+=" -Wno-poison-system-directories" || :
-    HARDEN="-fstack-protector-strong -ftrivial-auto-var-init=zero -fno-common"
-    HARDEN+=" -D_FORTIFY_SOURCE=3 -fsanitize=safe-stack -fsanitize=cfi -fvisibility=hidden"
-    [[ "$(uname)" != "Darwin" ]] && HARDEN+=" -fstack-clash-protection -fcf-protection=full"
+    HARDEN="-fstack-protector-strong -ftrivial-auto-var-init=zero -fno-common -D_FORTIFY_SOURCE=3 -fvisibility=hidden"
+    # these flags + stack-clash/cf-protection unsupported on darwin; || : for bash 3.2 set -e
+    [[ "$(uname)" != "Darwin" ]] && HARDEN+=" -fsanitize=safe-stack -fsanitize=cfi -fstack-clash-protection -fcf-protection=full" || :
 }
 
 _shell_funcs() {
