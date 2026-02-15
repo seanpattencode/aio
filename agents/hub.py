@@ -5,8 +5,8 @@ from pathlib import Path
 # Add lib/ to path for imports
 _SDIR = str(Path(__file__).resolve().parent.parent / 'lib')
 if _SDIR not in sys.path: sys.path.insert(0, _SDIR)
-from a_cmd._common import init_db, load_proj, load_apps, db, DEVICE_ID as DI, DATA_DIR, SYNC_ROOT, alog
-from a_cmd.sync import sync
+from _common import init_db, load_proj, load_apps, db, DEVICE_ID as DI, DATA_DIR, SYNC_ROOT, alog
+from sync import sync
 
 AIO_PY = str(Path(__file__).resolve().parent.parent / 'lib' / 'a.py')
 HUB_DIR = SYNC_ROOT / 'agents'
