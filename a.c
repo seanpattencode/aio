@@ -10,6 +10,14 @@
 # The #if 0 block is a polyglot: shell sees # as comments and runs the
 # script; the C preprocessor skips everything between #if 0 and #endif.
 # Three files (a.c + Makefile + install.sh) become one.
+#
+# CLAUDE CODE TERMUX WORKAROUND: Claude Code's sandbox fails on Termux
+# because it tries to mkdir in /tmp (owned by shell, not writable).
+# "bash a.c" won't run at all. To build manually from Claude Code:
+#   D=/data/data/com.termux/files/home/projects/a
+#   clang-21 -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" \
+#     -O3 -march=native -flto -w -o "$D/a" "$D/a.c"
+# Fix: ln -sf $PREFIX/tmp /tmp  (or: echo 'export TMPDIR=$PREFIX/tmp' >> ~/.bashrc)
 
 [ -z "$BASH_VERSION" ] && exec bash "$0" "$@"
 set -e
