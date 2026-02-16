@@ -15,7 +15,7 @@ static void ssh_cmd(const char*pw,const char*hp,const char*port,const char*opt,c
     if(cmd)(void)!system(c);else execl("/bin/sh","sh","-c",c,(char*)NULL);
 }
 static int cmd_ssh(int argc, char **argv) {
-    char dir[P]; snprintf(dir,P,"%s/ssh",SROOT); mkdirp(dir); sync_repo();
+    char dir[P]; snprintf(dir,P,"%s/ssh",SROOT); mkdirp(dir); sync_bg();
     typedef struct{char name[128],host[256],pw[256];}host_t;
     host_t H[32];int nh=0,arc=0;
     char paths[32][P];int np=listdir(dir,paths,32);
