@@ -327,6 +327,7 @@ static void alog(const char *cmd, const char *cwd, const char *extra);
 #include "lib/ls.c"       /* ls, kill, copy, send, jobs */
 #include "lib/note.c"     /* notes + tasks (priority/review) */
 #include "lib/ssh.c"      /* ssh connect/add/broadcast */
+#include "lib/hub.c"      /* hub: scheduled jobs */
 #include "lib/net.c"      /* sync, update, log, login */
 #include "lib/agent.c"    /* autonomous agent + multi-run */
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */

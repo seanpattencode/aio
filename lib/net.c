@@ -1,6 +1,3 @@
-/* ── hub ── */
-static int cmd_hub(int argc, char **argv) { fallback_py("hub", argc, argv); }
-
 /* ── log ── */
 static int cmd_log(int argc, char **argv) {
     const char *sub = argc > 2 ? argv[2] : NULL;
