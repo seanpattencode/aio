@@ -13,7 +13,7 @@ static void fallback_py(const char *mod, int argc, char **argv) {
 /* ═══ SESSION CREATE ═══ */
 static void create_sess(const char *sn, const char *wd, const char *cmd) {
     int ai = cmd && (strstr(cmd,"claude") || strstr(cmd,"codex") || strstr(cmd,"gemini") || strstr(cmd,"aider"));
-    char wcmd[B*5];
+    char wcmd[B*2];
     if (ai) snprintf(wcmd, sizeof(wcmd),
         "while :; do %s; e=$?; [ $e -eq 0 ] && break; echo -e \"\\n! Crashed (exit $e). [R]estart / [Q]uit: \"; read -n1 k; [[ $k =~ [Rr] ]] || break; done", cmd);
     else snprintf(wcmd, sizeof(wcmd), "%s", cmd ? cmd : "");
@@ -35,13 +35,13 @@ static void create_sess(const char *sn, const char *wd, const char *cmd) {
     FILE *af = fopen(alf, "a"); if (af) { fprintf(af, "%s %ld %s\n", sn, (long)now, DEV); fclose(af); }
 }
 
-static void send_prefix_bg(const char *sn, const char *agent, const char *wd) {
+static void send_prefix_bg(const char *sn, const char *agent, const char *wd, const char *extra) {
     const char *cp = strstr(agent, "claude") ? cfget("claude_prefix") : "";
-    char pre[B*4]; snprintf(pre, sizeof(pre), "%s%s", dprompt(), cp);
-    /* Check for AGENTS.md */
+    char pre[B*4]; int n = snprintf(pre, sizeof(pre), "%s%s", dprompt(), cp);
     char af[P]; snprintf(af, P, "%s/AGENTS.md", wd);
     char *amd = readf(af, NULL);
-    if (amd) { size_t n = strlen(pre); snprintf(pre + n, (size_t)(B*4 - (int)n), "%s ", amd); free(amd); }
+    if (amd) { n += snprintf(pre+n, sizeof(pre)-(unsigned)n, "%s ", amd); free(amd); }
+    if (extra) snprintf(pre+n, sizeof(pre)-(unsigned)n, "%s", extra);
     if (!pre[0]) return;
     if (fork() == 0) {
         setsid();
@@ -55,6 +55,7 @@ static void send_prefix_bg(const char *sn, const char *agent, const char *wd) {
             if (strstr(lo,"context") || strstr(lo,"claude") || strstr(lo,"opus") || strstr(lo,"gemini") || strstr(lo,"codex")) break;
         }
         tm_send(sn, pre);
+        if (extra) { usleep(100000); execlp("tmux","tmux","send-keys","-t",sn,"Enter",(char*)NULL); }
         _exit(0);
     }
 }

@@ -30,17 +30,12 @@ static int cmd_sess(int argc, char **argv) {
     }
     /* Inside tmux + single char key = split pane mode */
     if (getenv("TMUX") && strlen(key) == 1 && key[0] != 'a') {
-        char cmd[B*5]; snprintf(cmd, sizeof(cmd), "%s", s->cmd);
-        if (is_prompt && prompt[0]) {
-            size_t cl = strlen(cmd); snprintf(cmd+cl, sizeof(cmd)-cl, " '%s%s'", dprompt(), prompt);
-        }
-        /* Split pane */
-        char c[B*5]; snprintf(c, sizeof(c), "tmux split-window -hfP -F '#{pane_id}' -c '%s' '%s'", wd, cmd);
+        char c[B]; snprintf(c, B, "tmux split-window -hfP -F '#{pane_id}' -c '%s' '%s'", wd, s->cmd);
         char pid[64]; pcmd(c, pid, 64); pid[strcspn(pid,"\n")] = 0;
         if (pid[0]) {
             snprintf(c, B, "tmux split-window -v -t '%s' -c '%s' 'sh -c \"ls;exec $SHELL\"'", pid, wd); (void)!system(c);
             snprintf(c, B, "tmux select-pane -t '%s'", pid); (void)!system(c);
-            if (!is_prompt) send_prefix_bg(pid, s->name, wd);
+            send_prefix_bg(pid, s->name, wd, is_prompt ? prompt : NULL);
         }
         return 0;
     }
@@ -58,12 +53,8 @@ static int cmd_sess(int argc, char **argv) {
         return 0;
     }
     /* Create new session */
-    char cmd[B*5]; snprintf(cmd, sizeof(cmd), "%s", s->cmd);
-    if (is_prompt && prompt[0]) {
-        size_t cl = strlen(cmd); snprintf(cmd+cl, sizeof(cmd)-cl, " '%s%s'", dprompt(), prompt);
-    }
-    create_sess(sn, wd, cmd);
-    if (!is_prompt) send_prefix_bg(sn, s->name, wd);
+    create_sess(sn, wd, s->cmd);
+    send_prefix_bg(sn, s->name, wd, is_prompt ? prompt : NULL);
     tm_go(sn);
     return 0;
 }
