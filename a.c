@@ -11,13 +11,16 @@
 # script; the C preprocessor skips everything between #if 0 and #endif.
 # Three files (a.c + Makefile + install.sh) become one.
 #
-# CLAUDE CODE TERMUX WORKAROUND: Claude Code's sandbox fails on Termux
-# because it tries to mkdir in /tmp (owned by shell, not writable).
-# "bash a.c" won't run at all. To build manually from Claude Code:
+# CLAUDE CODE TERMUX WORKAROUND:
+# Claude Code's sandbox treats "bash <script>" differently from direct
+# commands. Running a script file triggers sandbox monitoring that tries
+# to mkdir under /tmp. On Termux, /tmp is owned by "shell" (not the app
+# user), so that mkdir fails and the script never starts.
+# Direct commands (clang-21 ..., python3 ..., ./a help) skip that path
+# and work fine. So: run the compiler directly instead of "bash a.c".
 #   D=/data/data/com.termux/files/home/projects/a
 #   clang-21 -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" \
 #     -O3 -march=native -flto -w -o "$D/a" "$D/a.c"
-# Fix: ln -sf $PREFIX/tmp /tmp  (or: echo 'export TMPDIR=$PREFIX/tmp' >> ~/.bashrc)
 
 [ -z "$BASH_VERSION" ] && exec bash "$0" "$@"
 set -e
