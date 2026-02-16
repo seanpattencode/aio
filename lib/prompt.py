@@ -1,16 +1,15 @@
 """aio prompt - Manage default prompt"""
 import sys
-from _common import init_db, load_cfg, db, list_all
+from _common import PROMPTS_DIR, get_prompt, list_all
+from sync import sync
 
 def run():
-    init_db()
-    cfg = load_cfg()
+    pf = PROMPTS_DIR / 'default.txt'
     val = ' '.join(sys.argv[2:]) if len(sys.argv) > 2 else None
     if not val:
-        cur = cfg.get('default_prompt', '')
+        cur = get_prompt('default') or ''
         print(f"Current: {cur or '(none)'}"); val = input("New (empty to clear): ").strip()
         if val == '' and cur == '': return
     val = '' if val in ('off', 'none', '""', "''") else val
-    with db() as c: c.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", ('default_prompt', val)); c.commit()
-    list_all(quiet=True)
-    print(f"✓ {'(cleared)' if not val else val}")
+    PROMPTS_DIR.mkdir(parents=True, exist_ok=True); pf.write_text(val); sync()
+    list_all(quiet=True); print(f"✓ {'(cleared)' if not val else val}")

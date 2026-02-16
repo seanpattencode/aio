@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Constants
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-ADATA_ROOT = next((p for p in [Path(SCRIPT_DIR) / 'adata', Path.home() / 'projects' / 'a' / 'adata', Path.home() / 'adata'] if p.exists()), Path(SCRIPT_DIR) / 'adata')
+ADATA_ROOT = next((p for p in [Path(SCRIPT_DIR) / 'adata', Path.home() / 'projects' / 'a' / 'adata', Path.home() / 'adata'] if (p / 'git').exists()), Path(SCRIPT_DIR) / 'adata')
 PROMPTS_DIR = ADATA_ROOT / 'git' / 'common' / 'prompts'
 DATA_DIR = str(ADATA_ROOT / 'local')
 DB_PATH = os.path.join(DATA_DIR, "aio.db")
@@ -430,7 +430,7 @@ def is_active(sn, thr=10):
     except: return False
 
 def get_prefix(agent, cfg, wd=None):
-    dp = cfg.get('default_prompt', '')
+    dp = get_prompt('default') or ''
     pre = cfg.get('claude_prefix', 'Ultrathink. ') if 'claude' in agent else ''
     af = Path(wd or os.getcwd()) / 'AGENTS.md'
     return (dp + ' ' if dp else '') + pre + (af.read_text().strip() + ' ' if af.exists() else '')
