@@ -29,7 +29,7 @@ _ensure_cc() {
     if [[ -f /data/data/com.termux/files/usr/bin/bash ]]; then
         pkg install -y clang
     elif [[ -f /etc/debian_version ]]; then
-        curl -fsSL https://apt.llvm.org/llvm.sh | sudo bash -s -- 23 2>/dev/null || sudo apt-get install -y clang
+        T=/tmp/llvm.sh && curl -fsSL https://apt.llvm.org/llvm.sh -o $T && sudo bash $T $(grep -o 'PATTERNS\[[0-9]*' $T|grep -o '[0-9]*'|sort -rn|head -1) 2>/dev/null || sudo apt-get install -y clang
     elif [[ -f /etc/arch-release ]]; then
         sudo pacman -S --noconfirm clang
     elif [[ -f /etc/fedora-release ]]; then
