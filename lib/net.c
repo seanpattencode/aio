@@ -117,6 +117,9 @@ static int cmd_update(int argc, char **argv) {
     /* Self-build: prefer clang, fall back to gcc */
     snprintf(c, B, "sh '%s/a.c'", SDIR);
     if (system(c) == 0) puts("\xe2\x9c\x93 Built"); else puts("x Build failed");
+    /* Re-link ~/.local/bin/a -> built binary */
+    snprintf(c, B, "ln -sf '%s/a' '%s/.local/bin/a'", SDIR, getenv("HOME"));
+    (void)!system(c);
     /* Refresh shell + caches */
     snprintf(c, B, "bash '%s/a.c' shell 2>/dev/null", SDIR); (void)!system(c);
     init_db(); load_cfg(); list_all(1, 1);
