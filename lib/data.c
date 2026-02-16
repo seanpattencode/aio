@@ -1,7 +1,7 @@
 /* ═══ DATA FILES ═══ */
 static const char *dprompt(void) {
-    static char b[B]; char p[P]; snprintf(p,P,"%s/common/prompts/default.txt",SROOT);
-    char *d=readf(p,NULL); b[0]=0; if(d){snprintf(b,B,"%s ",d);free(d);} return b;
+    static char b[B*4]; char p[P]; snprintf(p,P,"%s/common/prompts/default.txt",SROOT);
+    char *d=readf(p,NULL); b[0]=0; if(d){snprintf(b,sizeof(b),"%s ",d);free(d);} return b;
 }
 static void esc_nl(const char *s, char *o, int sz) {
     int j = 0;

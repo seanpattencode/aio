@@ -13,7 +13,7 @@ static void fallback_py(const char *mod, int argc, char **argv) {
 /* ═══ SESSION CREATE ═══ */
 static void create_sess(const char *sn, const char *wd, const char *cmd) {
     int ai = cmd && (strstr(cmd,"claude") || strstr(cmd,"codex") || strstr(cmd,"gemini") || strstr(cmd,"aider"));
-    char wcmd[B*2];
+    char wcmd[B*5];
     if (ai) snprintf(wcmd, sizeof(wcmd),
         "while :; do %s; e=$?; [ $e -eq 0 ] && break; echo -e \"\\n! Crashed (exit $e). [R]estart / [Q]uit: \"; read -n1 k; [[ $k =~ [Rr] ]] || break; done", cmd);
     else snprintf(wcmd, sizeof(wcmd), "%s", cmd ? cmd : "");
@@ -37,11 +37,11 @@ static void create_sess(const char *sn, const char *wd, const char *cmd) {
 
 static void send_prefix_bg(const char *sn, const char *agent, const char *wd) {
     const char *cp = strstr(agent, "claude") ? cfget("claude_prefix") : "";
-    char pre[B]; snprintf(pre, B, "%s%s", dprompt(), cp);
+    char pre[B*4]; snprintf(pre, sizeof(pre), "%s%s", dprompt(), cp);
     /* Check for AGENTS.md */
     char af[P]; snprintf(af, P, "%s/AGENTS.md", wd);
     char *amd = readf(af, NULL);
-    if (amd) { size_t n = strlen(pre); snprintf(pre + n, (size_t)(B - (int)n), "%s ", amd); free(amd); }
+    if (amd) { size_t n = strlen(pre); snprintf(pre + n, (size_t)(B*4 - (int)n), "%s ", amd); free(amd); }
     if (!pre[0]) return;
     if (fork() == 0) {
         setsid();

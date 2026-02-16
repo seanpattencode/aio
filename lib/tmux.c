@@ -10,7 +10,7 @@ static void tm_go(const char *s) {
 }
 
 static int tm_new(const char *s, const char *wd, const char *cmd) {
-    char c[B*2];
+    char c[B*6];
     if (cmd && cmd[0]) snprintf(c, sizeof(c), "tmux new-session -d -s '%s' -c '%s' '%s'", s, wd, cmd);
     else snprintf(c, sizeof(c), "tmux new-session -d -s '%s' -c '%s'", s, wd);
     return system(c);
