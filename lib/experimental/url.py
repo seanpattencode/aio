@@ -16,7 +16,7 @@ def _browser_cmd(os_info, url):
         return f'xdg-open "{url}" 2>/dev/null || sensible-browser "{url}" 2>/dev/null || echo "no browser"'
 
 def run():
-    url = sys.argv[2] if len(sys.argv) > 2 else 'https://github.com/seanpattencode/aio'
+    url = sys.argv[2] if len(sys.argv) > 2 else 'https://github.com/seanpattencode/a'
     if not url.startswith('http'): url = 'https://' + url
     hosts = _load()
     print(f"Opening: {url}\n")
