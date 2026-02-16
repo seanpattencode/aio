@@ -21,14 +21,15 @@ info() { echo -e "${C}>${R} $1"; }
 warn() { echo -e "${Y}!${R} $1"; }
 
 _ensure_cc() {
-    command -v clang &>/dev/null && { CC=clang; return 0; }
-    command -v gcc &>/dev/null && { CC=gcc; return 0; }
-    # Auto-install clang
+    CC=$(compgen -c clang- 2>/dev/null|grep -xE 'clang-[0-9]+'|sort -t- -k2 -rn|head -1) || CC=""
+    [[ -z "$CC" ]] && for CC in clang gcc; do command -v $CC &>/dev/null && break; done
+    [[ -n "$CC" ]] && return 0
+    # Auto-install clang (prefer LLVM apt repo for latest on debian)
     info "No C compiler found — installing clang..."
     if [[ -f /data/data/com.termux/files/usr/bin/bash ]]; then
         pkg install -y clang
     elif [[ -f /etc/debian_version ]]; then
-        sudo apt-get install -y clang
+        curl -fsSL https://apt.llvm.org/llvm.sh | sudo bash -s -- 23 2>/dev/null || sudo apt-get install -y clang
     elif [[ -f /etc/arch-release ]]; then
         sudo pacman -S --noconfirm clang
     elif [[ -f /etc/fedora-release ]]; then
