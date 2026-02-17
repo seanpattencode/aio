@@ -203,6 +203,7 @@ static int cmd_task(int argc,char**argv){
         printf("  a task r          review tasks (send to claude, manage sessions)\n");
         printf("  a task add <t>    add task (prefix 5-digit priority, default 50000)\n");
         printf("  a task d #        archive task #\n");
+        printf("  a task flag       AI-assisted task triage/cleanup\n");
         printf("  a task pri # N    set priority of task # to N\n");
         printf("  a task deadline # YYYY-MM-DD  set deadline\n");
         printf("  a task due        list by deadline\n");
@@ -221,7 +222,7 @@ static int cmd_task(int argc,char**argv){
         int n=grn?grn:load_tasks(dir);if(!n){puts("No tasks");return 0;}
         {int i=isdigit(*sub)?atoi(sub)-1:argc>3?atoi(argv[3])-1:0;if(i<0||i>=n)i=0;int show=1;
         while(i<n){if(show)task_show(i,n);show=1;
-            printf("\n  [e]archive [a]dd [c]prompt [r]un [g]o [d]eadline [p]ri  [j]next [k]back [q]uit  ");fflush(stdout);
+            printf("\n  [e]archive [a]dd [c]prompt [r]un [g]o [d]eadline [p]ri [/]search  [j]next [k]back [q]uit  ");fflush(stdout);
             int k=task_getkey();putchar('\n');
             if(k=='e'){do_archive(T[i].d);printf("\xe2\x9c\x93 Archived: %.40s\n",T[i].t);
                 sync_bg();n=load_tasks(dir);if(i>=n)i=n-1;if(i<0)break;}
@@ -394,6 +395,21 @@ static int cmd_task(int argc,char**argv){
                     char dn[32];dl_norm(db,dn,32);
                     char df[P];snprintf(df,P,"%s/deadline.txt",T[i].d);writef(df,dn);printf("\xe2\x9c\x93 %s\n",dn);sync_bg();}
                 task_show(i,n);show=0;}
+            else if(k=='/'||k=='s'){printf("  Search: ");fflush(stdout);
+                char q[128];if(!fgets(q,128,stdin)||q[0]=='\n'){show=0;continue;}q[strcspn(q,"\n")]=0;
+                int mx[256],nm=0;for(int j=0;j<n&&nm<256;j++){
+                    if(strcasestr(T[j].t,q)){mx[nm++]=j;continue;}
+                    struct stat ss;if(stat(T[j].d,&ss))continue;
+                    if(!S_ISDIR(ss.st_mode)){size_t l;char*fc=readf(T[j].d,&l);
+                        if(fc){if(strcasestr(fc,q))mx[nm++]=j;free(fc);}continue;}
+                    char sd[P];snprintf(sd,P,"%s/task",T[j].d);DIR*dd=opendir(sd);if(!dd)continue;
+                    struct dirent*de;int fd=0;while((de=readdir(dd))&&!fd){if(de->d_name[0]=='.'||!strstr(de->d_name,".txt"))continue;
+                        char fp[P];snprintf(fp,P,"%s/%s",sd,de->d_name);size_t l;char*fc=readf(fp,&l);
+                        if(fc){if(strcasestr(fc,q)){mx[nm++]=j;fd=1;}free(fc);}}closedir(dd);
+                }if(!nm){printf("  No match\n");show=0;continue;}
+                for(int j=0;j<nm;j++)printf("  %d. [P%s] %.60s\n",j+1,T[mx[j]].p,T[mx[j]].t);
+                printf("  Go to (1-%d): ",nm);fflush(stdout);
+                char gb[8];if(fgets(gb,8,stdin)&&gb[0]!='\n'){int gi=atoi(gb)-1;if(gi>=0&&gi<nm)i=mx[gi];else show=0;}else show=0;}
             else if(k=='k'){if(i>0)i--;else{printf("  (first task)\n");show=0;}}
             else if(k=='q'||k==3||k==27)break;else if(k=='j')i++;else{show=0;}}
         if(i>=n)puts("Done");return 0;}}
@@ -406,8 +422,11 @@ static int cmd_task(int argc,char**argv){
             pri=atoi(argv[3]);si=4;if(si>=argc){puts("a task add [PPPPP] <text>");return 1;}}
         char t[B]="";for(int i=si,l=0;i<argc;i++) l+=snprintf(t+l,(size_t)(B-l),"%s%s",i>si?" ":"",argv[i]);
         task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();return 0;}
-    if(*sub=='d'&&!sub[1]){if(argc<4){puts("a task d #");return 1;}int n=load_tasks(dir),x=atoi(argv[3])-1;
-        if(x<0||x>=n){puts("x Invalid");return 1;}do_archive(T[x].d);printf("\xe2\x9c\x93 %.40s\n",T[x].t);sync_bg();return 0;}
+    if(*sub=='d'&&!sub[1]){if(argc<4){puts("a task d <#|name>...");return 1;}int n=load_tasks(dir);
+        for(int j=3;j<argc;j++){int x=-1,v=atoi(argv[j]);if(v>0&&v<=n)x=v-1;
+            else{for(int i=0;i<n;i++){char*b=strrchr(T[i].d,'/');if(b&&!strcmp(b+1,argv[j])){x=i;break;}}}
+            if(x<0||x>=n){printf("x %s\n",argv[j]);continue;}do_archive(T[x].d);printf("\xe2\x9c\x93 %.40s\n",T[x].t);}
+        sync_bg();return 0;}
     if(!strcmp(sub,"deadline")){if(argc<5){puts("a task deadline # MM-DD [HH:MM]");return 1;}
         int n=load_tasks(dir),x=atoi(argv[3])-1;if(x<0||x>=n){puts("x Invalid");return 1;}
         char raw[64]="";for(int j=4,l=0;j<argc;j++) l+=snprintf(raw+l,(size_t)(64-l),"%s%s",j>4?" ":"",argv[j]);
@@ -433,6 +452,23 @@ static int cmd_task(int argc,char**argv){
         printf("task_show(x%d): %.0f us total, %.0f us/task\n",m,us,us/m);
         return 0;}
     if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
+    if(!strcmp(sub,"flag")||!strcmp(sub,"f")){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
+        char tf[P];snprintf(tf,P,"/tmp/a_flag_%d.txt",(int)getpid());
+        FILE*fp=fopen(tf,"w");if(!fp)return 1;
+        fprintf(fp,"Help me clean up my task list. Identify tasks to archive (duplicate, done, vague, obsolete).\n"
+            "Ask me to confirm each batch. For confirmed tasks run: a task d <dirname> <dirname>...\n"
+            "Use directory names (in brackets) as stable IDs. Multiple can be deleted in one command.\n"
+            "Go in batches of ~10. Only archive what I approve.\n\n"
+            "COMMANDS: a task d <dirname>... (archive) | a task pri # N (reprioritize) | a task sync\n\nTASK LIST:\n");
+        for(int i=0;i<n;i++){char ft[B]="",td[P];snprintf(td,P,"%s/task",T[i].d);
+            DIR*dd=opendir(td);if(dd){struct dirent*de;
+                while((de=readdir(dd))){if(de->d_name[0]!='.'){ char fp2[P];snprintf(fp2,P,"%s/%s",td,de->d_name);
+                    char*c=readf(fp2,NULL);if(c){if(!strncmp(c,"Text: ",6)){char*nl=strchr(c+6,'\n');if(nl)*nl=0;snprintf(ft,B,"%s",c+6);}free(c);break;}}}
+                closedir(dd);}
+            char*bn=strrchr(T[i].d,'/');fprintf(fp,"  %d. P%s %s [%s]\n",i+1,T[i].p,ft[0]?ft:T[i].t,bn?bn+1:"?");}
+        fclose(fp);printf("Task list: %s (%d tasks)\n",tf,n);
+        char pr[256];snprintf(pr,256,"Read %s and follow the instructions to help me triage tasks.",tf);
+        execvp("a",(char*[]){"a","c",pr,NULL});return 1;}
     if(!strcmp(sub,"0")||!strcmp(sub,"s")||!strcmp(sub,"p")||!strcmp(sub,"do")){
         const char*x=*sub=='0'?"priority":!strcmp(sub,"s")?"suggest":!strcmp(sub,"p")?"plan":"do";
         char cmd[64];snprintf(cmd,64,"x.%s",x);execvp("a",(char*[]){"a",cmd,NULL});return 1;}
