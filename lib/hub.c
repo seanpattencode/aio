@@ -33,11 +33,9 @@ static void hub_save(hub_t *j) {
 static void hub_timer(hub_t *j, int on) {
     char sd[P],buf[B]; snprintf(sd,P,"%s/.config/systemd/user",HOME); mkdirp(sd);
     if(on) {
-        char cmd[B]; if(!strncmp(j->p,"aio ",4)) snprintf(cmd,B,"%s/.local/bin/a %s",HOME,j->p+4);
-        else snprintf(cmd,B,"%s",j->p);
-        snprintf(buf,B,"[Unit]\nDescription=%s\n[Service]\nType=oneshot\nExecStart=/bin/bash -c '%s'\n",j->n,cmd);
+        snprintf(buf,B,"[Unit]\nDescription=%s\n[Service]\nType=oneshot\nExecStart=/bin/bash -c '%s/.local/bin/a hub run %s'\n",j->n,HOME,j->n);
         char svc[P]; snprintf(svc,P,"%s/aio-%s.service",sd,j->n); writef(svc,buf);
-        snprintf(buf,B,"[Unit]\nDescription=%s\n[Timer]\nOnCalendar=%s\nPersistent=true\n[Install]\nWantedBy=timers.target\n",j->n,j->s);
+        snprintf(buf,B,"[Unit]\nDescription=%s\n[Timer]\nOnCalendar=%s\nAccuracySec=1s\nPersistent=true\n[Install]\nWantedBy=timers.target\n",j->n,j->s);
         char tmr[P]; snprintf(tmr,P,"%s/aio-%s.timer",sd,j->n); writef(tmr,buf);
         snprintf(buf,B,"systemctl --user daemon-reload && systemctl --user enable --now aio-%s.timer 2>/dev/null",j->n);
     } else {
