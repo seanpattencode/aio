@@ -186,10 +186,23 @@ install)
     install_cli "@anthropic-ai/claude-code" "claude"
     install_cli "@openai/codex" "codex"
     install_cli "@google/gemini-cli" "gemini"
-    PIP_PKGS="pexpect prompt_toolkit"; [[ "$OS" == mac ]] && PIP_FLAGS="--break-system-packages" || PIP_FLAGS=""
-    if command -v pip3 &>/dev/null; then pip3 install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras"
-    elif command -v pip &>/dev/null; then pip install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras"
-    elif command -v python3 &>/dev/null; then python3 -m ensurepip --user 2>/dev/null; python3 -m pip install --user $PIP_FLAGS -q $PIP_PKGS 2>/dev/null && ok "python extras" || warn "pip not available"; fi
+    # Python venv — solves PEP 668 (externally-managed-environment).
+    # Modern distros (Ubuntu 23.04+, Homebrew, Fedora 38+) block global pip
+    # install. A venv in adata/ bypasses this cleanly: isolated, no sudo,
+    # survives Python upgrades. fallback_py() in session.c tries the venv
+    # python first, falls back to system python3 if missing.
+    # _best_py picks the newest stable python that has the venv module.
+    _best_py() {
+        for v in python3.14 python3.13 python3.12 python3.11 python3; do command -v $v &>/dev/null && { $v -c 'import venv' 2>/dev/null && echo $v && return; }; done
+    }
+    VENV="$D/adata/venv"; PY=$(_best_py)
+    if [[ -n "$PY" ]]; then
+        if [[ ! -f "$VENV/bin/python" ]]; then
+            info "Creating venv with $PY..."
+            $PY -m venv "$VENV" && ok "venv ($($VENV/bin/python --version))" || warn "venv creation failed"
+        else ok "venv (exists: $($VENV/bin/python --version))"; fi
+        [[ -f "$VENV/bin/pip" ]] && $VENV/bin/pip install -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python deps" || warn "pip install failed"
+    else warn "python3 not found"; fi
     if ! command -v ollama &>/dev/null; then
         if [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then
             info "Installing ollama..."
@@ -307,6 +320,11 @@ exit 0
  *     common/prompts/           shared prompt templates
  *     context/                  agent context files (.txt, togglable)
  *     docs/                     user documents
+ *   venv/                     Python venv — isolated deps (aiohttp, pexpect, etc)
+ *                               Created by `a install`, refreshed by `a update`.
+ *                               fallback_py() tries venv/bin/python first, then
+ *                               system python3. Solves PEP 668 (Ubuntu 23.04+,
+ *                               Homebrew) where global pip install is blocked.
  *   sync/                     rclone copy <->, all devices, large files <5G
  *   vault/                    rclone copy on-demand, big devices, models
  *   backup/                   rclone move ->, all devices, logs+state

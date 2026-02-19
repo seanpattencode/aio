@@ -1,11 +1,16 @@
 import sys, os, socket, subprocess as S, webbrowser as W, time
 
+def _vpy():
+    lib = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    vp = os.path.join(os.path.dirname(lib), 'adata', 'venv', 'bin', 'python')
+    return vp if os.access(vp, os.X_OK) else sys.executable
+
 def _try(p=8080):
     with socket.socket() as s:
         if s.connect_ex(('127.0.0.1', p)) == 0: W.open(f'http://127.0.0.1:{p}'); return True
 
 def _bg(m, p):
-    S.Popen([sys.executable, '-c', f"from ui.{m} import run;run({p})"], start_new_session=True, stdout=S.DEVNULL, stderr=None, env={**os.environ, 'PYTHONPATH': os.path.dirname(os.path.dirname(os.path.realpath(__file__)))})
+    S.Popen([_vpy(), '-c', f"from ui.{m} import run;run({p})"], start_new_session=True, stdout=S.DEVNULL, stderr=None, env={**os.environ, 'PYTHONPATH': os.path.dirname(os.path.dirname(os.path.realpath(__file__)))})
     time.sleep(0.3); W.open(f'http://127.0.0.1:{p}'); print(f'UI on 127.0.0.1:{p}')
 
 def run():

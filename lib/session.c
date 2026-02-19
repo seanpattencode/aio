@@ -2,11 +2,14 @@
 __attribute__((noreturn))
 static void fallback_py(const char *mod, int argc, char **argv) {
     char path[P]; snprintf(path, P, "%s/lib/%s.py", SDIR, mod);
+    char vpy[P]; snprintf(vpy, P, "%s/venv/bin/python", AROOT);
     char **na = malloc(((unsigned)argc + 3) * sizeof(char *));
-    na[0] = "python3"; na[1] = path;
+    na[0] = "python"; na[1] = path;
     for (int i = 1; i < argc; i++) na[i + 1] = argv[i];
     na[argc + 1] = NULL;
-    execvp("python3", na);
+    /* prefer venv python, fall back to system */
+    if (access(vpy, X_OK) == 0) execv(vpy, na);
+    na[0] = "python3"; execvp("python3", na);
     perror("a: python3"); _exit(127);
 }
 
