@@ -167,7 +167,7 @@ install)
         fedora)
             if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi ;;
-        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone && ok "pkgs" ;;
+        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone termux-services && ok "pkgs" ;;
         *) install_node; warn "Unknown OS - install tmux manually" ;;
     esac
     _ensure_cc
@@ -216,6 +216,7 @@ install)
             curl -fsSL https://ollama.com/install.sh | sh && ok "ollama" || warn "ollama install failed"
         else warn "ollama needs sudo - run: curl -fsSL https://ollama.com/install.sh | sudo sh"; fi
     else ok "ollama (exists)"; fi
+    "$BIN/a" ui on 2>/dev/null && ok "UI service (localhost:1111)" || :
     [[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/a" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)" || :
     "$BIN/a" >/dev/null 2>&1 && ok "cache generated" || :
     command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && "$BIN/a" backup setup 2>/dev/null && ok "sync configured"; } || :

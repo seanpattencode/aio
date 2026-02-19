@@ -24,13 +24,18 @@ def _lan():
         s.connect(('8.8.8.8', 80)); ip = s.getsockname()[0]; s.close(); return ip
     except Exception: return None
 
+_TERMUX = os.path.isdir('/data/data/com.termux')
 def _plist(): return os.path.expanduser('~/Library/LaunchAgents/com.a.ui.plist')
 def _unit(): return os.path.expanduser('~/.config/systemd/user/a-ui.service')
+def _svdir(): return os.path.join(os.environ.get('PREFIX', '/usr'), 'var/service/a-ui')
 
 def _svc_off():
     if platform.system() == 'Darwin':
         p = _plist()
         if os.path.exists(p): S.run(['launchctl', 'unload', p], capture_output=True); os.remove(p)
+    elif _TERMUX:
+        sd = _svdir()
+        if os.path.isdir(sd): S.run(['sv', 'down', 'a-ui'], capture_output=True); S.run(['rm', '-rf', sd])
     else:
         S.run(['systemctl', '--user', 'disable', '--now', 'a-ui'], capture_output=True)
         u = _unit()
@@ -60,6 +65,11 @@ def _svc_on(m='ui_full', p=PORT):
 </dict>
 </plist>''')
         S.run(['launchctl', 'load', pf], capture_output=True); return True
+    if _TERMUX:
+        sd = _svdir(); _svc_off(); os.makedirs(sd, exist_ok=True); rs = os.path.join(sd, 'run')
+        prefix = os.environ.get('PREFIX', '/data/data/com.termux/files/usr')
+        with open(rs, 'w') as f: f.write(f'#!{prefix}/bin/sh\nexport PYTHONPATH={lib}\nexec {vpy} -c "from ui.{m} import run;run({p})"\n')
+        os.chmod(rs, 0o755); S.run(['sv', 'up', 'a-ui'], capture_output=True); return True
     if S.run(['systemctl', '--user', '--version'], capture_output=True).returncode == 0:
         _svc_off(); ud = os.path.dirname(_unit()); os.makedirs(ud, exist_ok=True)
         with open(_unit(), 'w') as f:
