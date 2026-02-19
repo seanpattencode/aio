@@ -210,6 +210,10 @@ install)
         else ok "venv (exists: $($VENV/bin/python --version))"; fi
         [[ -f "$VENV/bin/pip" ]] && $VENV/bin/pip install -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python deps" || warn "pip install failed"
     else warn "python3 not found"; fi
+    # UI auto-start service (launchd on mac, systemd on linux).
+    # Always-on ~15MB: server starts at login, restarts on crash.
+    # http://a.local:1111 just works. `a ui k` to disable.
+    "$BIN/a" ui on >/dev/null 2>&1 && ok "UI service (http://a.local:1111)" || :
     if ! command -v ollama &>/dev/null; then
         if [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then
             info "Installing ollama..."
