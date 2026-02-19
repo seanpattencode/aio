@@ -108,7 +108,7 @@ def get_prompt(name, show=False):
     pf = PROMPTS_DIR / f'{name}.txt'
     if pf.exists():
         show and print(f"Prompt: {pf}")
-        return pf.read_text().strip()
+        return pf.read_text(errors='replace').strip()
     return None
 
 def init_db():

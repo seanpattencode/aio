@@ -1,7 +1,7 @@
 """aio all - Multi-agent runs"""
-import sys, os, json, subprocess as sp
+import sys, os, json, subprocess as sp, time
 from datetime import datetime
-from _common import init_db, load_cfg, load_proj, load_sess, db, _env, parse_specs, ensure_tmux
+from _common import init_db, load_cfg, load_proj, load_sess, db, _env, parse_specs, ensure_tmux, get_prefix
 
 def run():
     init_db()
@@ -17,8 +17,10 @@ def run():
         if not parse_specs([''] + ns.split(), 1, cfg)[0]: print(f"Invalid: {ns}"); sys.exit(1)
         with db() as c: c.execute("INSERT OR REPLACE INTO config VALUES ('multi_default', ?)", (ns,)); c.commit(); print(f"✓ Default: {ns}"); sys.exit(0)
 
-    pp, si = (PROJ[int(wda)], 3) if wda and wda.isdigit() and int(wda) < len(PROJ) else (os.getcwd(), 2)
-    specs, _, _ = parse_specs(sys.argv, si, cfg)
+    pp, si = (PROJ[int(wda)][0], 3) if wda and wda.isdigit() and int(wda) < len(PROJ) else (os.getcwd(), 2)
+    if sp.run(['git','-C',pp,'rev-parse'],capture_output=True).returncode: print(f"x Not a git repo: {pp}"); sys.exit(1)
+    specs, prompt, is_default = parse_specs(sys.argv, si, cfg)
+    prompt = None if is_default else prompt
     if not specs: ds = cfg.get('multi_default', 'l:3'); specs, _, _ = parse_specs([''] + ds.split(), 1, cfg); print(f"Using: {ds}")
     total, rn, rid = sum(c for _, c in specs), os.path.basename(pp), datetime.now().strftime('%Y%m%d-%H%M%S')
     wt = WT_DIR if os.path.exists(os.path.dirname(WT_DIR)) else os.path.expanduser("~/projects/aWorktrees")
@@ -39,6 +41,15 @@ def run():
     for wt_path, bc in launched[1:]: sp.run(['tmux', 'split-window', '-h', '-t', sn, '-c', wt_path, bc], env=env)
     sp.run(['tmux', 'split-window', '-h', '-t', sn, '-c', cd], env=env); sp.run(['tmux', 'send-keys', '-t', sn, f'n={len(launched)}; while read -ep "> " c; do [ -n "$c" ] && for i in $(seq 0 $((n-1))); do tmux send-keys -l -t ":.$i" "$c"; tmux send-keys -t ":.$i" C-m; done; done', 'C-m'])
     sp.run(['tmux', 'select-layout', '-t', sn, 'even-horizontal'], env=env); ensure_tmux(cfg)
+    # send prefix + prompt to each agent pane in background
+    if prompt:
+        for idx, (wt_path, bc) in enumerate(launched):
+            pane = f"{sn}:.{idx}"
+            pre = get_prefix('claude', cfg, wt_path)
+            text = repr(pre + prompt)
+            script = f"import time,subprocess as s\nfor _ in range(300):\n time.sleep(0.05);r=s.run(['tmux','capture-pane','-t','{pane}','-p','-S','-50'],capture_output=True,text=True);o=r.stdout.lower()\n if r.returncode!=0 or any(x in o for x in['context','claude','opus','gemini','codex']):break\ns.run(['tmux','send-keys','-l','-t','{pane}',{text}])\ntime.sleep(0.1);s.run(['tmux','send-keys','-t','{pane}','Enter'])"
+            sp.Popen([sys.executable, '-c', script], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        print(f"Prompt queued to {len(launched)} agents")
     print(f"\n+ '{sn}': {len(launched)}+broadcast"); print(f"   tmux switch-client -t {sn}") if "TMUX" in os.environ else os.execvp('tmux', ['tmux', 'attach', '-t', sn])
 
 run()
