@@ -123,10 +123,12 @@ install)
     elif [[ -f /etc/arch-release ]]; then OS=arch
     elif [[ -f /etc/fedora-release ]]; then OS=fedora
     else OS=unknown; fi
-    SUDO=""
+    SUDO="" NEED_SUDO=0
+    ! command -v tmux &>/dev/null || ! command -v npm &>/dev/null && NEED_SUDO=1
+    ! grep -q 'a\.local' /etc/hosts 2>/dev/null && NEED_SUDO=1
     if [[ $EUID -eq 0 ]]; then SUDO=""
     elif sudo -n true 2>/dev/null; then SUDO="sudo"
-    elif command -v sudo &>/dev/null && [[ -t 0 ]]; then info "sudo password needed for system packages"; sudo -v && SUDO="sudo"
+    elif [[ $NEED_SUDO -eq 1 ]] && command -v sudo &>/dev/null && [[ -t 0 ]]; then info "sudo needed for system packages + /etc/hosts"; sudo -v && SUDO="sudo"
     fi
     info "Detected: $OS ${SUDO:+(sudo)}${SUDO:-"(no root)"}"
     install_node() {
