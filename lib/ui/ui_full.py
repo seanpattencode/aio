@@ -1,4 +1,4 @@
-import sys, asyncio, os, pty, subprocess, webbrowser, struct, fcntl, termios, json; from aiohttp import web
+import sys, asyncio, os, pty, subprocess, webbrowser, struct, fcntl, termios, json, socket; from aiohttp import web; from concurrent.futures import ThreadPoolExecutor
 
 # terminal is the API: all logic runs via terminal commands, UI only visualizes
 # no business logic in UI — buttons send terminal strings, results render in xterm
@@ -30,6 +30,7 @@ HTML = '''<!doctype html>
 </div>
 <div id=v_jobs style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff">
   <select id=jp style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option value="">loading...</option></select>
+  <select id=jd style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option value="">local</option></select>
   <div style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=jc placeholder="prompt" onkeydown="if(event.key==='Enter')runjob()" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <select id=jn style="font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
@@ -48,8 +49,9 @@ var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T,
 function go(p){history.pushState(null,'',p);show(p);}
 function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
-function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value);if(!v)return;var c;if(n>1){c=(p?'cd '+p+' && ':'')+'a all l:'+n+' "'+v.replace(/"/g,'\\\\"')+'"';}else{c=(p?'cd '+p+' && ':'')+'claude "'+v.replace(/"/g,'\\\\"')+'"';}ws(c+'\\n');go('/term');}
+function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value),d=jd.value;if(!v)return;var q=v.replace(/"/g,'\\\\"'),cd=p?(d?'cd ~/projects/'+p.split('/').pop():'cd '+p)+' && ':'',c;if(d){var rc=cd+(n>1?'a all l:'+n+' "'+q+'"':'claude "'+q+'"');c='a ssh '+d+' "'+rc.replace(/"/g,'\\\\"')+'"';}else{c=cd+(n>1?'a all l:'+n+' "'+q+'"':'claude "'+q+'"');}ws(c+'\\n');go('/term');}
 fetch('/api/projects').then(function(r){return r.json()}).then(function(d){jp.innerHTML='<option value="">~ (home)</option>';d.forEach(function(p){jp.innerHTML+='<option value="'+p.path+'">'+p.name+'</option>';});});
+fetch('/api/devices').then(function(r){return r.json()}).then(function(d){jd.innerHTML='<option value="">local</option>';d.forEach(function(h){jd.innerHTML+='<option value="'+h.name+'"'+(h.live?'':' style="color:#666"')+'>'+h.name+(h.live?' ✓':' ✗')+'</option>';});});
 window.onpopstate=function(){show(location.pathname);};
 try{
   T=new Terminal();F=new(FitAddon.FitAddon||FitAddon)();
@@ -108,11 +110,30 @@ async def projects_api(r):
     ps.sort(key=lambda x: x['name'])
     return web.json_response(ps)
 
+def _up(h):
+    try: s=socket.socket(); s.settimeout(0.5); hp=h.rsplit(':',1); s.connect((hp[0].split('@')[-1],int(hp[1]) if len(hp)>1 else 22)); s.close(); return True
+    except: return False
+
+async def devices_api(r):
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '..', 'adata', 'git', 'ssh')
+    hosts = []
+    if os.path.isdir(d):
+        for f in sorted(os.listdir(d)):
+            if not f.endswith('.txt'): continue
+            kv = {}
+            for line in open(os.path.join(d, f)):
+                if ':' in line: k, v = line.split(':', 1); kv[k.strip()] = v.strip()
+            if 'Name' in kv and 'Host' in kv: hosts.append({'name': kv['Name'], 'host': kv['Host']})
+    with ThreadPoolExecutor(8) as ex: live = list(ex.map(lambda h: _up(h['host']), hosts))
+    for i, h in enumerate(hosts): h['live'] = live[i]
+    hosts.sort(key=lambda x: (-x['live'], x['name']))
+    return web.json_response(hosts)
+
 async def note_api(r):
     if r.method=='POST': d=await r.post(); c=d.get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); return web.Response(text='ok')
     return web.Response(text='')
 
 # serve same SPA for all bookmarkable paths — JS reads pathname to show correct view
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.post('/note', note_api)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.post('/note', note_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
