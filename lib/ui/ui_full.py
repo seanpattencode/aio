@@ -27,8 +27,9 @@ HTML = '''<!doctype html>
   </div>
 </div>
 <div id=v_jobs style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff;font-family:system-ui">
+  <select id=jp style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option value="">loading...</option></select>
   <div style="display:flex;gap:10px;width:95vw;align-items:center">
-    <input id=jc placeholder="command" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
+    <input id=jc placeholder="prompt" onkeydown="if(event.key==='Enter')runjob()" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <button onclick="runjob()" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
   </div>
 </div>
@@ -44,7 +45,8 @@ var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T,
 function go(p){history.pushState(null,'',p);show(p);}
 function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
-function runjob(){var v=jc.value.trim();if(v){ws('claude "'+v.replace(/"/g,'\\\\"')+'"\\n');go('/term');}}
+function runjob(){var v=jc.value.trim(),p=jp.value,c='claude "'+v.replace(/"/g,'\\\\"')+'"';if(v){ws((p?'cd '+p+' && ':'')+c+'\\n');go('/term');}}
+fetch('/api/projects').then(function(r){return r.json()}).then(function(d){jp.innerHTML='<option value="">~ (home)</option>';d.forEach(function(p){jp.innerHTML+='<option value="'+p.path+'">'+p.name+'</option>';});});
 window.onpopstate=function(){show(location.pathname);};
 try{
   T=new Terminal();F=new(FitAddon.FitAddon||FitAddon)();
@@ -88,11 +90,26 @@ async def term(r):
     loop.remove_reader(m); os.close(m)
     return ws
 
+async def projects_api(r):
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '..', 'adata', 'git', 'workspace', 'projects')
+    ps = []
+    if os.path.isdir(d):
+        for f in sorted(os.listdir(d)):
+            if not f.endswith('.txt'): continue
+            kv = {}
+            for line in open(os.path.join(d, f)):
+                if ':' in line: k, v = line.split(':', 1); kv[k.strip()] = v.strip()
+            if 'Name' in kv:
+                p = kv.get('Path', '') or f'~/projects/{kv["Name"]}'
+                ps.append({'name': kv['Name'], 'path': p.replace('~', os.path.expanduser('~'))})
+    ps.sort(key=lambda x: x['name'])
+    return web.json_response(ps)
+
 async def note_api(r):
     if r.method=='POST': d=await r.post(); c=d.get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); return web.Response(text='ok')
     return web.Response(text='')
 
 # serve same SPA for all bookmarkable paths — JS reads pathname to show correct view
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.post('/note', note_api)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.post('/note', note_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
