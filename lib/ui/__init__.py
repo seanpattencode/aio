@@ -14,8 +14,17 @@ def _try(p=PORT):
     with socket.socket() as s:
         if s.connect_ex(('127.0.0.1', p)) == 0: W.open(_url(p)); return True
 
+def _abin():
+    b = os.path.join(os.path.dirname(_LIB), 'a')
+    return b if os.access(b, os.X_OK) else None
+
 def _bg(m, p):
-    S.Popen([_vpy(), '-c', f"from ui.{m} import run;run({p})"], start_new_session=True, stdout=S.DEVNULL, stderr=None, env={**os.environ, 'PYTHONPATH': _LIB})
+    if m == 'c':
+        ab = _abin()
+        if not ab: print('a binary not found — run sh a.c'); return
+        S.Popen([ab, 'ui-serve', str(p)], start_new_session=True, stdout=S.DEVNULL, stderr=None)
+    else:
+        S.Popen([_vpy(), '-c', f"from ui.{m} import run;run({p})"], start_new_session=True, stdout=S.DEVNULL, stderr=None, env={**os.environ, 'PYTHONPATH': _LIB})
     time.sleep(0.3); W.open(_url(p)); print(f'UI on {_url(p)}')
 
 def _lan():
@@ -70,7 +79,7 @@ def _svc_on(m='ui_full', p=PORT):
     return False
 
 def run():
-    a, M = sys.argv[2:], {'1': 'ui_full', '2': 'ui_xterm'}
+    a, M = sys.argv[2:], {'1': 'ui_full', '2': 'ui_xterm', '3': 'c'}
     if a and a[0][0] == 'k':
         S.run(['pkill', '-9', '-f', 'ui.ui_']); print('Killed (service will restart)')
     elif a and a[0] == 'on':
@@ -83,6 +92,6 @@ def run():
         _try(p) or _bg(m, p)
         lip = _lan()
         if lip: print(f'     http://{lip}:{p}')
-    else: print("a ui 1    full (cmd+term)\na ui 2    xterm only\na ui on   auto-start service\na ui off  stop service\na ui k    kill all")
+    else: print("a ui 1    full (cmd+term)\na ui 2    xterm (python)\na ui 3    xterm (C, fast)\na ui on   auto-start service\na ui off  stop service\na ui k    kill all")
 
 if __name__ == '__main__': run()

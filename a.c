@@ -372,6 +372,7 @@ static void alog(const char *cmd, const char *cwd, const char *extra);
 #include "lib/net.c"      /* sync, update, log, login */
 #include "lib/agent.c"    /* autonomous agent + multi-run */
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
+#include "lib/ui_server.c" /* C WebSocket terminal (xterm.js) */
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
@@ -421,7 +422,7 @@ static const cmd_t CMDS[] = {
     {"ssh",cmd_ssh},{"syn",cmd_sync},{"sync",cmd_sync},
     {"t",cmd_task},{"tas",cmd_task},{"task",cmd_task},
     {"tre",cmd_tree},{"tree",cmd_tree},
-    {"ui",cmd_ui},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
+    {"ui",cmd_ui},{"ui-serve",cmd_ui_serve},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
     {"upd",cmd_update},{"update",cmd_update},
     {"wat",cmd_watch},{"watch",cmd_watch},{"web",cmd_web},
     {"wor",cmd_work},{"work",cmd_work},{"x",cmd_x},
