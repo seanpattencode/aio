@@ -1,7 +1,7 @@
 """aio all - Multi-agent runs"""
-import sys, os, json, subprocess as sp, time
+import sys, os, json, subprocess as sp
 from datetime import datetime
-from _common import init_db, load_cfg, load_proj, load_sess, db, _env, parse_specs, ensure_tmux, get_prefix
+from _common import init_db, load_cfg, load_proj, load_sess, db, _env, parse_specs, ensure_tmux, send_prefix
 
 def run():
     init_db()
@@ -42,14 +42,8 @@ def run():
     sp.run(['tmux', 'split-window', '-h', '-t', sn, '-c', cd], env=env); sp.run(['tmux', 'send-keys', '-t', sn, f'n={len(launched)}; while read -ep "> " c; do [ -n "$c" ] && for i in $(seq 0 $((n-1))); do tmux send-keys -l -t ":.$i" "$c"; tmux send-keys -t ":.$i" C-m; done; done', 'C-m'])
     sp.run(['tmux', 'select-layout', '-t', sn, 'even-horizontal'], env=env); ensure_tmux(cfg)
     # send prefix + prompt to each agent pane in background
-    if prompt:
-        for idx, (wt_path, bc) in enumerate(launched):
-            pane = f"{sn}:.{idx}"
-            pre = get_prefix('claude', cfg, wt_path)
-            text = repr(pre + prompt)
-            script = f"import time,subprocess as s\nfor _ in range(300):\n time.sleep(0.05);r=s.run(['tmux','capture-pane','-t','{pane}','-p','-S','-50'],capture_output=True,text=True);o=r.stdout.lower()\n if r.returncode!=0 or any(x in o for x in['context','claude','opus','gemini','codex']):break\ns.run(['tmux','send-keys','-l','-t','{pane}',{text}])\ntime.sleep(0.1);s.run(['tmux','send-keys','-t','{pane}','Enter'])"
-            sp.Popen([sys.executable, '-c', script], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        print(f"Prompt queued to {len(launched)} agents")
+    for idx, (wt_path, bc) in enumerate(launched):
+        send_prefix(f"{sn}:.{idx}", 'claude', wt_path, cfg, prompt)
     print(f"\n+ '{sn}': {len(launched)}+broadcast"); print(f"   tmux switch-client -t {sn}") if "TMUX" in os.environ else os.execvp('tmux', ['tmux', 'attach', '-t', sn])
 
 run()
