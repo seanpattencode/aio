@@ -8,7 +8,7 @@ def _vpy():
 PORT = 1111
 _LIB = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-def _url(p): return f'http://a.local:{p}'
+def _url(p): return f'http://localhost:{p}'  # universal: same URL works mobile+desktop, bookmarkable
 
 def _try(p=PORT):
     with socket.socket() as s:
