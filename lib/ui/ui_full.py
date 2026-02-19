@@ -64,7 +64,7 @@ async def term(r):
     fcntl.ioctl(s, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 180, 0, 0))
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
     env['TERM'] = 'xterm-256color'
-    subprocess.Popen(['bash', '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
+    subprocess.Popen([os.environ.get('SHELL', '/bin/bash'), '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
     loop = asyncio.get_event_loop()
     loop.add_reader(m, lambda: asyncio.create_task(ws.send_str(os.read(m, 4096).decode(errors='ignore'))))
     async for msg in ws:
