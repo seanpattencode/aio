@@ -1,8 +1,9 @@
 /* lib/ui_server.c — C WebSocket terminal server (xterm.js, zero Python deps)
  *
- * Serves xterm.js HTML on GET /, upgrades GET /ws to WebSocket,
- * relays between WebSocket and a PTY running bash -l.
- * Single-threaded, one terminal at a time. ~0 idle overhead.
+ * /       dashboard (buttons → /term, /full)
+ * /term   xterm only
+ * /full   xterm + input bar + buttons
+ * /ws     WebSocket ↔ PTY (bash -l)
  *
  * Usage: a ui-serve [port]   (default 1111, foreground for launchd/systemd)
  */
@@ -11,23 +12,54 @@
 #include <netinet/in.h>
 #include <poll.h>
 
-static const char UI_C_HTML[] =
-"<!doctype html>"
-"<meta name=viewport content='width=device-width,initial-scale=1,user-scalable=no'>"
-"<link rel=stylesheet href='https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css'>"
-"<script src='https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js'></script>"
+/* ═══ HTML PAGES ═══ */
+
+static const char UI_DASH[] =
+"<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+"<body style='margin:0;min-height:100vh;background:#0d0d1a;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif'>"
+"<div style='color:#4a4a6a;font-size:72px;font-weight:700;margin:0 0 48px'>a</div>"
+"<div style='display:flex;gap:16px'>"
+"<a href=/term style='padding:20px 48px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:12px;font-size:18px;border:1px solid #4a4a6a'>terminal</a>"
+"<a href=/full style='padding:20px 48px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:12px;font-size:18px;border:1px solid #4a4a6a'>full</a>"
+"</div></body>";
+
+#define XT_HEAD \
+"<!doctype html><meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>" \
+"<link rel=stylesheet href='https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css'>" \
+"<script src='https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js'></script>" \
 "<script src='https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js'></script>"
-"<body style='margin:0;height:100vh;background:#000'><div id=t style='height:100vh'></div>"
-"<script>try{var T=new Terminal(),F=new(FitAddon.FitAddon||FitAddon)(),W;"
-"T.loadAddon(F);T.open(document.getElementById('t'));"
-"function S(d){if(W&&W.readyState===1)W.send(d);}"
-"function connect(){W=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');"
-"W.onopen=function(){F.fit();S(JSON.stringify({cols:T.cols,rows:T.rows}));};"
-"W.onmessage=function(e){T.write(e.data);};"
-"W.onclose=function(){setTimeout(connect,1000);};"
-"W.onerror=function(){};}"
-"connect();T.onData(function(d){S(d);});"
+
+#define XT_JS \
+"<script>try{var T=new Terminal(),F=new(FitAddon.FitAddon||FitAddon)(),W;" \
+"T.loadAddon(F);T.open(document.getElementById('t'));" \
+"function S(d){if(W&&W.readyState===1)W.send(d);}" \
+"function connect(){W=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');" \
+"W.onopen=function(){F.fit();S(JSON.stringify({cols:T.cols,rows:T.rows}));};" \
+"W.onmessage=function(e){T.write(e.data);};" \
+"W.onclose=function(){setTimeout(connect,1000);};" \
+"W.onerror=function(){};}" \
+"connect();T.onData(function(d){S(d);});" \
 "new ResizeObserver(function(){F.fit();S(JSON.stringify({cols:T.cols,rows:T.rows}));}).observe(document.getElementById('t'));"
+
+static const char UI_TERM[] =
+XT_HEAD
+"<body style='margin:0;height:100vh;background:#000'><div id=t style='height:100vh'></div>"
+XT_JS
+"}catch(e){document.body.innerHTML='<pre style=color:red>'+e+'</pre>';}</script>";
+
+static const char UI_FULL[] =
+XT_HEAD
+"<body style='margin:0;height:100vh;background:#000;overflow:hidden'>"
+"<div id=t style='height:calc(100vh - 56px)'></div>"
+"<div style='position:fixed;bottom:0;left:0;right:0;height:56px;background:#1a1a2e;border-top:1px solid #4a4a6a;display:flex;align-items:center;padding:0 8px;gap:8px'>"
+"<a href=/ style='color:#4a4a6a;text-decoration:none;font-size:22px;padding:0 8px'>&larr;</a>"
+"<input id=i autofocus placeholder=command style='flex:1;padding:10px;font-size:16px;background:#0d0d1a;color:#fff;border:1px solid #4a4a6a;border-radius:8px;outline:none'>"
+"<button id=b0 style='padding:10px 14px;font-size:18px;background:#1a1a2e;color:#fff;border:1px solid #4a4a6a;border-radius:8px'>&#9654;</button>"
+"</div>"
+XT_JS
+"function go(){var v=i.value;i.value='';S(v+'\\n');i.focus();}"
+"i.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();go();}});"
+"b0.onclick=go;"
 "}catch(e){document.body.innerHTML='<pre style=color:red>'+e+'</pre>';}</script>";
 
 /* ═══ SHA-1 (RFC 3174, for WebSocket handshake) ═══ */
@@ -166,6 +198,13 @@ static void ui_relay(int cli) {
     close(master); kill(pid, SIGHUP); waitpid(pid, NULL, WNOHANG);
 }
 
+/* ═══ HTTP HELPERS ═══ */
+static void ui_serve_html(int fd, const char *html) {
+    size_t bl = strlen(html); char hdr[256];
+    int hl = snprintf(hdr, sizeof(hdr), "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %zu\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", bl);
+    write(fd, hdr, (size_t)hl); write(fd, html, bl);
+}
+
 /* ═══ HTTP + ACCEPT LOOP ═══ */
 static int cmd_ui_serve(int argc, char **argv) {
     int port = (argc > 2 && argv[2][0] >= '0' && argv[2][0] <= '9') ? atoi(argv[2]) : 1111;
@@ -186,7 +225,6 @@ static int cmd_ui_serve(int argc, char **argv) {
         req[n] = 0;
 
         if (strncmp(req, "GET /ws", 7) == 0 && strstr(req, "Upgrade")) {
-            /* WebSocket handshake */
             char *kp = strstr(req, "Sec-WebSocket-Key: ");
             if (!kp) { close(cli); continue; }
             kp += 19; char *ke = strstr(kp, "\r\n"); if (!ke) { close(cli); continue; }
@@ -198,10 +236,9 @@ static int cmd_ui_serve(int argc, char **argv) {
                 "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", acc);
             write(cli, resp, (size_t)rl);
             ui_relay(cli);
-        } else if (strncmp(req, "GET / ", 6) == 0) {
-            char hdr[256]; size_t bl = strlen(UI_C_HTML);
-            int hl = snprintf(hdr, sizeof(hdr), "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %zu\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", bl);
-            write(cli, hdr, (size_t)hl); write(cli, UI_C_HTML, bl);
+        } else if (strncmp(req, "GET /term", 9) == 0)  { ui_serve_html(cli, UI_TERM);
+        } else if (strncmp(req, "GET /full", 9) == 0)   { ui_serve_html(cli, UI_FULL);
+        } else if (strncmp(req, "GET / ", 6) == 0)      { ui_serve_html(cli, UI_DASH);
         } else {
             write(cli, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", 64);
         }

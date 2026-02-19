@@ -47,8 +47,9 @@ def _svc_off():
         u = _unit()
         if os.path.exists(u): os.remove(u)
 
-def _svc_on(m='ui_full', p=PORT):
-    vpy, lib = _vpy(), _LIB
+def _svc_on(p=PORT):
+    ab = _abin()
+    if not ab: return False
     if platform.system() == 'Darwin':
         pf = _plist(); _svc_off()
         os.makedirs(os.path.dirname(pf), exist_ok=True)
@@ -59,12 +60,8 @@ def _svc_on(m='ui_full', p=PORT):
 <dict>
     <key>Label</key><string>com.a.ui</string>
     <key>ProgramArguments</key><array>
-        <string>{vpy}</string><string>-c</string>
-        <string>from ui.{m} import run;run({p})</string>
+        <string>{ab}</string><string>ui-serve</string><string>{p}</string>
     </array>
-    <key>EnvironmentVariables</key><dict>
-        <key>PYTHONPATH</key><string>{lib}</string>
-    </dict>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>StandardErrorPath</key><string>/tmp/a-ui.err</string>
@@ -74,19 +71,24 @@ def _svc_on(m='ui_full', p=PORT):
     if S.run(['systemctl', '--user', '--version'], capture_output=True).returncode == 0:
         _svc_off(); ud = os.path.dirname(_unit()); os.makedirs(ud, exist_ok=True)
         with open(_unit(), 'w') as f:
-            f.write(f'[Unit]\nDescription=a UI server\n[Service]\nExecStart={vpy} -c "from ui.{m} import run;run({p})"\nEnvironment=PYTHONPATH={lib}\nRestart=always\nRestartSec=2\n[Install]\nWantedBy=default.target\n')
+            f.write(f'[Unit]\nDescription=a UI server\n[Service]\nExecStart={ab} ui-serve {p}\nRestart=always\nRestartSec=2\n[Install]\nWantedBy=default.target\n')
         S.run(['systemctl', '--user', 'daemon-reload']); S.run(['systemctl', '--user', 'enable', '--now', 'a-ui']); return True
     return False
 
 def run():
     a, M = sys.argv[2:], {'1': 'ui_full', '2': 'ui_xterm', '3': 'c'}
     if a and a[0][0] == 'k':
-        S.run(['pkill', '-9', '-f', 'ui.ui_']); print('Killed (service will restart)')
+        S.run(['pkill', '-9', '-f', 'ui-serve'], capture_output=True)
+        S.run(['pkill', '-9', '-f', 'ui.ui_'], capture_output=True)
+        print('Killed (service will restart)')
     elif a and a[0] == 'on':
         if _svc_on(): print(f'UI service on — {_url(PORT)}')
         else: print('No service manager (use a ui 1)'); sys.exit(1)
     elif a and a[0] == 'off':
-        _svc_off(); S.run(['pkill', '-9', '-f', 'ui.ui_']); print('UI service off')
+        _svc_off()
+        S.run(['pkill', '-9', '-f', 'ui-serve'], capture_output=True)
+        S.run(['pkill', '-9', '-f', 'ui.ui_'], capture_output=True)
+        print('UI service off')
     elif a and (m := M.get(a[0])):
         p = int(a[1]) if len(a) > 1 and a[1].isdigit() else PORT
         _try(p) or _bg(m, p)
