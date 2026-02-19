@@ -262,6 +262,11 @@ exit 0
  * Install:  bash a.c install   deps, compile, shell functions, CLIs
  * Analyze:  sh a.c analyze     static analysis
  *
+ * Terminal is the API: all logic runs as terminal commands. The UI (a ui)
+ * is a pure visualizer — no business logic, just renders what the terminal
+ * computes. This keeps functionality identical for terminal users, UI users,
+ * AI agents, and humans. One interface, many surfaces.
+ *
  * Add a command:  write lib/foo.c, add #include + dispatch line here.
  * Remove:         delete the file, delete two lines.
  *

@@ -1,5 +1,7 @@
 import sys, asyncio, os, pty, subprocess, webbrowser, struct, fcntl, termios, json; from aiohttp import web
 
+# terminal is the API: all logic runs via terminal commands, UI only visualizes
+# no business logic in UI — buttons send terminal strings, results render in xterm
 # single-page app: all views in one HTML, show/hide for instant switching
 # bookmarkable flat paths via pushState: /term /note work on reload + cross-device
 HTML = '''<!doctype html>
