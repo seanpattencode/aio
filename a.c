@@ -210,10 +210,6 @@ install)
         else ok "venv (exists: $($VENV/bin/python --version))"; fi
         [[ -f "$VENV/bin/pip" ]] && $VENV/bin/pip install -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python deps" || warn "pip install failed"
     else warn "python3 not found"; fi
-    # UI auto-start service (launchd on mac, systemd on linux).
-    # Always-on ~15MB: server starts at login, restarts on crash.
-    # http://a.local:1111 just works. `a ui k` to disable.
-    "$BIN/a" ui on >/dev/null 2>&1 && ok "UI service (http://a.local:1111)" || :
     if ! command -v ollama &>/dev/null; then
         if [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then
             info "Installing ollama..."
@@ -372,7 +368,6 @@ static void alog(const char *cmd, const char *cwd, const char *extra);
 #include "lib/net.c"      /* sync, update, log, login */
 #include "lib/agent.c"    /* autonomous agent + multi-run */
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
-#include "lib/ui_server.c" /* C WebSocket terminal (xterm.js) */
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
@@ -422,7 +417,7 @@ static const cmd_t CMDS[] = {
     {"ssh",cmd_ssh},{"syn",cmd_sync},{"sync",cmd_sync},
     {"t",cmd_task},{"tas",cmd_task},{"task",cmd_task},
     {"tre",cmd_tree},{"tree",cmd_tree},
-    {"ui",cmd_ui},{"ui-serve",cmd_ui_serve},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
+    {"ui",cmd_ui},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
     {"upd",cmd_update},{"update",cmd_update},
     {"wat",cmd_watch},{"watch",cmd_watch},{"web",cmd_web},
     {"wor",cmd_work},{"work",cmd_work},{"x",cmd_x},
