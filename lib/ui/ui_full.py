@@ -12,6 +12,7 @@ HTML = '''<!doctype html>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.min.js"></script>
 <body style="margin:0;height:100vh;background:#000;overflow:hidden">
 <div id=v_index style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px">
+  <a onclick="go('/jobs')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">jobs</a>
   <a onclick="go('/term')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">terminal</a>
   <a onclick="go('/note')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">note</a>
 </div>
@@ -25,6 +26,12 @@ HTML = '''<!doctype html>
     <button onclick="go('/')" style="flex:1;padding:18px;font-size:22px;min-width:60px">&#8962;</button>
   </div>
 </div>
+<div id=v_jobs style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff;font-family:system-ui">
+  <div style="display:flex;gap:10px;width:95vw;align-items:center">
+    <input id=jc placeholder="command" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
+    <button onclick="var v=jc.value.trim();if(v){ws(v+'\\n');go('/term')}" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
+  </div>
+</div>
 <div id=v_note style="display:none;height:100vh;align-items:center;justify-content:center">
   <form id=nf style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=nc autofocus placeholder="note" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
@@ -33,7 +40,7 @@ HTML = '''<!doctype html>
   </form>
 </div>
 <script>
-var views={'/':'v_index','/term':'v_term','/note':'v_note'}, T, F, W;
+var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
 function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
@@ -85,6 +92,6 @@ async def note_api(r):
     return web.Response(text='')
 
 # serve same SPA for all bookmarkable paths — JS reads pathname to show correct view
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.post('/note', note_api)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.post('/note', note_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
