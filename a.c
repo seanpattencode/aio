@@ -186,6 +186,13 @@ install)
     install_cli "@anthropic-ai/claude-code" "claude"
     install_cli "@openai/codex" "codex"
     install_cli "@google/gemini-cli" "gemini"
+    # a.local hostname — lets `a ui` serve at http://a.local:1111
+    if ! grep -q 'a\.local' /etc/hosts 2>/dev/null; then
+        if [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then
+            echo '127.0.0.1 a.local' | $SUDO tee -a /etc/hosts >/dev/null && ok "a.local (added to /etc/hosts)"
+        elif [[ "$OS" == termux ]]; then ok "a.local (termux: use localhost:1111)"
+        else warn "a.local: run 'echo 127.0.0.1 a.local | sudo tee -a /etc/hosts'"; fi
+    else ok "a.local (exists)"; fi
     # Python venv — solves PEP 668 (externally-managed-environment).
     # Modern distros (Ubuntu 23.04+, Homebrew, Fedora 38+) block global pip
     # install. A venv in adata/ bypasses this cleanly: isolated, no sudo,

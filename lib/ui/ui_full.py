@@ -65,4 +65,4 @@ async def note(r):
     return web.Response(text=N,content_type='text/html')
 app = web.Application(); app.add_routes([web.get('/', page), web.get('/ws', term), web.get('/restart', restart), web.route('*','/n',note)])
 
-def run(port=8080): web.run_app(app, port=port, print=None)
+def run(port=1111): web.run_app(app, port=port, print=None)

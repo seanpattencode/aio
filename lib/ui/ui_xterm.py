@@ -28,4 +28,4 @@ async def ws(r):
     loop.remove_reader(m);os.close(m)
     return s
 app=web.Application();app.add_routes([web.get('/',lambda r:web.Response(text=H,content_type='text/html')),web.get('/ws',ws)])
-def run(port=8080):web.run_app(app,port=port,print=None)
+def run(port=1111):web.run_app(app,port=port,print=None)
