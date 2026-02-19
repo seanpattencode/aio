@@ -22,7 +22,7 @@ try {
   function go(){var v=i.value;i.value='';S(v+'\\n');i.focus();}
   i.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();go();}});
   b0.onclick=go; b1.onclick=function(){S('aio\\n');}; b2.onclick=function(){S('aio note '+i.value+'\\n');i.value='';i.focus();};
-  b3.onclick=function(){fetch('/restart');(function c(){fetch('/').then(function(){location.reload();}).catch(function(){setTimeout(c,50);});})();};
+  b3.onclick=function(){fetch('/restart');(function c(){fetch(location.pathname).then(function(){location.reload();}).catch(function(){setTimeout(c,50);});})();};
   function connect(){
     W=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
     W.onopen=function(){bar.style.borderTopColor='#4a4a6a';F.fit();S(JSON.stringify({cols:T.cols,rows:T.rows}));};
@@ -59,10 +59,13 @@ async def term(r):
     loop.remove_reader(m); os.close(m)
     return ws
 
-N='<meta name=viewport content="width=device-width"><form method=post style="height:100vh;display:flex;align-items:center;justify-content:center;background:#000"><input name=c autofocus style="width:95vw;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"></form>'
+# flat paths: /term /note bookmarkable on mobile, same URL on desktop
+INDEX='<!doctype html><meta name=viewport content="width=device-width"><body style="margin:0;background:#000;color:#fff;font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:20px"><a href=/term style="font-size:28px;color:#4af;text-decoration:none;padding:20px 40px;border:2px solid #4af;border-radius:12px">terminal</a><a href=/note style="font-size:28px;color:#4af;text-decoration:none;padding:20px 40px;border:2px solid #4af;border-radius:12px">note</a>'
+async def index(r): return web.Response(text=INDEX,content_type='text/html')
+N='<meta name=viewport content="width=device-width"><form method=post action=/note style="height:100vh;display:flex;align-items:center;justify-content:center;background:#000"><input name=c autofocus style="width:95vw;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"></form>'
 async def note(r):
-    if r.method=='POST': c=(await r.post()).get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); raise web.HTTPFound('/n')
+    if r.method=='POST': c=(await r.post()).get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); raise web.HTTPFound('/note')
     return web.Response(text=N,content_type='text/html')
-app = web.Application(); app.add_routes([web.get('/', page), web.get('/ws', term), web.get('/restart', restart), web.route('*','/n',note)])
+app = web.Application(); app.add_routes([web.get('/', index), web.get('/term', page), web.get('/ws', term), web.get('/restart', restart), web.route('*','/note',note)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
