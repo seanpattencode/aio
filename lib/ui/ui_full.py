@@ -29,7 +29,7 @@ HTML = '''<!doctype html>
 <div id=v_jobs style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff;font-family:system-ui">
   <div style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=jc placeholder="command" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
-    <button onclick="var v=jc.value.trim();if(v){ws(v+'\\n');go('/term')}" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
+    <button onclick="runjob()" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
   </div>
 </div>
 <div id=v_note style="display:none;height:100vh;align-items:center;justify-content:center">
@@ -44,6 +44,7 @@ var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T,
 function go(p){history.pushState(null,'',p);show(p);}
 function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
+function runjob(){var v=jc.value.trim();if(v){ws('claude "'+v.replace(/"/g,'\\\\"')+'"\\n');go('/term');}}
 window.onpopstate=function(){show(location.pathname);};
 try{
   T=new Terminal();F=new(FitAddon.FitAddon||FitAddon)();
