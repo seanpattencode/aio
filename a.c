@@ -415,7 +415,7 @@ static const cmd_t CMDS[] = {
     {"mono",cmd_mono},{"monolith",cmd_mono},
     {"mov",cmd_move},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},
-    {"p",cmd_push},{"per",cmd_perf},{"perf",cmd_perf},{"pro",cmd_prompt},{"prompt",cmd_prompt},
+    {"p",cmd_push},{"per",cmd_perf},{"perf",cmd_perf},{"pr",cmd_pr},{"pro",cmd_prompt},{"prompt",cmd_prompt},
     {"pul",cmd_pull},{"pull",cmd_pull},{"pus",cmd_push},{"push",cmd_push},
     {"rebuild",cmd_rebuild},
     {"rem",cmd_remove},{"remove",cmd_remove},{"repo",cmd_repo},
@@ -443,7 +443,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
 }
 static void perf_arm(const char *cmd) {
     if (isdigit(*cmd)) return;
-    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan","send","watch","job","tree",NULL};
+    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan","send","watch","job","tree","pr",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
     /* per-device override: adata/git/perf/{DEV}.txt — command:ms */

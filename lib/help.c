@@ -19,6 +19,7 @@ static const char *HELP_FULL =
     "  a scan              Add your repos fast\n\n"
     "GIT\n"
     "  a push [msg]        Commit and push\n"
+    "  a pr [title]        Push branch + create PR\n"
     "  a pull              Sync with remote\n"
     "  a diff              Show changes\n"
     "  a revert            Select commit to revert to\n\n"

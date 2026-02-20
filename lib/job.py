@@ -204,14 +204,8 @@ gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "
 def _make_pr(wp, br, rn, prompt):
     r = S.run(['git', '-C', wp, 'status', '--porcelain'], capture_output=True, text=True)
     if not r.stdout.strip(): print("x No changes"); return None
-    S.run(['git', '-C', wp, 'add', '-A'], capture_output=True)
     short = prompt[:50]
-    S.run(['git', '-C', wp, 'commit', '-m', f'job: {short}'], capture_output=True, text=True)
-    r = S.run(['git', '-C', wp, 'push', '-u', 'origin', br], capture_output=True, text=True)
-    if r.returncode: print(f"x Push: {r.stderr}"); return None
-    r = S.run(['gh', 'pr', 'create', '--title', f'job: {short}', '--body',
-               f'Prompt: {prompt[:200]}\n\nDevice: {DEVICE_ID}'],
-              capture_output=True, text=True, cwd=wp)
+    r = S.run([_A, 'pr', f'job: {short}'], capture_output=True, text=True, cwd=wp)
     return _extract_pr_url(r.stdout + '\n' + r.stderr) or None
 
 def _email(jn, rn, prompt, pr_url, wp):
