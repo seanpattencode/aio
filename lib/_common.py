@@ -131,7 +131,7 @@ def init_db():
         if 'device' not in [r[1] for r in c.execute("PRAGMA table_info(agent_logs)")]: c.execute("ALTER TABLE agent_logs ADD COLUMN device TEXT")
         if c.execute("SELECT COUNT(*) FROM config").fetchone()[0] == 0:
             dp = get_prompt('default') or ''
-            for k, v in [('claude_prompt', dp), ('codex_prompt', dp), ('gemini_prompt', dp), ('worktrees_dir', os.path.expanduser("~/projects/aWorktrees")), ('multi_default', 'l:3')]: c.execute("INSERT INTO config VALUES (?, ?)", (k, v))
+            for k, v in [('claude_prompt', dp), ('codex_prompt', dp), ('gemini_prompt', dp), ('worktrees_dir', os.path.expanduser("~/projects/a/adata/worktrees")), ('multi_default', 'l:3')]: c.execute("INSERT INTO config VALUES (?, ?)", (k, v))
         c.execute("INSERT OR IGNORE INTO config VALUES ('multi_default', 'l:3')")
         c.execute("INSERT OR IGNORE INTO config VALUES ('claude_prefix', 'Ultrathink. ')")
         np = not c.execute("SELECT 1 FROM projects").fetchone()

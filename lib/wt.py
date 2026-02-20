@@ -6,7 +6,7 @@ def run():
     init_db()
     cfg = load_cfg()
     PROJ = load_proj()
-    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aWorktrees"))
+    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/a/adata/worktrees"))
     arg = sys.argv[1] if len(sys.argv) > 1 else None
 
     if arg == 'w':

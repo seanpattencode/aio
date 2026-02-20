@@ -46,7 +46,7 @@ def work_one(task, cfg):
     sn = f"work-{slug}-{int(time.time())}"
     proj = load_proj()
     proj_path = proj[0][0] if proj else str(P)
-    wt_dir = cfg.get('worktrees_dir', os.path.expanduser('~/projects/aWorktrees'))
+    wt_dir = cfg.get('worktrees_dir', os.path.expanduser('~/projects/a/adata/worktrees'))
 
     create_sess(sn, proj_path, 'claude --dangerously-skip-permissions', cfg)
 

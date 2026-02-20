@@ -8,7 +8,7 @@ def run():
     cfg = load_cfg()
     PROJ = load_proj()
     sess = load_sess(cfg)
-    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aWorktrees"))
+    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/a/adata/worktrees"))
     arg = sys.argv[1] if len(sys.argv) > 1 else None
     wda = sys.argv[2] if len(sys.argv) > 2 else None
     new_win = '--new-window' in sys.argv or '-w' in sys.argv

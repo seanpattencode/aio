@@ -78,12 +78,14 @@ def run():
         else: print(f"x Not a git repo: {proj}"); sys.exit(1)
 
     rn = os.path.basename(proj)
-    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
-    br = f'job-{rn}-{ts}'
+    now = datetime.now()
+    ts = now.strftime('%b%d-%-I%M%p').lower()  # feb20-517am
     jn = f'{rn}-{ts}'
+    wt = cfg.get('worktrees_dir', str(ADATA_ROOT / 'worktrees'))
+    wp = os.path.join(wt, jn)
+    if os.path.exists(wp): jn += '-2'; wp = os.path.join(wt, jn)
+    br = f'job-{jn}'
     sn = f'job-{jn}'
-    wt = cfg.get('worktrees_dir', os.path.expanduser('~/projects/aWorktrees'))
-    wp = os.path.join(wt, f'{rn}-{ts}')
 
     print(f"Job: {jn}\n  Repo: {rn}\n  Agent: {ak}\n  Device: {dev or 'local'}\n  Prompt: {prompt[:80]}")
 
@@ -145,9 +147,9 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
         _ssh(dev, f'cd ~/projects/{rn} && git checkout main && git pull --ff-only', timeout=30)
 
     # Worktree
-    wt = f'~/projects/aWorktrees/{rn}-{ts}'
+    wt = f'~/projects/a/adata/worktrees/{jn}'
     _db_job(jn, 'worktree', 'running')
-    rc, _, err = _ssh(dev, f'mkdir -p ~/projects/aWorktrees && git -C ~/projects/{rn} worktree add -b {br} {wt} HEAD', timeout=30)
+    rc, _, err = _ssh(dev, f'mkdir -p ~/projects/a/adata/worktrees && git -C ~/projects/{rn} worktree add -b {br} {wt} HEAD', timeout=30)
     if rc: print(f"x Worktree: {err}"); return
     print(f"+ Worktree: {wt}")
 

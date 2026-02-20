@@ -8,7 +8,7 @@ def run():
     cfg = load_cfg()
     PROJ = load_proj()
     sess = load_sess(cfg)
-    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/aWorktrees"))
+    WT_DIR = cfg.get('worktrees_dir', os.path.expanduser("~/projects/a/adata/worktrees"))
     wda = sys.argv[2] if len(sys.argv) > 2 else None
 
     if wda == 'set':
@@ -22,8 +22,9 @@ def run():
     specs, prompt, is_default = parse_specs(sys.argv, si, cfg)
     prompt = None if is_default else prompt
     if not specs: ds = cfg.get('multi_default', 'l:3'); specs, _, _ = parse_specs([''] + ds.split(), 1, cfg); print(f"Using: {ds}")
-    total, rn, rid = sum(c for _, c in specs), os.path.basename(pp), datetime.now().strftime('%Y%m%d-%H%M%S')
-    wt = WT_DIR if os.path.exists(os.path.dirname(WT_DIR)) else os.path.expanduser("~/projects/aWorktrees")
+    now = datetime.now(); total, rn = sum(c for _, c in specs), os.path.basename(pp)
+    rid = now.strftime('%b%d-%-I%M%p').lower()
+    wt = WT_DIR if os.path.exists(os.path.dirname(WT_DIR)) else os.path.expanduser("~/projects/a/adata/worktrees")
     sn, rd = f"{rn}-{rid}", os.path.join(wt, rn, rid); os.makedirs(rd, exist_ok=True)
     cd = os.path.join(rd, "candidates"); os.makedirs(cd, exist_ok=True)
     with open(os.path.join(rd, "run.json"), "w") as f: json.dump({"agents": [f"{k}:{c}" for k, c in specs], "created": rid, "repo": pp}, f)

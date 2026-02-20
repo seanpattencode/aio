@@ -33,7 +33,7 @@ static void init_db(void) {
         char pp[P], dp[B] = ""; snprintf(pp, P, "%s/common/prompts/default.txt", SROOT);
         char *pd = readf(pp, NULL); if (pd) { snprintf(dp, B, "%s", pd); free(pd); }
         char edp[B]; esc_nl(dp, edp, B);
-        char wt[P]; snprintf(wt, P, "%s/projects/aWorktrees", HOME);
+        char wt[P]; snprintf(wt, P, "%s/worktrees", AROOT);
         char buf[B*2]; snprintf(buf, sizeof(buf),
             "claude_prompt: %s\ncodex_prompt: %s\ngemini_prompt: %s\n"
             "worktrees_dir: %s\nmulti_default: l:3\nclaude_prefix: Ultrathink. \n", edp, edp, edp, wt);

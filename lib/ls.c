@@ -144,7 +144,7 @@ static int cmd_send(int argc, char **argv) {
 /* ── jobs ── list/attach/remove agent worktrees */
 static int cmd_jobs(int argc, char **argv) {
     init_db(); load_cfg();
-    char wd[P]; {const char*w=cfget("worktrees_dir");snprintf(wd,P,"%s",w[0]?w:"");if(!w[0])snprintf(wd,P,"%s/projects/aWorktrees",HOME);}
+    char wd[P]; {const char*w=cfget("worktrees_dir");snprintf(wd,P,"%s",w[0]?w:"");if(!w[0])snprintf(wd,P,"%s/worktrees",AROOT);}
     const char *sel=NULL,*rm=NULL; int rf=0;
     for(int i=2;i<argc;i++){if(!strcmp(argv[i],"-r")||!strcmp(argv[i],"--running"))rf=1;
         else if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];else sel=argv[i];}
@@ -172,9 +172,7 @@ static int cmd_jobs(int argc, char **argv) {
             pcmd(c,o,64);if(atoi(o)&&(int)time(NULL)-atoi(o)<10)J[i].act=1;}
         if(rf&&!J[i].act)continue;
         const char*bn=bname(J[i].p);snprintf(J[i].n,64,"%s",bn);
-        J[i].ct=0;for(const char*dp=bn+strlen(bn);dp>bn+15;dp--)if(dp[-7]=='-'&&dp[0]=='-'){struct tm t={0};
-            if(sscanf(dp-8,"%4d%2d%2d-%2d%2d%2d",&t.tm_year,&t.tm_mon,&t.tm_mday,&t.tm_hour,&t.tm_min,&t.tm_sec)==6){
-                t.tm_year-=1900;t.tm_mon--;t.tm_isdst=-1;J[i].ct=mktime(&t);break;}}
+        {struct stat st;J[i].ct=(!stat(J[i].p,&st))?st.st_ctime:0;}
         char c[B],go[512];snprintf(c,B,"git -C '%s' config --get remote.origin.url 2>/dev/null",J[i].p);
         pcmd(c,go,512);go[strcspn(go,"\n")]=0;
         if(go[0]){char*sl=strrchr(go,'/');snprintf(J[i].r,128,"%s",sl?sl+1:go);char*dt=strstr(J[i].r,".git");if(dt&&!dt[4])*dt=0;}
@@ -203,14 +201,18 @@ static int cmd_cleanup(int argc, char **argv) { fallback_py("cleanup", argc, arg
 /* ── tree ── */
 static int cmd_tree(int argc, char **argv) {
     init_db(); load_cfg(); load_proj();
-    const char *wt = cfget("worktrees_dir"); if (!wt[0]) { char d[P]; snprintf(d,P,"%s/projects/aWorktrees",HOME); wt=d; }
+    const char *wt = cfget("worktrees_dir"); if (!wt[0]) { char d[P]; snprintf(d,P,"%s/worktrees",AROOT); wt=d; }
     char cwd[P]; if(!getcwd(cwd,P)) snprintf(cwd,P,"%s",HOME);
     const char *proj = cwd;
     if (argc > 2 && argv[2][0]>='0' && argv[2][0]<='9') { int idx=atoi(argv[2]); if(idx<NPJ) proj=PJ[idx].path; }
     if (!git_in_repo(proj)) { puts("x Not a git repo"); return 1; }
-    char ts[32]; time_t now = time(NULL); strftime(ts, 32, "%Y%m%d-%H%M%S", localtime(&now));
-    char wp[P]; snprintf(wp, P, "%s/%s-%s", wt, bname(proj), ts);
-    char c[B]; snprintf(c, B, "mkdir -p '%s' && git -C '%s' worktree add -b 'wt-%s-%s' '%s' HEAD", wt, proj, bname(proj), ts, wp);
+    time_t now = time(NULL); struct tm *t = localtime(&now);
+    char ts[32]; strftime(ts, 32, "%b%d", t);
+    for(char*p=ts;*p;p++) *p=(*p>='A'&&*p<='Z')?*p+32:*p;
+    int h=t->tm_hour%12; if(!h)h=12;
+    char nm[64]; snprintf(nm,64,"%s-%s-%d%02d%s",bname(proj),ts,h,t->tm_min,t->tm_hour>=12?"pm":"am");
+    char wp[P]; snprintf(wp, P, "%s/%s", wt, nm);
+    char c[B]; snprintf(c, B, "mkdir -p '%s' && git -C '%s' worktree add -b 'wt-%s' '%s' HEAD", wt, proj, nm, wp);
     if (system(c) != 0) { puts("x Failed"); return 1; }
     printf("\xe2\x9c\x93 %s\n", wp);
     const char *sh = getenv("SHELL"); if (!sh) sh = "/bin/bash";
