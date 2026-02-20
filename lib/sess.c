@@ -143,7 +143,7 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
                 if (read(STDIN_FILENO, &seq[1], 1) != 1) break;
                 if (seq[1] == 'A') { if(sel>0)sel--; } /* Up */
                 else if (seq[1] == 'B') { if(sel<nm-1)sel++; } /* Down */
-            } else if(prefix[0]){prefix[0]=0;buf[0]=0;blen=0;sel=0;} else break;
+            } else if(blen){buf[0]=0;blen=0;sel=0;} else if(prefix[0]){prefix[0]=0;sel=0;} else break;
         } else if (ch == '\t') { if(sel<nm-1)sel++; }
         else if (ch == '\x7f' || ch == '\b') { if (blen) buf[--blen]=0; sel=0; }
         else if (ch == '\r' || ch == '\n') {
