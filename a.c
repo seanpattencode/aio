@@ -375,6 +375,7 @@ static void perf_disarm(void);
 #include "lib/hub.c"      /* hub: scheduled jobs */
 #include "lib/net.c"      /* sync, update, log, login */
 #include "lib/agent.c"    /* autonomous agent + multi-run */
+#include "lib/perf.c"     /* benchmark + timing display */
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
@@ -413,7 +414,7 @@ static const cmd_t CMDS[] = {
     {"mono",cmd_mono},{"monolith",cmd_mono},
     {"mov",cmd_move},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},
-    {"p",cmd_push},{"pro",cmd_prompt},{"prompt",cmd_prompt},
+    {"p",cmd_push},{"per",cmd_perf},{"perf",cmd_perf},{"pro",cmd_prompt},{"prompt",cmd_prompt},
     {"pul",cmd_pull},{"pull",cmd_pull},{"pus",cmd_push},{"push",cmd_push},
     {"rebuild",cmd_rebuild},
     {"rem",cmd_remove},{"remove",cmd_remove},{"repo",cmd_repo},
