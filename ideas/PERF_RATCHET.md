@@ -6,10 +6,6 @@ creates a one-way ratchet that forces code toward its theoretical optimum.
 
 THE MECHANISM
 
-  Run 1: help takes 5ms  → limit set to 50ms (floor)
-  Run 2: help takes 3ms  → limit tightens to 50ms (floor holds)
-  Run 3: help takes 2ms  → limit stays 50ms
-
   Run 1: diff takes 200ms → limit set to 260ms
   Run 2: diff takes 150ms → limit tightens to 195ms
   Run 3: diff takes 140ms → limit tightens to 182ms
@@ -60,7 +56,7 @@ syncs across devices. Each device has its own ratchet:
 
 The desktop forces tight limits. The phone gets more headroom. But both
 ratchets only tighten. The phone gets faster too, just from a higher
-starting point.
+starting point. 
 
 WHAT IT PREVENTS
 
@@ -94,3 +90,23 @@ Performance is not a feature you add. It is a constraint you maintain.
 The ratchet converts "should be fast" into "must be fast" by making
 slowness a crash. Crashes get fixed. Slowness gets ignored. So make
 slowness a crash.
+
+
+More explanation:
+The key is that optimal code is as fast as possible. Our code in the beginning i
+s nearly impossible to be optimal. But we know from something working at speed n
+that optimal code is less than that, and therefore this kills suboptimal code
+that is demonstratably further from optimal quickly. Which forces a same level of 
+suboptimality or improvement over time. 
+This also limits the halting problem, our code killed over time simply cannot
+run endlessly saving potential future issues.
+This is also a difference that makes more sense given LLM capabilities and timeframes.
+In the past, fixes took long periods of time and review and human decision making.
+Today, llms can fix an issue faster than a second user can notice an issue, and the
+limiting factor of improvement becomes mostly a question of quick reaction to the problem 
+rather than being able to solve it. But like humans and any other developer the problem is 
+attention mostly. Nobody will ever heed a warning when they have a deadline which is practically
+always. Code crashing is the automatic developer summoning ritual that always works.
+But over time of course, what really happens is the opposite of what you might expect.
+Instead of crashes stopping work, faster code and shorter code means first crashes can be
+recovered from in less and less time, then there are fewer errors too. 
