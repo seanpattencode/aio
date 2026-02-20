@@ -66,13 +66,17 @@ static int cmd_login(int argc, char **argv) { fallback_py("login", argc, argv); 
 /* ── sync ── */
 static int cmd_sync(int argc, char **argv) {
     printf("%s\n", SROOT);
+    ensure_adata();
     sync_repo();
     char c[B], out[256];
     snprintf(c, B, "git -C '%s' remote get-url origin 2>/dev/null", SROOT);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     char t[256]; snprintf(c, B, "git -C '%s' log -1 --format='%%cd %%s' --date=format:'%%Y-%%m-%%d %%I:%%M:%%S %%p' 2>/dev/null", SROOT);
     pcmd(c, t, 256); t[strcspn(t,"\n")] = 0;
-    printf("  %s\n  Last: %s\n  Status: synced\n", out, t);
+    const char *status = "synced";
+    if (!out[0]) status = "no remote (run: gh auth login, then: a sync)";
+    else if (!t[0]) status = "empty (no commits yet)";
+    printf("  %s\n  Last: %s\n  Status: %s\n", out[0] ? out : "(no remote)", t[0] ? t : "(none)", status);
     /* Count files per folder */
     const char *folders[] = {"common","ssh","login","agents","notes","workspace","docs","tasks"};
     for (int i = 0; i < 8; i++) {

@@ -21,6 +21,7 @@ static void create_sess(const char *sn, const char *wd, const char *cmd) {
     if (ai) snprintf(wcmd, sizeof(wcmd),
         "while :; do %s; e=$?; [ $e -eq 0 ] && break; echo -e \"\\n! Crashed (exit $e). [R]estart / [Q]uit: \"; read -n1 k; [[ $k =~ [Rr] ]] || break; done", cmd);
     else snprintf(wcmd, sizeof(wcmd), "%s", cmd ? cmd : "");
+    tm_ensure_conf();
     tm_new(sn, wd, wcmd);
     if (ai) {
         char c[B]; snprintf(c, B, "tmux split-window -v -t '%s' -c '%s' 'sh -c \"ls;exec $SHELL\"'", sn, wd);

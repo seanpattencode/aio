@@ -191,7 +191,10 @@ install)
             else warn "$cmd skipped (npm not found)"; fi
         else ok "$cmd (exists)"; fi
     }
-    install_cli "@anthropic-ai/claude-code" "claude"
+    if ! command -v claude &>/dev/null; then
+        info "Installing claude..."
+        curl -fsSL https://claude.ai/install.sh | bash && ok "claude" || warn "claude install failed"
+    else ok "claude (exists)"; fi
     install_cli "@openai/codex" "codex"
     install_cli "@google/gemini-cli" "gemini"
     # Python venv — solves PEP 668 (externally-managed-environment).

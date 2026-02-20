@@ -14,7 +14,7 @@ static void ensure_adata(void) {
         }
         /* Fallback: init empty repo so sync_repo can work */
         mkdirp(SROOT);
-        snprintf(c, B, "git -C '%s' init -q 2>/dev/null", SROOT);
+        snprintf(c, B, "git -C '%s' init -q 2>/dev/null && git -C '%s' checkout -b main 2>/dev/null", SROOT, SROOT);
         (void)!system(c);
         printf("\xe2\x9c\x93 Initialized adata/git (gh auth login to enable sync)\n");
         return;
