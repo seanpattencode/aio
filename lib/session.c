@@ -1,6 +1,7 @@
 /* ═══ FALLBACK ═══ */
 __attribute__((noreturn))
 static void fallback_py(const char *mod, int argc, char **argv) {
+    perf_disarm(); /* python takes over — no timeout */
     char path[P]; snprintf(path, P, "%s/lib/%s.py", SDIR, mod);
     char vpy[P]; snprintf(vpy, P, "%s/venv/bin/python", AROOT);
     char **na = malloc(((unsigned)argc + 3) * sizeof(char *));

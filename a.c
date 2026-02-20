@@ -353,6 +353,7 @@ exit 0
 #define MS 48
 
 static void alog(const char *cmd, const char *cwd, const char *extra);
+static void perf_disarm(void);
 
 /* ═══ AMALGAMATION ═══ */
 #include "lib/globals.c"  /* state: paths, projects, sessions */
@@ -431,6 +432,27 @@ static const cmd_t CMDS[] = {
 };
 #define NCMDS (sizeof(CMDS)/sizeof(*CMDS))
 
+/* ═══ PERF KILL — hard timeout enforcer ═══ */
+__attribute__((noreturn)) static void perf_alarm(int sig) { (void)sig; kill(0, SIGTERM); _exit(124); }
+static void perf_arm(const char *cmd) {
+    /* network/disk commands get 5s, everything else 1s */
+    static const char *net[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install",NULL};
+    unsigned secs = 1;
+    for (const char **p = net; *p; p++) if (!strcmp(cmd, *p)) { secs = 5; break; }
+    /* per-device override: adata/git/perf/{DEV}.txt — command:ms */
+    char pf[P]; snprintf(pf, P, "%s/perf/%s.txt", SROOT, DEV);
+    char *data = readf(pf, NULL);
+    if (data) {
+        char needle[128]; snprintf(needle, 128, "%s:", cmd);
+        char *m = strstr(data, needle);
+        if (m) { unsigned ms = (unsigned)atoi(m + strlen(needle)); if (ms > 0) secs = (ms + 999) / 1000; }
+        free(data);
+    }
+    signal(SIGALRM, perf_alarm);
+    alarm(secs);
+}
+static void perf_disarm(void) { alarm(0); signal(SIGALRM, SIG_DFL); }
+
 /* ═══ MAIN ═══ */
 int main(int argc, char **argv) {
     init_paths();
@@ -444,6 +466,7 @@ int main(int argc, char **argv) {
     alog(acmd, wd, NULL);
 
     const char *arg = argv[1];
+    perf_arm(arg);
 
     /* "a 3" — jump to project by number */
     { const char *p = arg; while (*p >= '0' && *p <= '9') p++;

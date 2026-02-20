@@ -12,6 +12,7 @@ static int tm_has(const char *s) {
 }
 
 static void tm_go(const char *s) {
+    perf_disarm(); /* interactive session — no timeout */
     if (getenv("TMUX")) execlp("tmux", "tmux", "switch-client", "-t", s, (char*)NULL);
     else execlp("tmux", "tmux", "attach", "-t", s, (char*)NULL);
 }
