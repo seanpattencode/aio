@@ -91,8 +91,8 @@ static int cmd_perf(int argc, char **argv) {
         int remaining = ncmds;
         while (remaining > 0) {
             struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
-            unsigned long elapsed = (unsigned long)(now.tv_sec - t0.tv_sec) * 1000000
-                + (unsigned long)(now.tv_nsec - t0.tv_nsec) / 1000;
+            unsigned elapsed = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
+                + (now.tv_nsec - t0.tv_nsec) / 1000);
             if (elapsed > 5000000) {
                 for (int i = 0; i < ncmds; i++) if (!res[i].done) {
                     kill(-res[i].pid, SIGKILL); kill(res[i].pid, SIGKILL);
