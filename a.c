@@ -354,7 +354,6 @@ exit 0
 
 static void alog(const char *cmd, const char *cwd, const char *extra);
 static void perf_disarm(void);
-static void icache_cmds(FILE *f);
 
 /* ═══ AMALGAMATION ═══ */
 #include "lib/globals.c"  /* state: paths, projects, sessions */
@@ -395,51 +394,29 @@ static int cmd_cmp(const void *a, const void *b) {
 static const cmd_t CMDS[] = {
     {"--help",cmd_help_full},{"-h",cmd_help_full},
     {"a",cmd_all},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
-    {"aio",cmd_all},{"all",cmd_all},{"ask",cmd_ask},
-    {"att",cmd_attach},{"attach",cmd_attach},
-    {"bak",cmd_backup},{"backup",cmd_backup},
-    {"cle",cmd_cleanup},{"cleanup",cmd_cleanup},
-    {"con",cmd_config},{"config",cmd_config},
-    {"cop",cmd_copy},{"copy",cmd_copy},
-    {"das",cmd_dash},{"dash",cmd_dash},
-    {"dep",cmd_deps},{"deps",cmd_deps},
-    {"dif",cmd_diff},{"diff",cmd_diff},{"dir",cmd_dir},
-    {"doc",cmd_docs},{"docs",cmd_docs},{"done",cmd_done},
-    {"e",cmd_e},{"email",cmd_email},
-    {"gdr",cmd_gdrive},{"gdrive",cmd_gdrive},
-    {"hel",cmd_help_full},{"help",cmd_help_full},{"hi",cmd_hi},
-    {"hub",cmd_hub},{"i",cmd_i},
-    {"ins",cmd_install},{"install",cmd_install},
-    {"job",cmd_job},{"jobs",cmd_jobs},
-    {"kil",cmd_kill},{"kill",cmd_kill},{"killall",cmd_kill},
-    {"log",cmd_log},{"login",cmd_login},{"logs",cmd_log},{"ls",cmd_ls},
-    {"mono",cmd_mono},{"monolith",cmd_mono},
-    {"mov",cmd_move},{"move",cmd_move},
+    {"all",cmd_all},{"ask",cmd_ask},{"attach",cmd_attach},
+    {"backup",cmd_backup},{"cleanup",cmd_cleanup},{"config",cmd_config},
+    {"copy",cmd_copy},{"dash",cmd_dash},{"deps",cmd_deps},
+    {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
+    {"e",cmd_e},{"email",cmd_email},{"gdrive",cmd_gdrive},
+    {"help",cmd_help_full},{"hi",cmd_hi},{"hub",cmd_hub},{"i",cmd_i},
+    {"install",cmd_install},{"job",cmd_job},{"jobs",cmd_jobs},
+    {"kill",cmd_kill},{"log",cmd_log},{"login",cmd_login},{"ls",cmd_ls},
+    {"monolith",cmd_mono},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},
-    {"p",cmd_push},{"per",cmd_perf},{"perf",cmd_perf},{"pr",cmd_pr},{"pro",cmd_prompt},{"prompt",cmd_prompt},
-    {"pul",cmd_pull},{"pull",cmd_pull},{"pus",cmd_push},{"push",cmd_push},
-    {"rebuild",cmd_rebuild},
-    {"rem",cmd_remove},{"remove",cmd_remove},{"repo",cmd_repo},
-    {"rev",cmd_revert},{"revert",cmd_revert},{"review",cmd_review},
-    {"rm",cmd_remove},{"run",cmd_run},
-    {"sca",cmd_scan},{"scan",cmd_scan},
-    {"sen",cmd_send},{"send",cmd_send},
+    {"p",cmd_push},{"perf",cmd_perf},{"pr",cmd_pr},{"prompt",cmd_prompt},
+    {"pull",cmd_pull},{"push",cmd_push},{"rebuild",cmd_rebuild},
+    {"remove",cmd_remove},{"repo",cmd_repo},{"revert",cmd_revert},{"review",cmd_review},
+    {"rm",cmd_remove},{"run",cmd_run},{"scan",cmd_scan},{"send",cmd_send},
     {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
     {"ssh",cmd_ssh},{"ssh add",cmd_ssh},{"ssh all",cmd_ssh},{"ssh rm",cmd_ssh},
     {"ssh self",cmd_ssh},{"ssh setup",cmd_ssh},{"ssh start",cmd_ssh},{"ssh stop",cmd_ssh},
-    {"syn",cmd_sync},{"sync",cmd_sync},
-    {"t",cmd_task},{"tas",cmd_task},{"task",cmd_task},
-    {"tre",cmd_tree},{"tree",cmd_tree},
-    {"ui",cmd_ui},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
-    {"upd",cmd_update},{"update",cmd_update},
-    {"wat",cmd_watch},{"watch",cmd_watch},{"web",cmd_web},
-    {"wor",cmd_work},{"work",cmd_work},{"x",cmd_x},
+    {"sync",cmd_sync},{"t",cmd_task},{"task",cmd_task},
+    {"tree",cmd_tree},{"ui",cmd_ui},{"uninstall",cmd_uninstall},
+    {"update",cmd_update},{"watch",cmd_watch},{"web",cmd_web},
+    {"work",cmd_work},{"x",cmd_x},
 };
 #define NCMDS (sizeof(CMDS)/sizeof(*CMDS))
-static void icache_cmds(FILE *f) { for(int i=0;i<(int)NCMDS;i++){const char*c=CMDS[i].n;
-    if(c[0]=='-')continue; if(!strchr(c,' ')){int dup=0;
-    for(int j=0;j<(int)NCMDS;j++) if(j!=i&&!strchr(CMDS[j].n,' ')&&CMDS[j].fn==CMDS[i].fn&&strlen(CMDS[j].n)>strlen(c)){dup=1;break;}
-    if(dup)continue;} fprintf(f,"%s\n",c);} }
 
 /* ═══ PERF KILL — hard timeout enforcer ═══ */
 static char perf_msg[B]; /* pre-formatted kill message (signal-safe) */

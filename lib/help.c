@@ -84,7 +84,28 @@ static void gen_icache(void) {
     FILE *f = fopen(ic, "w"); if (!f) return;
     for (int i=0;i<NPJ;i++) fprintf(f, "%d: %s (%s)\n", i, bname(PJ[i].path), PJ[i].path);
     for (int i=0;i<NAP;i++) fprintf(f, "%d: %s\n", NPJ+i, AP[i].name);
-    icache_cmds(f);
+    fputs("add\tregister project\nagent\tai agent run\nall\tall ai sessions\n"
+    "ask\task ai question\nattach\tjoin tmux pane\nbackup\tbackup sync data\n"
+    "cleanup\trm dead sessions\nconfig\tedit config file\ncopy\tscp to hosts\n"
+    "dash\tstatus overview\ndeps\tinstall pkg deps\ndiff\tgit diff main\n"
+    "dir\tlist directory\ndocs\tproject docs\ndone\tsignal job done\n"
+    "e\topen in editor\nemail\tsend email\ngdrive\tgoogle drive sync\n"
+    "help\tfull help text\nhi\tsystem health\nhub\tscheduled jobs\n"
+    "i\tcommand picker\ninstall\tinstall tools\njob\tbackground job\n"
+    "jobs\tlist active jobs\nkill\tkill processes\nlog\tactivity log\n"
+    "login\tauth services\nls\tlist all\nmonolith\tsave page offline\n"
+    "move\tmove project dir\nnote\tquick notes\nperf\tbenchmark timing\n"
+    "pr\tcreate pull request\nprompt\tai system prompt\npull\tgit pull\n"
+    "push\tgit push\nrebuild\trecompile binary\nremove\tunregister project\n"
+    "repo\topen on github\nrevert\tundo git changes\nreview\tai code review\n"
+    "run\trun project cmd\nscan\tfind new projects\nsend\tsend to host\n"
+    "settings\tview settings\nsetup\tfirst time setup\nssh\tremote hosts\n"
+    "ssh add\tadd new host\nssh all\tcmd all hosts\nssh rm\tremove host\n"
+    "ssh self\tregister device\nssh setup\tconfigure keys\nssh start\tstart sshd\n"
+    "ssh stop\tstop sshd\nsync\tsync shared data\ntask\tmanage tasks\n"
+    "tree\tfile tree\nui\tweb dashboard\nuninstall\tremove tool\n"
+    "update\tupdate + caches\nwatch\twatch for changes\nweb\tsearch or open\n"
+    "work\tgit worktrees\nx\texperimental\n",f);
     char sd[P]; snprintf(sd, P, "%s/ssh", SROOT);
     char sp[32][P]; int sn = listdir(sd, sp, 32);
     for (int i=0,hi=0;i<sn;i++) {

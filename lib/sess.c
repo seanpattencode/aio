@@ -127,7 +127,9 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
         if (sel >= nm) sel = nm ? nm-1 : 0;
         /* Render */
         printf("\r\033[K%s> %s\n", prefix, buf);
-        for (int i=0;i<nm;i++) printf("\033[K%s a %s\n", i==sel?" >":"  ", matches[i]);
+        for (int i=0;i<nm;i++){char*t=strchr(matches[i],'\t');int ml=t?(int)(t-matches[i]):(int)strlen(matches[i]);
+            printf("\033[K%s a %.*s",i==sel?" >":"  ",ml,matches[i]);
+            if(t){printf("\033[%dG\033[2m%s\033[0m",ws.ws_col-(int)strlen(t+1),t+1);}putchar('\n');}
         printf("\033[%dA\033[%dC\033[?25h", nm+1, plen+blen+3);
         fflush(stdout);
         /* Read key */
@@ -144,9 +146,9 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
         else if (ch == '\r' || ch == '\n') {
             if (!nm) continue;
             char *m = matches[sel]; char cmd[256];
-            char *colon = strchr(m, ':');
-            if (colon) { int cl = (int)(colon-m); snprintf(cmd, 256, "%.*s", cl, m); while(cmd[0]==' ')memmove(cmd,cmd+1,strlen(cmd)); }
-            else snprintf(cmd, 256, "%s", m);
+            char *tab=strchr(m,'\t'),*colon=strchr(m,':');
+            if(colon&&(!tab||colon<tab)){int cl=(int)(colon-m);snprintf(cmd,256,"%.*s",cl,m);while(cmd[0]==' ')memmove(cmd,cmd+1,strlen(cmd));}
+            else{int cl=tab?(int)(tab-m):(int)strlen(m);snprintf(cmd,256,"%.*s",cl,m);}
             /* Trim */
             char *e = cmd+strlen(cmd)-1; while(e>cmd&&*e==' ')*e--=0;
             /* Drill into submenu if sub-items exist */
