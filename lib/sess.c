@@ -172,6 +172,6 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
         printf("\033[J");
     }
     tcsetattr(STDIN_FILENO, TCSANOW, &old);
-    printf("\033[2B\033[K"); free(raw);
+    printf("\033[2J\033[H"); free(raw);
     return 0;
 }
