@@ -42,7 +42,9 @@ static const char *HELP_FULL =
     "  a hub               Scheduled jobs (systemd)\n"
     "  a all               Multi-agent parallel runs\n"
     "  a tree              Create git worktree\n"
-    "  a gdrive            Cloud sync (Google Drive)";
+    "  a gdrive            Cloud sync (Google Drive)\n"
+    "  a perf              Show per-command timeout limits\n"
+    "  a perf bench        Benchmark + auto-tighten limits";
 
 /* ═══ LIST_ALL + CACHE ═══ */
 static void list_all(int cache, int quiet) {
