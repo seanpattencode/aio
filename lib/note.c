@@ -198,25 +198,37 @@ static int task_getkey(void){
 }
 static int cmd_task(int argc,char**argv){
     char dir[P];snprintf(dir,P,"%s/tasks",SROOT);mkdirp(dir);const char*sub=argc>2?argv[2]:NULL;
-    if(!sub){
-        printf("  a task l          list tasks\n");
-        printf("  a task r          review tasks (send to claude, manage sessions)\n");
-        printf("  a task add <t>    add task (prefix 5-digit priority, default 50000)\n");
-        printf("  a task d #        archive task #\n");
-        printf("  a task flag       AI-assisted task triage/cleanup\n");
-        printf("  a task pri # N    set priority of task # to N\n");
-        printf("  a task deadline # YYYY-MM-DD  set deadline\n");
-        printf("  a task due        list by deadline\n");
-        printf("  a task sync       sync tasks\n");
-        printf("\n  Tasks:   %s\n",dir);
-        char ctxdir[P];snprintf(ctxdir,P,"%s/context",SROOT);
-        printf("  Context: %s\n",ctxdir);
-        printf("  Add .txt files to context dir for agent prompts (default.txt auto-enabled)\n");
-        return 0;}
+    if(!sub||!strcmp(sub,"v")||!strcmp(sub,"vision")){
+        char vf[P];snprintf(vf,P,"%s/vision.txt",SROOT);
+        size_t vl;char*vc=readf(vf,&vl);
+        static const char*vk[]={"Focus","Saves","Daily"};
+        kvs_t vkv=vc?kvparse(vc):(kvs_t){.n=0};if(vc)free(vc);
+        printf("\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 Vision\033[0m");
+        if(vkv.n){struct stat vs;if(!stat(vf,&vs)){char vd[16];strftime(vd,16,"%b %d",localtime(&vs.st_mtime));printf(" \033[90m(%s)\033[0m",vd);}}
+        putchar('\n');
+        for(int j=0;j<3;j++){const char*v=kvget(&vkv,vk[j]);printf("  \033[1m%-6s\033[0m %s\n",vk[j],v?v:"\033[90m-\033[0m");}
+        if(sub){/* a task v — edit vision fields */
+            printf("\n");for(int j=0;j<3;j++){const char*v=kvget(&vkv,vk[j]);
+                printf("  %s [%s]: ",vk[j],v?v:"");fflush(stdout);
+                char lb[512];if(fgets(lb,512,stdin)&&lb[0]!='\n'){lb[strcspn(lb,"\n")]=0;
+                    int found=0;for(int k=0;k<vkv.n;k++)if(!strcmp(vkv.i[k].k,vk[j])){snprintf(vkv.i[k].v,512,"%s",lb);found=1;break;}
+                    if(!found&&vkv.n<16){snprintf(vkv.i[vkv.n].k,32,"%s",vk[j]);snprintf(vkv.i[vkv.n].v,512,"%s",lb);vkv.n++;}}}
+            char wb[B]="";int wl=0;for(int j=0;j<vkv.n;j++)wl+=snprintf(wb+wl,(size_t)(B-wl),"%s: %s\n",vkv.i[j].k,vkv.i[j].v);
+            writef(vf,wb);sync_bg();puts("\xe2\x9c\x93");return 0;}
+        /* show top task + scream */
+        int n=load_tasks(dir);
+        if(n){printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 #1 [P%s] %.50s\033[0m\n",T[0].p,T[0].t);
+            struct stat ts;if(!stat(T[0].d,&ts)){int age=(int)((time(NULL)-ts.st_mtime)/86400);if(age>0)printf("  \033[90m%dd stale\033[0m\n",age);}}
+        if(!isatty(STDIN_FILENO))return 0;
+        printf("\n  Scream or [enter]work on #1: ");fflush(stdout);
+        char sb[B];if(fgets(sb,B,stdin)&&sb[0]!='\n'){sb[strcspn(sb,"\n")]=0;
+            task_add(dir,sb,100);printf("\xe2\x9c\x93 P00100 %s\n",sb);sync_bg();}
+        else if(n){sub="1";}
+        else return 0;}
+    int grn=0;
     if(*sub=='l'){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
         for(int i=0;i<n;i++){char ct[256];task_counts(T[i].d,ct,256);
             printf("  %d. P%s %.50s%s\n",i+1,T[i].p,T[i].t,ct);}return 0;}
-    int grn=0;
     if(0){review:;} /* due r jumps here with T[] pre-loaded */
     if(grn||isdigit(*sub)||!strcmp(sub,"rev")||!strcmp(sub,"review")||!strcmp(sub,"r")||!strcmp(sub,"t")){
         int n=grn?grn:load_tasks(dir);if(!n){puts("No tasks");return 0;}

@@ -108,11 +108,14 @@ static int cmd_update(int argc, char **argv) {
     snprintf(c, B, "git -C '%s' fetch 2>/dev/null", SDIR); (void)!system(c);
     snprintf(c, B, "git -C '%s' status -uno 2>/dev/null", SDIR);
     char out[B]; pcmd(c, out, B);
-    if (!strstr(out, "behind")) {
-        printf("\xe2\x9c\x93 Up to date\n");
-    } else {
+    if (strstr(out, "diverged")) {
+        puts("Diverged — rebasing...");
+        snprintf(c, B, "git -C '%s' pull --rebase 2>/dev/null", SDIR); (void)!system(c);
+    } else if (strstr(out, "behind")) {
         puts("Downloading...");
         snprintf(c, B, "git -C '%s' pull --ff-only 2>/dev/null", SDIR); (void)!system(c);
+    } else {
+        printf("\xe2\x9c\x93 Up to date\n");
     }
     /* Self-build: prefer clang, fall back to gcc */
     snprintf(c, B, "sh '%s/a.c'", SDIR);
