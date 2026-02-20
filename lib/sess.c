@@ -30,7 +30,7 @@ static int cmd_sess(int argc, char **argv) {
     }
     /* Inside tmux + single char key = split pane mode */
     if (getenv("TMUX") && strlen(key) == 1 && key[0] != 'a') {
-        char c[B]; snprintf(c, B, "tmux split-window -hfP -F '#{pane_id}' -c '%s' '%s'", wd, s->cmd);
+        char c[B]; snprintf(c, B, "tmux split-window -hfP -F '#{pane_id}' -c '%s' 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; %s'", wd, s->cmd);
         char pid[64]; pcmd(c, pid, 64); pid[strcspn(pid,"\n")] = 0;
         if (pid[0]) {
             snprintf(c, B, "tmux split-window -v -t '%s' -c '%s' 'sh -c \"ls;exec $SHELL\"'", pid, wd); (void)!system(c);

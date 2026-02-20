@@ -73,16 +73,12 @@ _shell_funcs() {
     for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
         touch "$RC"
         grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
-        sed -i -e '/^_ADD=/d' -e '/^a() {/,/^}/d' -e '/^aio() {/d' -e '/^ai() {/d' "$RC" 2>/dev/null||:
+        sed -i -e '/^_ADD=/d' -e '/^a() {/,/^}/d' -e '/^aio() {/,/^}/d' -e '/^ai() {/,/^}/d' "$RC" 2>/dev/null||:
         echo "_ADD=\"$D/adata/local\"" >> "$RC"
         cat >> "$RC" << 'AFUNC'
 a() {
     local dd="$_ADD"
     [[ -z "$1" ]] && { [[ -f $dd/help_cache.txt ]] && printf '%s\n' "$(<"$dd/help_cache.txt")" || command a; return; }
-    if [[ "$1" =~ ^[0-9]+$ ]]; then
-        local -a lines; mapfile -t lines < $dd/projects.txt 2>/dev/null
-        local dir="${lines[$1]}"; [[ -n "$dir" && -d "$dir" ]] && { printf '📂 %s\n' "$dir"; cd "$dir"; return; }
-    fi
     local d="${1/#\~/$HOME}"; [[ "$1" == "/projects/"* ]] && d="$HOME$1"
     [[ -d "$d" ]] && { printf '📂 %s\n' "$d"; cd "$d"; return; }
     [[ "$1" == *.py && -f "$1" ]] && { local py=python3 ev=1; [[ -n "$VIRTUAL_ENV" ]] && py="$VIRTUAL_ENV/bin/python" ev=0; [[ -x .venv/bin/python ]] && py=.venv/bin/python ev=0; local s=$(($(date +%s%N)/1000000)); if command -v uv &>/dev/null && [[ -f pyproject.toml || -f uv.lock ]]; then uv run python "$@"; ev=0; else $py "$@"; fi; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> $dd/timing.jsonl; [[ $r -ne 0 && $ev -ne 0 ]] && printf '  try: a c fix python env for this project\n'; return $r; }
@@ -483,11 +479,12 @@ int main(int argc, char **argv) {
     alog(acmd, wd, NULL);
 
     const char *arg = argv[1];
-    perf_arm(arg);
 
-    /* "a 3" — jump to project by number */
+    /* "a 3" — jump to project by number (no perf: just cd) */
     { const char *p = arg; while (*p >= '0' && *p <= '9') p++;
       if (*p == '\0' && p != arg) { init_db(); return cmd_project_num(argc, argv, atoi(arg)); } }
+
+    perf_arm(arg);
 
     /* Table lookup — O(log n) bsearch over sorted command table */
     { cmd_t key = {arg, NULL};
