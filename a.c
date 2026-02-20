@@ -354,6 +354,7 @@ exit 0
 
 static void alog(const char *cmd, const char *cwd, const char *extra);
 static void perf_disarm(void);
+static void icache_cmds(FILE *f);
 
 /* ═══ AMALGAMATION ═══ */
 #include "lib/globals.c"  /* state: paths, projects, sessions */
@@ -424,7 +425,9 @@ static const cmd_t CMDS[] = {
     {"sca",cmd_scan},{"scan",cmd_scan},
     {"sen",cmd_send},{"send",cmd_send},
     {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
-    {"ssh",cmd_ssh},{"syn",cmd_sync},{"sync",cmd_sync},
+    {"ssh",cmd_ssh},{"ssh add",cmd_ssh},{"ssh all",cmd_ssh},{"ssh rm",cmd_ssh},
+    {"ssh self",cmd_ssh},{"ssh setup",cmd_ssh},{"ssh start",cmd_ssh},{"ssh stop",cmd_ssh},
+    {"syn",cmd_sync},{"sync",cmd_sync},
     {"t",cmd_task},{"tas",cmd_task},{"task",cmd_task},
     {"tre",cmd_tree},{"tree",cmd_tree},
     {"ui",cmd_ui},{"uni",cmd_uninstall},{"uninstall",cmd_uninstall},
@@ -433,6 +436,10 @@ static const cmd_t CMDS[] = {
     {"wor",cmd_work},{"work",cmd_work},{"x",cmd_x},
 };
 #define NCMDS (sizeof(CMDS)/sizeof(*CMDS))
+static void icache_cmds(FILE *f) { for(int i=0;i<(int)NCMDS;i++){const char*c=CMDS[i].n;
+    if(c[0]=='-')continue; if(!strchr(c,' ')){int dup=0;
+    for(int j=0;j<(int)NCMDS;j++) if(j!=i&&!strchr(CMDS[j].n,' ')&&CMDS[j].fn==CMDS[i].fn&&strlen(CMDS[j].n)>strlen(c)){dup=1;break;}
+    if(dup)continue;} fprintf(f,"%s\n",c);} }
 
 /* ═══ PERF KILL — hard timeout enforcer ═══ */
 static char perf_msg[B]; /* pre-formatted kill message (signal-safe) */

@@ -114,18 +114,21 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
     raw_t.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
     raw_t.c_cc[VMIN] = 1; raw_t.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &raw_t);
-    char buf[256] = ""; int blen = 0, sel = 0;
+    char buf[256] = ""; int blen = 0, sel = 0; char prefix[256] = "";
     printf("Filter (↑↓/Tab=cycle, Enter=run, Esc=quit)\n");
     while (1) {
         /* Search */
-        char *matches[512]; int nm = 0;
-        if (!blen) { for (int i=0;i<n&&nm<maxshow;i++) matches[nm++]=lines[i]; }
-        else { for (int i=0;i<n&&nm<maxshow;i++) { if (strcasestr(lines[i],buf)) matches[nm++]=lines[i]; } }
+        char *matches[512]; int nm = 0; int plen = (int)strlen(prefix);
+        for (int i=0;i<n&&nm<maxshow;i++) {
+            if (plen && strncmp(lines[i], prefix, (size_t)plen)) continue;
+            if (blen && !strcasestr(lines[i]+plen, buf)) continue;
+            matches[nm++] = lines[i];
+        }
         if (sel >= nm) sel = nm ? nm-1 : 0;
         /* Render */
-        printf("\r\033[K> %s\n", buf);
+        printf("\r\033[K%s> %s\n", prefix, buf);
         for (int i=0;i<nm;i++) printf("\033[K%s a %s\n", i==sel?" >":"  ", matches[i]);
-        printf("\033[%dA\033[%dC\033[?25h", nm+1, blen+3);
+        printf("\033[%dA\033[%dC\033[?25h", nm+1, plen+blen+3);
         fflush(stdout);
         /* Read key */
         char ch; if (read(STDIN_FILENO, &ch, 1) != 1) break;
@@ -135,7 +138,7 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
                 if (read(STDIN_FILENO, &seq[1], 1) != 1) break;
                 if (seq[1] == 'A') { sel = sel > 0 ? sel-1 : (nm?nm-1:0); } /* Up */
                 else if (seq[1] == 'B') { sel = (sel+1) % (nm?nm:1); } /* Down */
-            } else break; /* bare Esc */
+            } else if(prefix[0]){prefix[0]=0;buf[0]=0;blen=0;sel=0;} else break;
         } else if (ch == '\t') { sel = (sel+1) % (nm?nm:1); }
         else if (ch == '\x7f' || ch == '\b') { if (blen) buf[--blen]=0; sel=0; }
         else if (ch == '\r' || ch == '\n') {
@@ -146,6 +149,10 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
             else snprintf(cmd, 256, "%s", m);
             /* Trim */
             char *e = cmd+strlen(cmd)-1; while(e>cmd&&*e==' ')*e--=0;
+            /* Drill into submenu if sub-items exist */
+            int has_sub=0,cl=(int)strlen(cmd);
+            for(int i=0;i<n;i++) if(!strncmp(lines[i],cmd,(size_t)cl)&&lines[i][cl]==' '){has_sub=1;break;}
+            if(has_sub){snprintf(prefix,256,"%s ",cmd);buf[0]=0;blen=0;sel=0;printf("\033[J");continue;}
             tcsetattr(STDIN_FILENO, TCSANOW, &old);
             printf("\n\n\033[KRunning: a %s\n", cmd);
             /* Build argv for exec */

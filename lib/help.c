@@ -84,11 +84,7 @@ static void gen_icache(void) {
     FILE *f = fopen(ic, "w"); if (!f) return;
     for (int i=0;i<NPJ;i++) fprintf(f, "%d: %s (%s)\n", i, bname(PJ[i].path), PJ[i].path);
     for (int i=0;i<NAP;i++) fprintf(f, "%d: %s\n", NPJ+i, AP[i].name);
-    static const char *cmds[] = {"help","update","jobs","kill","attach","cleanup","config","ls","diff","send","watch",
-        "push","pull","revert","set","install","uninstall","deps","prompt","gdrive","add","remove","move",
-        "dash","all","backup","scan","copy","log","done","agent","tree","dir","web","ssh","run","hub",
-        "task","ui","review","note","setup"};
-    for (int i=0;i<(int)(sizeof(cmds)/sizeof(*cmds));i++) fprintf(f, "%s\n", cmds[i]);
+    icache_cmds(f);
     char sd[P]; snprintf(sd, P, "%s/ssh", SROOT);
     char sp[32][P]; int sn = listdir(sd, sp, 32);
     for (int i=0,hi=0;i<sn;i++) {
