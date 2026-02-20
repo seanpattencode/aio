@@ -427,6 +427,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
     kill(0, SIGTERM); _exit(124);
 }
 static void perf_arm(const char *cmd) {
+    if (getenv("A_BENCH")) return; /* bench children: parent handles timeout */
     if (isdigit(*cmd)) return;
     static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan","send","watch","job","tree","pr",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;

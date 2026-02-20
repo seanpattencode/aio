@@ -78,6 +78,7 @@ static int cmd_perf(int argc, char **argv) {
             if (p == 0) {
                 dup2(nul, STDIN_FILENO); dup2(nul, STDOUT_FILENO); dup2(nul, STDERR_FILENO);
                 setpgid(0, 0);
+                putenv("A_BENCH=1");
                 execl(bin, "a", BENCH_CMDS[i], (char *)NULL);
                 _exit(127);
             }
