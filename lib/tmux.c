@@ -1,7 +1,14 @@
 /* ═══ TMUX HELPERS ═══ */
 static int tm_has(const char *s) {
-    char c[B]; snprintf(c, B, "tmux has-session -t '%s' 2>/dev/null", s);
-    return system(c) == 0;
+    char c[B]; snprintf(c, B, "timeout 2 tmux has-session -t '%s' 2>/dev/null", s);
+    int r = system(c);
+    if (r != -1 && WIFEXITED(r) && WEXITSTATUS(r) == 124) {
+        /* server unresponsive (stuck at 100% CPU = tmux bug) — kill + retry */
+        (void)!system("tmux kill-server 2>/dev/null");
+        usleep(200000);
+        return system(c) == 0;
+    }
+    return r == 0;
 }
 
 static void tm_go(const char *s) {
