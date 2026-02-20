@@ -1,4 +1,4 @@
-import sys, asyncio, os, pty, subprocess, webbrowser, struct, fcntl, termios, json, socket, time; from aiohttp import web; from concurrent.futures import ThreadPoolExecutor
+import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, socket, time; from aiohttp import web; from concurrent.futures import ThreadPoolExecutor
 
 # terminal is the API: ALL logic routes through local terminal commands (the `a` binary)
 # so AI agents and humans can debug in terminal and know logic works identically in UI.
@@ -9,6 +9,13 @@ import sys, asyncio, os, pty, subprocess, webbrowser, struct, fcntl, termios, js
 # controllable via tmux send-keys, debuggable by attaching: tmux attach -t <session>.
 # single-page app: all views in one HTML, show/hide for instant switching
 # bookmarkable flat paths via pushState: /term /note work on reload + cross-device
+_D = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+_A, _G = f'{_D}/a', f'{_D}/adata/git'
+def _kv(p):
+    r = {}
+    for l in open(p):
+        if ':' in l: k, v = l.split(':', 1); r[k.strip()] = v.strip()
+    return r
 HTML = '''<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
@@ -90,9 +97,8 @@ async def restart(r): os.execv(sys.executable, [sys.executable] + sys.argv)
 # debuggable by both humans and AI agents (tmux attach -t <job>).
 async def term(r):
     ws = web.WebSocketResponse(); await ws.prepare(r); m, s = pty.openpty()
-    env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
-    env['TERM'] = 'xterm-256color'
-    subprocess.Popen([os.environ.get('SHELL', '/bin/bash'), '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
+    env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}; env['TERM'] = 'xterm-256color'
+    S.Popen([os.environ.get('SHELL', '/bin/bash'), '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
     loop = asyncio.get_event_loop()
     loop.add_reader(m, lambda: asyncio.create_task(ws.send_str(os.read(m, 4096).decode(errors='ignore'))))
     async for msg in ws:
@@ -102,20 +108,16 @@ async def term(r):
                 if isinstance(d, dict) and 'cols' in d: fcntl.ioctl(m, termios.TIOCSWINSZ, struct.pack('HHHH', d['rows'], d['cols'], 0, 0)); continue
             except Exception: pass
             os.write(m, msg.data.encode())
-        elif msg.type == web.WSMsgType.BINARY:
-            os.write(m, msg.data)
+        elif msg.type == web.WSMsgType.BINARY: os.write(m, msg.data)
     loop.remove_reader(m); os.close(m)
     return ws
 
 async def projects_api(r):
-    d = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '..', 'adata', 'git', 'workspace', 'projects')
-    ps = []
+    d = f'{_G}/workspace/projects'; ps = []
     if os.path.isdir(d):
         for f in sorted(os.listdir(d)):
             if not f.endswith('.txt'): continue
-            kv = {}
-            for line in open(os.path.join(d, f)):
-                if ':' in line: k, v = line.split(':', 1); kv[k.strip()] = v.strip()
+            kv = _kv(f'{d}/{f}')
             if 'Name' in kv:
                 p = kv.get('Path', '') or f'~/projects/{kv["Name"]}'
                 ps.append({'name': kv['Name'], 'path': p.replace('~', os.path.expanduser('~'))})
@@ -123,18 +125,15 @@ async def projects_api(r):
     return web.json_response(ps)
 
 def _up(h):
-    try: s=socket.socket(); s.settimeout(0.5); hp=h.rsplit(':',1); s.connect((hp[0].split('@')[-1],int(hp[1]) if len(hp)>1 else 22)); s.close(); return True
+    try: s = socket.socket(); s.settimeout(0.5); hp = h.rsplit(':', 1); s.connect((hp[0].split('@')[-1], int(hp[1]) if len(hp) > 1 else 22)); s.close(); return True
     except: return False
 
 async def devices_api(r):
-    d = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '..', 'adata', 'git', 'ssh')
-    hosts = []
+    d = f'{_G}/ssh'; hosts = []
     if os.path.isdir(d):
         for f in sorted(os.listdir(d)):
             if not f.endswith('.txt'): continue
-            kv = {}
-            for line in open(os.path.join(d, f)):
-                if ':' in line: k, v = line.split(':', 1); kv[k.strip()] = v.strip()
+            kv = _kv(f'{d}/{f}')
             if 'Name' in kv and 'Host' in kv: hosts.append({'name': kv['Name'], 'host': kv['Host']})
     with ThreadPoolExecutor(8) as ex: live = list(ex.map(lambda h: _up(h['host']), hosts))
     for i, h in enumerate(hosts): h['live'] = live[i]
@@ -144,45 +143,37 @@ async def devices_api(r):
 async def jobs_api(r):
     if r.method == 'POST':
         d = await r.json()
-        prompt, project, count, device = d.get('prompt','').strip(), d.get('project',''), d.get('count',1), d.get('device','')
+        prompt, project, count, device = d.get('prompt', '').strip(), d.get('project', ''), d.get('count', 1), d.get('device', '')
         if not prompt: return web.json_response({'error': 'no prompt'}, status=400)
         q = prompt.replace("'", "'\\''")
-        cd = ''
-        if project:
-            cd = f"cd {os.path.expanduser('~/projects/' + os.path.basename(project)) if device else project} && "
-        cmd = f"{cd}a all l:{count} '{q}'" if count > 1 else f"{cd}a c '{q}'"
-        if device: cmd = f"a ssh {device} \"{cmd.replace(chr(34), chr(92)+chr(34))}\""
+        cd = f"cd {os.path.expanduser('~/projects/' + os.path.basename(project)) if device else project} && " if project else ''
+        cmd = f"{cd}{_A} all l:{count} '{q}'" if count > 1 else f"{cd}{_A} c '{q}'"
+        if device: cmd = f"{_A} ssh {device} \"{cmd.replace(chr(34), chr(92)+chr(34))}\""
         name = f'job-{int(time.time())}'
-        sf = f'/tmp/a_{name}.sh'
-        with open(sf, 'w') as f: f.write(f'#!/bin/sh\n{cmd}\n')
-        os.chmod(sf, 0o755)
-        subprocess.Popen(['tmux', 'new-session', '-d', '-s', name, sf])
+        S.Popen(['tmux', 'new-session', '-d', '-s', name, cmd])
         return web.json_response({'session': name, 'command': cmd})
-    # GET — list jobs via CLI
-    p = subprocess.run(['a', 'jobs'], capture_output=True, text=True, timeout=10)
+    p = S.run([_A, 'jobs'], capture_output=True, text=True, timeout=10)
     return web.Response(text=p.stdout or 'No jobs')
 
 async def term_capture(r):
     s = r.query.get('session', ''); n = int(r.query.get('lines', '500'))
     if not s: return web.Response(text='usage: ?session=name&lines=500')
-    p = subprocess.run(['tmux', 'capture-pane', '-t', s, '-p', '-S', str(-n)], capture_output=True, text=True)
+    p = S.run(['tmux', 'capture-pane', '-t', s, '-p', '-S', str(-n)], capture_output=True, text=True)
     return web.Response(text=p.stdout if p.returncode == 0 else f'no session: {s}')
 
 async def note_api(r):
-    if r.method=='POST': d=await r.post(); c=d.get('c','').strip(); c and subprocess.Popen(['a','note',c]); return web.Response(text='ok')
+    if r.method == 'POST': d = await r.post(); c = d.get('c', '').strip(); c and S.Popen([_A, 'note', c]); return web.Response(text='ok')
     return web.Response(text='')
 
 async def notes_list(r):
-    d = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '..', 'adata', 'git', 'notes')
-    ns = []
+    d = f'{_G}/notes'; ns = []
     if os.path.isdir(d):
-        for f in sorted(os.listdir(d), key=lambda x: x.rsplit('_',1)[-1] if '_' in x else '0', reverse=True):
+        for f in sorted(os.listdir(d), key=lambda x: x.rsplit('_', 1)[-1] if '_' in x else '0', reverse=True):
             if not f.endswith('.txt') or f.startswith('.'): continue
-            for line in open(os.path.join(d, f)):
+            for line in open(f'{d}/{f}'):
                 if line.startswith('Text: '): ns.append(line[6:].strip()); break
     return web.json_response(ns)
 
-# serve same SPA for all bookmarkable paths — JS reads pathname to show correct view
 app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/term', term_capture), web.post('/note', note_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
