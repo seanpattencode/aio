@@ -25,11 +25,26 @@ static int tm_new(const char *s, const char *wd, const char *cmd) {
 }
 
 static void tm_send(const char *s, const char *text) {
-    /* Use tmux send-keys -l for literal text */
     pid_t p = fork();
     if (p == 0) { execlp("tmux", "tmux", "send-keys", "-l", "-t", s, text, (char*)NULL); _exit(1); }
     if (p > 0) waitpid(p, NULL, 0);
 }
+
+static int tm_read(const char *s, char *buf, int len) {
+    char c[B]; snprintf(c, B, "tmux capture-pane -t '%s' -p -S -50 2>/dev/null", s);
+    return pcmd(c, buf, len);
+}
+
+static void tm_key(const char *s, const char *key) {
+    pid_t p = fork();
+    if (p == 0) { execlp("tmux", "tmux", "send-keys", "-t", s, key, (char*)NULL); _exit(1); }
+    if (p > 0) waitpid(p, NULL, 0);
+}
+
+/* ═══ DIRECTING SESSIONS ═══
+ * a watch <s>           — read pane    a send <s> <prompt> --wait — send + wait
+ * Example: a c proj "task" → a send claude-proj "next" --wait → a watch claude-proj
+ * C: tm_read(sn,buf,B) inspect, tm_send(sn,text) literal, tm_key(sn,"Enter") key */
 
 /* ═══ TMUX CONFIG ═══ */
 static const char *tm_clip(void) {

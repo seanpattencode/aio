@@ -46,7 +46,7 @@ static int cmd_sess(int argc, char **argv) {
         if (is_prompt && prompt[0]) {
             /* Send prompt to existing session */
             tm_send(sn, prompt); usleep(100000);
-            char c[B]; snprintf(c, B, "tmux send-keys -t '%s' Enter", sn); (void)!system(c);
+            tm_key(sn, "Enter");
             puts("Prompt queued (existing session)");
         }
         tm_go(sn);

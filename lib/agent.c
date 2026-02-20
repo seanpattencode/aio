@@ -40,8 +40,7 @@ static int cmd_agent(int argc, char **argv) {
     puts("Waiting for agent to start...");
     for (int i = 0; i < 60; i++) {
         sleep(1);
-        char c[B], out[B]; snprintf(c, B, "tmux capture-pane -t '%s' -p 2>/dev/null", sn);
-        pcmd(c, out, B);
+        char out[B]; tm_read(sn, out, B);
         if (strstr(out, "Type your message") || strstr(out, "claude") || strstr(out, "gemini")) break;
     }
     /* Send task with instructions */
@@ -49,15 +48,14 @@ static int cmd_agent(int argc, char **argv) {
         "%s\n\nCommands: \"a agent g <task>\" spawns gemini subagent, \"a agent l <task>\" spawns claude subagent. When YOUR task is fully complete, run: a done",
         taskstr);
     tm_send(sn, prompt); usleep(300000);
-    char c[B]; snprintf(c, B, "tmux send-keys -t '%s' Enter", sn); (void)!system(c);
+    tm_key(sn, "Enter");
     /* Wait for done file */
     char donef[P]; snprintf(donef, P, "%s/.done", DDIR); unlink(donef);
     puts("Waiting for completion...");
     time_t start = time(NULL);
     while (!fexists(donef) && time(NULL) - start < 300) sleep(1);
     /* Capture output */
-    char out[B*4]; snprintf(c, B, "tmux capture-pane -t '%s' -p -S -100 2>/dev/null", sn);
-    pcmd(c, out, sizeof(out));
+    char out[B*4]; tm_read(sn, out, sizeof(out));
     printf("--- Output ---\n%s\n--- End ---\n", out);
     return 0;
 }

@@ -52,15 +52,14 @@ static void send_prefix_bg(const char *sn, const char *agent, const char *wd, co
         setsid();
         for (int i = 0; i < 300; i++) {
             usleep(50000);
-            char c[B], buf[B] = "";
-            snprintf(c, B, "tmux capture-pane -t '%s' -p -S -50 2>/dev/null", sn);
-            pcmd(c, buf, B);
+            char buf[B] = "";
+            tm_read(sn, buf, B);
             char *lo = buf;
             for (char *p = lo; *p; p++) *p = (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p;
             if (strstr(lo,"context") || strstr(lo,"claude") || strstr(lo,"opus") || strstr(lo,"gemini") || strstr(lo,"codex")) break;
         }
         tm_send(sn, pre);
-        if (extra) { sleep(1); execlp("tmux","tmux","send-keys","-t",sn,"Enter",(char*)NULL); }
+        if (extra) { sleep(1); tm_key(sn, "Enter"); }
         _exit(0);
     }
 }

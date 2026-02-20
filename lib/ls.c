@@ -97,11 +97,11 @@ static int cmd_watch(int argc, char **argv) {
     char last[B] = "";
     while (1) {
         if (dur && time(NULL) - start > dur) break;
-        char c[B], out[B]; snprintf(c, B, "tmux capture-pane -t '%s' -p 2>/dev/null", sn);
-        if (pcmd(c, out, B) != 0) { printf("x Session %s not found\n", sn); return 1; }
+        char out[B];
+        if (tm_read(sn, out, B) != 0) { printf("x Session %s not found\n", sn); return 1; }
         if (strcmp(out, last)) {
             if (strstr(out, "Are you sure?") || strstr(out, "Continue?") || strstr(out, "[y/N]") || strstr(out, "[Y/n]")) {
-                snprintf(c, B, "tmux send-keys -t '%s' y Enter", sn); (void)!system(c);
+                tm_key(sn, "y"); tm_key(sn, "Enter");
                 puts("\xe2\x9c\x93 Auto-responded");
             }
             snprintf(last, B, "%s", out);
@@ -124,7 +124,7 @@ static int cmd_send(int argc, char **argv) {
         else { pl+=snprintf(prompt+pl,(size_t)(B-pl),"%s%s",pl?" ":"",argv[i]); }
     }
     tm_send(sn, prompt);
-    if (enter) { usleep(100000); char c[B]; snprintf(c, B, "tmux send-keys -t '%s' Enter", sn); (void)!system(c); }
+    if (enter) { usleep(100000); tm_key(sn, "Enter"); }
     printf("\xe2\x9c\x93 %s '%s'\n", enter?"Sent to":"Inserted into", sn);
     if (wait) {
         printf("Waiting..."); fflush(stdout);
