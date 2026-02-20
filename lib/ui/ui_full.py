@@ -21,6 +21,7 @@ HTML = '''<!doctype html>
   <a onclick="go('/jobs')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">jobs</a>
   <a onclick="go('/term')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">terminal</a>
   <a onclick="go('/note')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">note</a>
+  <a onclick="fetch('/restart')" style="font-size:16px;color:#666;cursor:pointer;padding:10px 20px">restart server</a>
 </div>
 <div id=v_term style="display:none;height:100vh">
   <div id=t style="height:calc(100vh - 140px)"></div>
@@ -83,12 +84,15 @@ show(views[location.pathname]?location.pathname:'/');
 async def spa(r): return web.Response(text=HTML, content_type='text/html', headers={'Cache-Control':'no-store'})
 
 async def restart(r): os.execv(sys.executable, [sys.executable] + sys.argv)
+# xterm view is a plain user shell (no tmux) — interactive terminal for manual use.
+# tmux is used for background jobs only (POST /api/jobs), where sessions must be
+# inspectable (tmux capture-pane -t <job>), controllable (tmux send-keys), and
+# debuggable by both humans and AI agents (tmux attach -t <job>).
 async def term(r):
     ws = web.WebSocketResponse(); await ws.prepare(r); m, s = pty.openpty()
-    fcntl.ioctl(s, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 180, 0, 0))
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
     env['TERM'] = 'xterm-256color'
-    subprocess.Popen(['tmux', 'new-session', '-A', '-s', 'ui'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
+    subprocess.Popen([os.environ.get('SHELL', '/bin/bash'), '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
     loop = asyncio.get_event_loop()
     loop.add_reader(m, lambda: asyncio.create_task(ws.send_str(os.read(m, 4096).decode(errors='ignore'))))
     async for msg in ws:
@@ -159,9 +163,10 @@ async def jobs_api(r):
     return web.Response(text=p.stdout or 'No jobs')
 
 async def term_capture(r):
-    n = int(r.query.get('lines', '500'))
-    p = subprocess.run(['tmux', 'capture-pane', '-t', 'ui', '-p', '-S', str(-n)], capture_output=True, text=True)
-    return web.Response(text=p.stdout if p.returncode == 0 else 'no ui session')
+    s = r.query.get('session', ''); n = int(r.query.get('lines', '500'))
+    if not s: return web.Response(text='usage: ?session=name&lines=500')
+    p = subprocess.run(['tmux', 'capture-pane', '-t', s, '-p', '-S', str(-n)], capture_output=True, text=True)
+    return web.Response(text=p.stdout if p.returncode == 0 else f'no session: {s}')
 
 async def note_api(r):
     if r.method=='POST': d=await r.post(); c=d.get('c','').strip(); c and subprocess.Popen(['a','note',c]); return web.Response(text='ok')
