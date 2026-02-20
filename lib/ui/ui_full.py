@@ -37,19 +37,21 @@ HTML = '''<!doctype html>
     <button onclick="runjob()" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
   </div>
 </div>
-<div id=v_note style="display:none;height:100vh;align-items:center;justify-content:center">
+<div id=v_note style="display:none;height:100vh;flex-direction:column;padding-top:20px;align-items:center">
   <form id=nf style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=nc autofocus placeholder="note" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <button type=submit style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">save</button>
     <button type=button onclick="go('/term')" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">term</button>
   </form>
+  <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px"></div>
 </div>
 <script>
 var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
-function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);}
+function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);if(p==='/note')loadn();}
+function loadn(){fetch('/api/notes').then(function(r){return r.json()}).then(function(d){nl.innerHTML=d.map(function(t){return'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222">'+t+'</div>'}).join('');});}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
-function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value),d=jd.value;if(!v)return;var q=v.replace(/"/g,'\\\\"'),cd=p?(d?'cd ~/projects/'+p.split('/').pop():'cd '+p)+' && ':'',c;if(d){var rc=cd+(n>1?'a all l:'+n+' "'+q+'"':'claude "'+q+'"');c='a ssh '+d+' "'+rc.replace(/"/g,'\\\\"')+'"';}else{c=cd+(n>1?'a all l:'+n+' "'+q+'"':'claude "'+q+'"');}ws(c+'\\n');go('/term');}
+function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value),d=jd.value;if(!v)return;var q=v.replace(/"/g,'\\\\"'),cd=p?(d?'cd ~/projects/'+p.split('/').pop():'cd '+p)+' && ':'',c;if(d){var rc=cd+(n>1?'a all l:'+n+' "'+q+'"':'a c "'+q+'"');c='a ssh '+d+' "'+rc.replace(/"/g,'\\\\"')+'"';}else{c=cd+(n>1?'a all l:'+n+' "'+q+'"':'a c "'+q+'"');}ws(c+'\\n');go('/term');}
 fetch('/api/projects').then(function(r){return r.json()}).then(function(d){jp.innerHTML='<option value="">~ (home)</option>';d.forEach(function(p){jp.innerHTML+='<option value="'+p.path+'">'+p.name+'</option>';});});
 fetch('/api/devices').then(function(r){return r.json()}).then(function(d){jd.innerHTML='<option value="">local</option>';d.forEach(function(h){jd.innerHTML+='<option value="'+h.name+'"'+(h.live?'':' style="color:#666"')+'>'+h.name+(h.live?' ✓':' ✗')+'</option>';});});
 window.onpopstate=function(){show(location.pathname);};
@@ -68,7 +70,7 @@ try{
   T.onData(function(d){ws(d);});
   new ResizeObserver(function(){F.fit();ws(JSON.stringify({cols:T.cols,rows:T.rows}));}).observe(document.getElementById('t'));
 }catch(e){document.body.innerHTML='<pre style="color:red;padding:20px">'+e+'</pre>';}
-nf.onsubmit=function(e){e.preventDefault();var c=nc.value.trim();if(c){fetch('/note',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+encodeURIComponent(c)});nc.value='';nc.placeholder='saved!';}};
+nf.onsubmit=function(e){e.preventDefault();var c=nc.value.trim();if(c){fetch('/note',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+encodeURIComponent(c)});nl.insertAdjacentHTML('afterbegin','<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222">'+c+'</div>');nc.value='';nc.placeholder='saved!';}};
 show(views[location.pathname]?location.pathname:'/');
 </script>'''
 
@@ -80,7 +82,7 @@ async def term(r):
     fcntl.ioctl(s, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 180, 0, 0))
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
     env['TERM'] = 'xterm-256color'
-    subprocess.Popen([os.environ.get('SHELL', '/bin/bash'), '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
+    subprocess.Popen(['tmux', 'new-session', '-A', '-s', 'ui'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
     loop = asyncio.get_event_loop()
     loop.add_reader(m, lambda: asyncio.create_task(ws.send_str(os.read(m, 4096).decode(errors='ignore'))))
     async for msg in ws:
@@ -130,10 +132,20 @@ async def devices_api(r):
     return web.json_response(hosts)
 
 async def note_api(r):
-    if r.method=='POST': d=await r.post(); c=d.get('c','').strip(); c and subprocess.run(['python3',os.path.expanduser('~/.local/bin/aio'),'note',c]); return web.Response(text='ok')
+    if r.method=='POST': d=await r.post(); c=d.get('c','').strip(); c and subprocess.Popen(['a','note',c]); return web.Response(text='ok')
     return web.Response(text='')
 
+async def notes_list(r):
+    d = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '..', 'adata', 'git', 'notes')
+    ns = []
+    if os.path.isdir(d):
+        for f in sorted(os.listdir(d), key=lambda x: x.rsplit('_',1)[-1] if '_' in x else '0', reverse=True):
+            if not f.endswith('.txt') or f.startswith('.'): continue
+            for line in open(os.path.join(d, f)):
+                if line.startswith('Text: '): ns.append(line[6:].strip()); break
+    return web.json_response(ns)
+
 # serve same SPA for all bookmarkable paths — JS reads pathname to show correct view
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.post('/note', note_api)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.post('/note', note_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)

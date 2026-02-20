@@ -8,12 +8,6 @@ static void ssh_parse(const char*h,char*hp,char*port){
     snprintf(hp,256,"%s",h);char*c=strrchr(hp,':');
     if(c){snprintf(port,8,"%s",c+1);*c=0;}else snprintf(port,8,"22");
 }
-static void ssh_cmd(const char*pw,const char*hp,const char*port,const char*opt,const char*cmd){
-    char c[B*2];int n=0;
-    if(pw&&pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",pw);
-    snprintf(c+n,sizeof(c)-(size_t)n,"ssh %s -oStrictHostKeyChecking=accept-new -p %s '%s'%s%s",opt,port,hp,cmd?" ":"",cmd?cmd:"");
-    if(cmd)(void)!system(c);else execl("/bin/sh","sh","-c",c,(char*)NULL);
-}
 static int cmd_ssh(int argc, char **argv) {
     char dir[P]; snprintf(dir,P,"%s/ssh",SROOT); mkdirp(dir); sync_bg();
     typedef struct{char name[128],host[256],pw[256];}host_t;
@@ -62,7 +56,7 @@ static int cmd_ssh(int argc, char **argv) {
     if(!strcmp(sub,"setup")){fallback_py("ssh",argc,argv);}
     if((!strcmp(sub,"all")||!strcmp(sub,"*"))&&argc>3){
         char cmd[B]="";for(int i=3,l=0;i<argc;i++) l+=snprintf(cmd+l,(size_t)(B-l),"%s%s",i>3?" ":"",argv[i]);
-        char qc[B];snprintf(qc,B,"'bash -ic '\"'\"'%s'\"'\"''",cmd);
+        char qc[B];snprintf(qc,B,"'bash -c '\"'\"'export PATH=$HOME/.local/bin:$PATH; %s'\"'\"''",cmd);
         for(int i=0;i<nh;i++){char hp[256],port[8];ssh_parse(H[i].host,hp,port);
             char c[B*2];int n=0;if(H[i].pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",H[i].pw);
             snprintf(c+n,sizeof(c)-(size_t)n,"ssh -oConnectTimeout=5 -oStrictHostKeyChecking=no -p %s '%s' %s 2>&1",port,hp,qc);
@@ -78,9 +72,12 @@ static int cmd_ssh(int argc, char **argv) {
     if(!H[idx].pw[0]){char tc[B];snprintf(tc,B,"ssh -oBatchMode=yes -oConnectTimeout=3 -p %s '%s' true 2>/dev/null",port,hp);
         if(system(tc)){char pw[256];printf("Password for %s: ",H[idx].name);
             if(fgets(pw,256,stdin)){pw[strcspn(pw,"\n")]=0;if(pw[0]){snprintf(H[idx].pw,256,"%s",pw);ssh_save(dir,H[idx].name,H[idx].host,pw);}}}}
-    if(argc>3){char cmd[B]="";for(int i=3,l=0;i<argc;i++) l+=snprintf(cmd+l,(size_t)(B-l),"%s%s",i>3?" ":"",argv[i]);
-        char qc[B];snprintf(qc,B,"'bash -ic '\"'\"'%s'\"'\"''",cmd);
-        ssh_cmd(H[idx].pw,hp,port,"-tt",qc);return 0;}
-    printf("Connecting to %s...\n",H[idx].name);
-    ssh_cmd(H[idx].pw,hp,port,"-tt",NULL);return 1;
+    {char cmd[B]="";for(int i=3;i<argc;i++){int l=(int)strlen(cmd);snprintf(cmd+l,(size_t)(B-l),"%s%s",l?" ":"",argv[i]);}
+        char c[B*2];int n=0;
+        if(H[idx].pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",H[idx].pw);
+        if(cmd[0]){char qc[B];snprintf(qc,B,"'bash -c '\"'\"'export PATH=$HOME/.local/bin:$PATH; %s'\"'\"''",cmd);
+            snprintf(c+n,sizeof(c)-(size_t)n,"ssh -tt -oStrictHostKeyChecking=accept-new -p %s '%s' %s",port,hp,qc);
+        }else snprintf(c+n,sizeof(c)-(size_t)n,"ssh -tt -oStrictHostKeyChecking=accept-new -p %s '%s'",port,hp);
+        if(!cmd[0])printf("Connecting to %s...\n",H[idx].name);
+        execl("/bin/sh","sh","-c",c,(char*)NULL);_exit(127);}
 }
