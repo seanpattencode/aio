@@ -430,22 +430,22 @@ static void perf_arm(const char *cmd) {
     static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan","send","watch","job","tree","pr",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
-    /* per-device override: adata/git/perf/{DEV}.txt — command:ms */
+    /* per-device override: adata/git/perf/{DEV}.txt — command:us (microseconds) */
     char pf[P]; snprintf(pf, P, "%s/perf/%s.txt", SROOT, DEV);
-    unsigned limit_ms = secs * 1000;
+    unsigned limit_us = secs * 1000000;
     char *data = readf(pf, NULL);
     if (data) {
         char needle[128]; snprintf(needle, 128, "\n%s:", cmd);
         char *m = strstr(data, needle);
         if (!m && !strncmp(data, cmd, strlen(cmd)) && data[strlen(cmd)] == ':')
-            m = data - 1; /* match at start of file */
-        if (m) { unsigned ms = (unsigned)atoi(m + 1 + strlen(cmd) + 1); if (ms > 0) { limit_ms = ms; secs = (ms + 999) / 1000; } }
+            m = data - 1;
+        if (m) { unsigned us = (unsigned)atoi(m + 1 + strlen(cmd) + 1); if (us > 0) { limit_us = us; secs = (us + 999999) / 1000000; } }
         free(data);
     }
     snprintf(perf_msg, B,
-        "\n\033[31m✗ PERF KILL\033[0m: 'a %s' exceeded %us timeout (limit: %ums, device: %s)\n"
+        "\n\033[31m✗ PERF KILL\033[0m: 'a %s' exceeded %us timeout (limit: %uus, device: %s)\n"
         "  Fix: make it faster — timings only tighten, never loosen\n"
-        "  Edit: %s\n", cmd, secs, limit_ms, DEV, pf);
+        "  Edit: %s\n", cmd, secs, limit_us, DEV, pf);
     signal(SIGALRM, perf_alarm);
     alarm(secs);
 }
