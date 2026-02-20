@@ -445,10 +445,10 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
     kill(0, SIGTERM); _exit(124);
 }
 static void perf_arm(const char *cmd) {
-    /* network/disk commands get 5s, everything else 1s */
-    static const char *slow[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan",NULL};
+    if (isdigit(*cmd)) return;
+    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan",NULL};
+    for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
-    for (const char **p = slow; *p; p++) if (!strcmp(cmd, *p)) { secs = 5; break; }
     /* per-device override: adata/git/perf/{DEV}.txt — command:ms */
     char pf[P]; snprintf(pf, P, "%s/perf/%s.txt", SROOT, DEV);
     unsigned limit_ms = secs * 1000;
