@@ -91,7 +91,7 @@ static int cmd_dir_file(int argc, char **argv) { (void)argc;
 
 /* ── interactive picker ── */
 static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
-    init_db(); gen_icache();
+    perf_disarm(); init_db(); gen_icache();
     char cache[P]; snprintf(cache, P, "%s/i_cache.txt", DDIR);
     size_t len; char *raw = readf(cache, &len);
     if (!raw) { puts("No cache"); return 1; }
