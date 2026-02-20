@@ -78,7 +78,7 @@ _shell_funcs() {
         cat >> "$RC" << 'AFUNC'
 a() {
     local dd="$_ADD"
-    [[ -z "$1" ]] && { [[ -f $dd/help_cache.txt ]] && printf '%s\n' "$(<"$dd/help_cache.txt")" || command a; return; }
+    [[ -z "$1" ]] && { [[ -t 1 ]] && command -v a-i &>/dev/null && { a-i; return; }; [[ -f $dd/help_cache.txt ]] && printf '%s\n' "$(<"$dd/help_cache.txt")" || command a; return; }
     local d="${1/#\~/$HOME}"; [[ "$1" == "/projects/"* ]] && d="$HOME$1"
     [[ -d "$d" ]] && { printf '📂 %s\n' "$d"; cd "$d"; return; }
     [[ "$1" == *.py && -f "$1" ]] && { local py=python3 ev=1; [[ -n "$VIRTUAL_ENV" ]] && py="$VIRTUAL_ENV/bin/python" ev=0; [[ -x .venv/bin/python ]] && py=.venv/bin/python ev=0; local s=$(($(date +%s%N)/1000000)); if command -v uv &>/dev/null && [[ -f pyproject.toml || -f uv.lock ]]; then uv run python "$@"; ev=0; else $py "$@"; fi; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> $dd/timing.jsonl; [[ $r -ne 0 && $ev -ne 0 ]] && printf '  try: a c fix python env for this project\n'; return $r; }
@@ -97,7 +97,8 @@ build)
     _warn_flags
     $CC $WARN $HARDEN -DSRC="\"$D\"" -O3 -flto -fsyntax-only "$D/a.c" & P1=$!
     $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$D/a" "$D/a.c" $LDFLAGS & P2=$!
-    wait $P1 && wait $P2
+    $CC -O2 -march=native -w -o "$D/a-i" "$D/lib/aid.c" & P3=$!
+    wait $P1 && wait $P2 && wait $P3
     ;;
 analyze)
     _ensure_cc
