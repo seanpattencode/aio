@@ -9,7 +9,9 @@ static const char *BENCH_CMDS[] = {
     "sync","scan","update","install",NULL
 };
 
-/* returns microseconds on success, UINT_MAX if killed by perf timeout */
+/* returns microseconds on success, UINT_MAX if killed/timed out */
+static volatile pid_t bench_pid;
+static void bench_kill(int sig) { (void)sig; if (bench_pid>0) kill(-bench_pid, SIGKILL); }
 static unsigned perf_run(const char *cmd) {
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -22,7 +24,13 @@ static unsigned perf_run(const char *cmd) {
         execl(bin, "a", cmd, (char *)NULL);
         _exit(127);
     }
+    /* parent-side timeout: kills child even if it skips perf_arm */
+    bench_pid = p;
+    signal(SIGALRM, bench_kill);
+    alarm(10);
     int status; waitpid(p, &status, 0);
+    alarm(0); signal(SIGALRM, SIG_DFL);
+    bench_pid = 0;
     clock_gettime(CLOCK_MONOTONIC, &t1);
     unsigned us = (unsigned)((t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_nsec - t0.tv_nsec) / 1000);
     if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))

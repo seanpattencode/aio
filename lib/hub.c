@@ -75,17 +75,7 @@ static int cmd_hub(int argc, char **argv) {
             if(m) printf("%-2d%-9.8s%-10.9s%s %s\n",i,j->n,lr,on?"\xe2\x9c\x93":" ",cp);
             else printf("%-2d%-11.10s%-7.6s%-13.12s%-8.7s%s %s\n",i,j->n,j->s,lr,j->d,on?"\xe2\x9c\x93":" ",cp);
         }
-        if(!isatty(STDIN_FILENO)) return 0;
-        char line[B]; printf("\n<#> run | on/off <#> | add|rm <#> | q\n");
-        while((void)printf("> "),(void)fflush(stdout),fgets(line,B,stdin)) {
-            line[strcspn(line,"\n")]=0; if(!line[0]||line[0]=='q') break;
-            char c2[B]; if(line[0]>='0'&&line[0]<='9'&&!strchr(line,' '))
-                snprintf(c2,B,"%s hub run %s",G_argv[0],line);
-            else snprintf(c2,B,"%s hub %s",G_argv[0],line);
-            (void)!system(c2); hub_load();
-            for(int i=0;i<NJ;i++) { hub_t *j=&HJ[i]; char p2[96]; snprintf(p2,96,"aio-%s.timer",j->n);
-                printf("%-2d%-11.10s%-7.6s%-3s%s\n",i,j->n,j->s,strstr(tl,p2)?"\xe2\x9c\x93":" ",j->p); }
-        }
+        printf("\na hub <#>       run job\na hub on/off #  toggle\na hub add|rm    create/delete\n");
         return 0;
     }
 
