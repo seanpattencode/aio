@@ -1,6 +1,6 @@
 /* ═══ GIT HELPERS ═══ */
 static int git_in_repo(const char *p) {
-    char c[P]; snprintf(c, P, "%s/.git", p); return dexists(c);
+    char c[P]; snprintf(c, P, "%s/.git", p); return dexists(c)||fexists(c);
 }
 
 /* ═══ ADATA SETUP ═══ */

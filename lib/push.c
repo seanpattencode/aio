@@ -59,23 +59,23 @@ static int cmd_push(int argc, char **argv) {
 }
 
 /* ── pr ── */
+static void sq(const char *s, char *o, int sz) { int j=0; o[j++]='\'';
+    for(;*s&&j<sz-4;s++){if(*s=='\''){o[j++]='\'';o[j++]='\\';o[j++]='\'';o[j++]='\'';}else o[j++]=*s;} o[j++]='\'';o[j]=0; }
 static int cmd_pr(int argc, char **argv) {
     char cwd[P]; if(!getcwd(cwd,P)) snprintf(cwd,P,".");
     if (!git_in_repo(cwd)) { puts("x Not a git repo"); return 1; }
     char br[128]; pcmd("git rev-parse --abbrev-ref HEAD 2>/dev/null",br,128); br[strcspn(br,"\n")]=0;
     if (!strcmp(br,"main")||!strcmp(br,"master")) { puts("x On main — create a branch first"); return 1; }
+    char title[256]=""; if(argc>2){int l=0;for(int i=2;i<argc;i++)l+=snprintf(title+l,(size_t)(256-l),"%s%s",i>2?" ":"",argv[i]);}
+    else snprintf(title,256,"%s",br);
+    char qt[512],qb[512]; sq(title,qt,512); sq(br,qb,512);
     /* commit + push if needed */
     char dirty[64]=""; pcmd("git status --porcelain 2>/dev/null",dirty,64);
-    if(dirty[0]){char msg[B]="";if(argc>2)for(int i=2,l=0;i<argc;i++)l+=snprintf(msg+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
-        else snprintf(msg,B,"pr: %s",br);
-        char c[B];snprintf(c,B,"git add -A && git commit -m '%s'",msg);(void)!system(c);}
+    if(dirty[0]){char c[B];snprintf(c,B,"git add -A && git commit -m %s",qt);(void)!system(c);}
     char c[B]; snprintf(c,B,"git push -u origin %s 2>&1",br);
     char out[B]; pcmd(c,out,B);
     if(!strstr(out,"->")&&!strstr(out,"up-to-date")&&!strstr(out,"Everything")){printf("x Push: %s\n",out);return 1;}
-    /* create PR */
-    char title[256]=""; if(argc>2){int l=0;for(int i=2;i<argc;i++)l+=snprintf(title+l,(size_t)(256-l),"%s%s",i>2?" ":"",argv[i]);}
-    else snprintf(title,256,"%s",br);
-    snprintf(c,B,"gh pr create --title '%s' --body '' --head '%s' 2>&1",title,br); pcmd(c,out,B);
+    snprintf(c,B,"gh pr create --title %s --body '' --head %s 2>&1",qt,qb); pcmd(c,out,B);
     out[strcspn(out,"\n")]=0;
     if(strstr(out,"github.com")&&strstr(out,"/pull/")) printf("+ %s\n",out);
     else if(strstr(out,"already exists")) printf("+ PR exists for %s\n",br);

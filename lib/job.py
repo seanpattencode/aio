@@ -5,7 +5,7 @@ Flow: create worktree branch, launch agent session with prompt, wait for complet
 import sys, os, subprocess as S, time
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
-from _common import init_db, load_cfg, load_sess, load_proj, db, DEVICE_ID, SCRIPT_DIR, ADATA_ROOT
+from _common import init_db, load_cfg, load_sess, load_proj, db, DEVICE_ID, SCRIPT_DIR, ADATA_ROOT, DATA_DIR
 
 _A = os.path.join(SCRIPT_DIR, 'a')
 
@@ -42,7 +42,9 @@ def _extract_pr_url(text):
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)  # strip ANSI
     for line in text.split('\n'):
         line = line.strip()
-        if line.startswith('https://github.com/') and '/pull/' in line: return line
+        if '/pull/' in line and 'github.com/' in line:
+            u = line[line.index('https://'):] if 'https://' in line else ''
+            if u: return u
     return ''
 
 def run():
@@ -101,36 +103,37 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn):
 
     _db_job(jn, 'agent', 'running', wp, sn)
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
-    S.Popen([_A, 'c', wp, prompt], env=env, start_new_session=True, stdout=S.DEVNULL, stderr=S.DEVNULL)
-    # Find actual session name
-    time.sleep(3)
-    r = S.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
-    actual = sn
-    for line in r.stdout.strip().split('\n'):
-        if os.path.basename(wp) in line: actual = line; break
-    print(f"+ Agent: {actual}")
+    S.run(['tmux', 'new-session', '-d', '-s', sn, '-c', wp, 'claude --dangerously-skip-permissions'], env=env)
+    for _ in range(60):
+        time.sleep(1)
+        r = S.run(['tmux', 'capture-pane', '-t', sn, '-p'], capture_output=True, text=True, env=env)
+        if any(x in r.stdout.lower() for x in ['type your message', 'claude', 'context']): break
+    full = f"{prompt}\n\nWhen done, run: a done"
+    S.run(['tmux', 'send-keys', '-t', sn, '-l', full], env=env)
+    time.sleep(0.5)
+    S.run(['tmux', 'send-keys', '-t', sn, 'Enter'], env=env)
+    print(f"+ Agent: {sn}")
 
-    _db_job(jn, 'waiting', 'running', wp, actual)
-    print("Waiting...")
-    last = time.time()
-    while time.time() - last < 600:
-        r = S.run(['tmux', 'display-message', '-p', '-t', actual, '#{window_activity}'], capture_output=True, text=True)
+    _db_job(jn, 'waiting', 'running', wp, sn)
+    done_file = os.path.join(DATA_DIR, '.done')
+    if os.path.exists(done_file): os.unlink(done_file)
+    print("Waiting for agent...")
+    start = time.time()
+    while time.time() - start < 600:
+        if os.path.exists(done_file): break
+        r = S.run(['tmux', 'has-session', '-t', sn], capture_output=True)
         if r.returncode != 0: break
-        try: act = int(r.stdout.strip())
-        except: act = 0
-        if time.time() - act < 5: last = time.time()
-        elif time.time() - last > 20: break
         time.sleep(3)
     print("+ Done")
 
-    _db_job(jn, 'pr', 'running', wp, actual)
+    _db_job(jn, 'pr', 'running', wp, sn)
     pr = _make_pr(wp, br, rn, prompt)
     if pr:
-        _db_job(jn, 'email', 'running', wp, actual)
+        _db_job(jn, 'email', 'running', wp, sn)
         _email(jn, rn, prompt, pr, wp)
-        _db_job(jn, 'done', 'done', wp, actual)
+        _db_job(jn, 'done', 'done', wp, sn)
     else:
-        _db_job(jn, 'no-changes', 'done', wp, actual)
+        _db_job(jn, 'no-changes', 'done', wp, sn)
 
 def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     _db_job(jn, 'ssh-setup', 'running')
@@ -202,11 +205,14 @@ gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "
         _db_job(jn, 'pr-failed', 'failed')
 
 def _make_pr(wp, br, rn, prompt):
-    r = S.run(['git', '-C', wp, 'status', '--porcelain'], capture_output=True, text=True)
-    if not r.stdout.strip(): print("x No changes"); return None
-    short = prompt[:50]
-    r = S.run([_A, 'pr', f'job: {short}'], capture_output=True, text=True, cwd=wp)
-    return _extract_pr_url(r.stdout + '\n' + r.stderr) or None
+    dirty = S.run(['git', '-C', wp, 'status', '--porcelain'], capture_output=True, text=True).stdout.strip()
+    ahead = S.run(['git', '-C', wp, 'log', 'HEAD', '--not', '--remotes', '--oneline'], capture_output=True, text=True).stdout.strip()
+    if not dirty and not ahead: print("x No changes"); return None
+    r = S.run([_A, 'pr', f'job: {prompt[:50]}'], capture_output=True, text=True, cwd=wp)
+    url = _extract_pr_url(r.stdout + '\n' + r.stderr)
+    if url: print(f"+ PR: {url}")
+    else: print(f"x PR: {r.stdout} {r.stderr}")
+    return url or None
 
 def _email(jn, rn, prompt, pr_url, wp):
     """Email via a email (avoids copy.py import collision)"""

@@ -1,11 +1,11 @@
 /* ── email ── */
 static int cmd_email(int argc, char **argv) {
-    char c[B]; snprintf(c,B,"python3 '%s/agents/base.py'",SDIR);
-    char **na=argv; na[1]="email"; /* replace command name for help display */
-    /* rebuild: python3 base.py [args...] */
-    char cmd[B*2]; int l=snprintf(cmd,sizeof(cmd),"%s",c);
-    for(int i=2;i<argc;i++) l+=snprintf(cmd+l,(size_t)(sizeof(cmd)-(size_t)l)," '%s'",argv[i]);
-    return system(cmd)>>8;
+    char bp[P]; snprintf(bp,P,"%s/agents/base.py",SDIR);
+    char **na=malloc(((unsigned)argc+2)*sizeof(char*));
+    na[0]="python3"; na[1]=bp;
+    for(int i=2;i<argc;i++) na[i]=argv[i];
+    na[argc]=NULL;
+    execvp("python3",na); perror("python3"); return 1;
 }
 
 /* ── log ── */
