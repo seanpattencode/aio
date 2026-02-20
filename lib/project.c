@@ -15,7 +15,7 @@ static int cmd_project_num(int argc, char **argv, int idx) { (void)argc; (void)a
         return 0;
     }
     int ai = idx - NPJ;
-    if (ai>=0 && ai<NAP) { char ex[B],*p,*e; snprintf(ex,B,"%s",AP[ai].cmd); while((p=strchr(ex,'{'))&&(e=strchr(p,'}'))){ *e=0;for(int j=0;j<NPJ;j++)if(!strcmp(PJ[j].name,p+1)){*p=0;char t[B];snprintf(t,B,"%s%s%s",ex,PJ[j].path,e+1);snprintf(ex,B,"%s",t);break;}} printf("> %s\n",AP[ai].name); return system(ex)>>8; }
+    if (ai<NAP) { char ex[B],*p,*e; strcpy(ex,AP[ai].cmd); while((p=strchr(ex,'{'))&&(e=strchr(p,'}'))){ *e=0;for(int j=0;j<NPJ;j++)if(!strcmp(PJ[j].name,p+1)){*p=0;char t[B];sprintf(t,"%s%s%s",ex,PJ[j].path,e+1);strcpy(ex,t);break;}} if((p=strstr(ex,"python "))){memmove(p+7,p+6,strlen(p+6)+1);p[6]='3';} printf("> %s\n",AP[ai].name); return system(ex)>>8; }
     printf("x Invalid index: %d\n", idx); return 1;
 }
 
