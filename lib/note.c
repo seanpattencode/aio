@@ -226,6 +226,18 @@ static int cmd_task(int argc,char**argv){
         else if(n){sub="1";}
         else return 0;}
     int grn=0;
+    if(!strcmp(sub,"help")||!strcmp(sub,"-h")||!strcmp(sub,"h")){
+        puts("  a task          vision + scream + #1\n  a task v        edit vision\n  a task l        list\n  a task r        review (navigate)\n  a task rank     reprioritize walk-through\n  a task add <t>  add (prefix 5-digit pri)\n  a task d #      archive\n  a task pri # N  set priority\n  a task flag     AI triage\n  a task deadline # MM-DD\n  a task due      by deadline\n  a task sync     sync");
+        return 0;}
+    if(!strcmp(sub,"rank")){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
+        int changed=0;
+        for(int i=0;i<n;i++){
+            printf("  %d/%d [P%s] %.60s  pri (enter=keep): ",i+1,n,T[i].p,T[i].t);fflush(stdout);
+            char buf[16];if(!fgets(buf,16,stdin)||buf[0]=='q')break;
+            if(buf[0]!='\n'){int pv=atoi(buf);if(pv>0){task_repri(i,pv);changed=1;}}
+        }if(changed){sync_bg();n=load_tasks(dir);puts("\nNew order:");
+            for(int i=0;i<n;i++)printf("  %d. P%s %.50s\n",i+1,T[i].p,T[i].t);}
+        return 0;}
     if(*sub=='l'){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
         for(int i=0;i<n;i++){char ct[256];task_counts(T[i].d,ct,256);
             printf("  %d. P%s %.50s%s\n",i+1,T[i].p,T[i].t,ct);}return 0;}
