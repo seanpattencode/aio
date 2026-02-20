@@ -8,6 +8,7 @@ static const char *BENCH_CMDS[] = {
     "sync","scan","update","install",NULL
 };
 
+/* returns ms on success, UINT_MAX if killed by perf timeout */
 static unsigned perf_run(const char *cmd) {
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -24,7 +25,9 @@ static unsigned perf_run(const char *cmd) {
     int status; waitpid(p, &status, 0);
     clock_gettime(CLOCK_MONOTONIC, &t1);
     unsigned ms = (unsigned)((t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) == 124) return 0; /* killed */
+    /* perf_alarm does _exit(124); signals also mean killed */
+    if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))
+        return UINT_MAX;
     return ms;
 }
 
@@ -90,17 +93,19 @@ static int cmd_perf(int argc, char **argv) {
             unsigned ms = perf_run(cmd);
             unsigned old = perf_limit(data, cmd);
             /* new limit: 3x measured, min 50ms, but never loosen */
-            unsigned proposed = ms ? (ms * 3 < 50 ? 50 : ms * 3) : 0;
+            int killed = ms == UINT_MAX;
+            unsigned t = killed ? 0 : ms;
+            unsigned proposed = t * 3 < 50 ? 50 : t * 3;
             unsigned new_lim = old;
             int tight = 0;
-            if (ms == 0) { new_lim = old; } /* killed — keep old */
+            if (killed) { new_lim = old; } /* killed — keep old */
             else if (!old) { new_lim = proposed; tight = 1; } /* no previous — set */
             else if (proposed < old) { new_lim = proposed; tight = 1; } /* tighter */
-            res[i] = (res_t){cmd, ms, old, new_lim, ms > 0};
-            if (ms > 0) passed++;
+            res[i] = (res_t){cmd, t, old, new_lim, !killed};
+            if (!killed) passed++;
             if (tight) tightened++;
-            const char *st = ms == 0 ? "\033[31mKILLED\033[0m" : tight ? "\033[32m↓ tight\033[0m" : "\033[32m✓\033[0m";
-            printf("%-12s %5ums %5ums %5ums  %s\n", cmd, ms, old, new_lim, st);
+            const char *st = killed ? "\033[31mKILLED\033[0m" : tight ? "\033[32m↓ tight\033[0m" : "\033[32m✓\033[0m";
+            printf("%-12s %5ums %5ums %5ums  %s\n", cmd, t, old, new_lim, st);
         }
         puts("────────────────────────────────────────────────────");
         printf("%d/%d passed, %d tightened\n\n", passed, ncmds, tightened);
