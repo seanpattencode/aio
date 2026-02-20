@@ -87,7 +87,7 @@ static int cmd_perf(int argc, char **argv) {
         }
         close(nul);
 
-        /* reap with 5s hard deadline */
+        /* reap with 5s hard deadline — poll each child by PID (not -1) */
         int remaining = ncmds;
         while (remaining > 0) {
             struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
@@ -101,19 +101,20 @@ static int cmd_perf(int argc, char **argv) {
                 }
                 break;
             }
-            int status; pid_t p = waitpid(-1, &status, WNOHANG);
-            if (p > 0) {
+            int any = 0;
+            for (int i = 0; i < ncmds; i++) {
+                if (res[i].done) continue;
+                int status; pid_t p = waitpid(res[i].pid, &status, WNOHANG);
+                if (p <= 0) continue;
                 clock_gettime(CLOCK_MONOTONIC, &now);
-                unsigned us = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
+                res[i].us = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
                     + (now.tv_nsec - t0.tv_nsec) / 1000);
-                for (int i = 0; i < ncmds; i++) if (res[i].pid == p && !res[i].done) {
-                    res[i].done = 1; remaining--;
-                    if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))
-                        { res[i].us = UINT_MAX; }
-                    else { res[i].us = us; res[i].pass = 1; }
-                    break;
-                }
-            } else usleep(500);
+                res[i].done = 1; remaining--; any = 1;
+                if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))
+                    res[i].us = UINT_MAX;
+                else res[i].pass = 1;
+            }
+            if (!any) usleep(500);
         }
 
         /* compute limits + display */
