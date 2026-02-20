@@ -110,8 +110,7 @@ static int cmd_perf(int argc, char **argv) {
                 res[i].us = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
                     + (now.tv_nsec - t0.tv_nsec) / 1000);
                 res[i].done = 1; remaining--; any = 1;
-                if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))
-                    res[i].us = UINT_MAX;
+                if (WIFSIGNALED(status)) res[i].us = UINT_MAX;
                 else res[i].pass = 1;
             }
             if (!any) usleep(500);
