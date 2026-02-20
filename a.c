@@ -433,7 +433,12 @@ static const cmd_t CMDS[] = {
 #define NCMDS (sizeof(CMDS)/sizeof(*CMDS))
 
 /* ═══ PERF KILL — hard timeout enforcer ═══ */
-__attribute__((noreturn)) static void perf_alarm(int sig) { (void)sig; kill(0, SIGTERM); _exit(124); }
+static char perf_msg[B]; /* pre-formatted kill message (signal-safe) */
+__attribute__((noreturn)) static void perf_alarm(int sig) {
+    (void)sig;
+    (void)!write(STDERR_FILENO, perf_msg, strlen(perf_msg));
+    kill(0, SIGTERM); _exit(124);
+}
 static void perf_arm(const char *cmd) {
     /* network/disk commands get 5s, everything else 1s */
     static const char *slow[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan",NULL};
@@ -441,13 +446,20 @@ static void perf_arm(const char *cmd) {
     for (const char **p = slow; *p; p++) if (!strcmp(cmd, *p)) { secs = 5; break; }
     /* per-device override: adata/git/perf/{DEV}.txt — command:ms */
     char pf[P]; snprintf(pf, P, "%s/perf/%s.txt", SROOT, DEV);
+    unsigned limit_ms = secs * 1000;
     char *data = readf(pf, NULL);
     if (data) {
-        char needle[128]; snprintf(needle, 128, "%s:", cmd);
+        char needle[128]; snprintf(needle, 128, "\n%s:", cmd);
         char *m = strstr(data, needle);
-        if (m) { unsigned ms = (unsigned)atoi(m + strlen(needle)); if (ms > 0) secs = (ms + 999) / 1000; }
+        if (!m && !strncmp(data, cmd, strlen(cmd)) && data[strlen(cmd)] == ':')
+            m = data - 1; /* match at start of file */
+        if (m) { unsigned ms = (unsigned)atoi(m + 1 + strlen(cmd) + 1); if (ms > 0) { limit_ms = ms; secs = (ms + 999) / 1000; } }
         free(data);
     }
+    snprintf(perf_msg, B,
+        "\n\033[31m✗ PERF KILL\033[0m: 'a %s' exceeded %us timeout (limit: %ums, device: %s)\n"
+        "  Fix: make it faster — timings only tighten, never loosen\n"
+        "  Edit: %s\n", cmd, secs, limit_ms, DEV, pf);
     signal(SIGALRM, perf_alarm);
     alarm(secs);
 }
