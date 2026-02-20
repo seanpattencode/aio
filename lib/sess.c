@@ -121,7 +121,8 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
         char *matches[512]; int nm = 0; int plen = (int)strlen(prefix);
         for (int i=0;i<n&&nm<maxshow;i++) {
             if (plen && strncmp(lines[i], prefix, (size_t)plen)) continue;
-            if (blen && !strcasestr(lines[i]+plen, buf)) continue;
+            if(blen){char*s=lines[i]+plen,b2[256],*w;snprintf(b2,256,"%s",buf);int ok=1;
+                for(w=strtok(b2," ");w&&ok;w=strtok(0," "))if(!strcasestr(s,w))ok=0;if(!ok)continue;}
             matches[nm++] = lines[i];
         }
         if (sel >= nm) sel = nm ? nm-1 : 0;
