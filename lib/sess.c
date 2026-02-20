@@ -119,19 +119,21 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
     while (1) {
         /* Search */
         char *matches[512]; int nm = 0; int plen = (int)strlen(prefix);
-        for (int i=0;i<n&&nm<maxshow;i++) {
+        for (int i=0;i<n&&nm<512;i++) {
             if (plen && strncmp(lines[i], prefix, (size_t)plen)) continue;
             if(blen){char*s=lines[i]+plen,b2[256],*w;snprintf(b2,256,"%s",buf);int ok=1;
                 for(w=strtok(b2," ");w&&ok;w=strtok(0," "))if(!strcasestr(s,w))ok=0;if(!ok)continue;}
             matches[nm++] = lines[i];
         }
         if (sel >= nm) sel = nm ? nm-1 : 0;
+        /* Scroll window around sel */
+        int top=sel>=maxshow?sel-maxshow+1:0, show=nm-top<maxshow?nm-top:maxshow;
         /* Render */
         printf("\r\033[K%s> %s\n", prefix, buf);
-        for (int i=0;i<nm;i++){char*t=strchr(matches[i],'\t');int ml=t?(int)(t-matches[i]):(int)strlen(matches[i]);
-            printf("\033[K%s a %.*s",i==sel?" >":"  ",ml,matches[i]);
+        for (int i=0;i<show;i++){int j=top+i;char*t=strchr(matches[j],'\t');int ml=t?(int)(t-matches[j]):(int)strlen(matches[j]);
+            printf("\033[K%s a %.*s",j==sel?" >":"  ",ml,matches[j]);
             if(t){printf("\033[%dG\033[90m%s\033[0m",ws.ws_col-(int)strlen(t+1),t+1);}putchar('\n');}
-        printf("\033[%dA\033[%dC\033[?25h", nm+1, plen+blen+3);
+        printf("\033[%dA\033[%dC\033[?25h", show+1, plen+blen+3);
         fflush(stdout);
         /* Read key */
         char ch; if (read(STDIN_FILENO, &ch, 1) != 1) break;
@@ -139,10 +141,10 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
             char seq[2]; if (read(STDIN_FILENO, &seq[0], 1) != 1) break;
             if (seq[0] == '[') {
                 if (read(STDIN_FILENO, &seq[1], 1) != 1) break;
-                if (seq[1] == 'A') { sel = sel > 0 ? sel-1 : (nm?nm-1:0); } /* Up */
-                else if (seq[1] == 'B') { sel = (sel+1) % (nm?nm:1); } /* Down */
+                if (seq[1] == 'A') { if(sel>0)sel--; } /* Up */
+                else if (seq[1] == 'B') { if(sel<nm-1)sel++; } /* Down */
             } else if(prefix[0]){prefix[0]=0;buf[0]=0;blen=0;sel=0;} else break;
-        } else if (ch == '\t') { sel = (sel+1) % (nm?nm:1); }
+        } else if (ch == '\t') { if(sel<nm-1)sel++; }
         else if (ch == '\x7f' || ch == '\b') { if (blen) buf[--blen]=0; sel=0; }
         else if (ch == '\r' || ch == '\n') {
             if (!nm) continue;
