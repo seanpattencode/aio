@@ -9,35 +9,6 @@ static const char *BENCH_CMDS[] = {
     "sync","scan","update","install",NULL
 };
 
-/* returns microseconds on success, UINT_MAX if killed/timed out */
-static volatile pid_t bench_pid;
-static void bench_kill(int sig) { (void)sig; if (bench_pid>0) kill(-bench_pid, SIGKILL); }
-static unsigned perf_run(const char *cmd) {
-    struct timespec t0, t1;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-    pid_t p = fork();
-    if (p == 0) {
-        int null = open("/dev/null", O_WRONLY);
-        dup2(null, STDOUT_FILENO); dup2(null, STDERR_FILENO); close(null);
-        setpgid(0, 0);
-        char bin[P]; snprintf(bin, P, "%s/a", SDIR);
-        execl(bin, "a", cmd, (char *)NULL);
-        _exit(127);
-    }
-    /* parent-side timeout: kills child even if it skips perf_arm */
-    bench_pid = p;
-    signal(SIGALRM, bench_kill);
-    alarm(10);
-    int status; waitpid(p, &status, 0);
-    alarm(0); signal(SIGALRM, SIG_DFL);
-    bench_pid = 0;
-    clock_gettime(CLOCK_MONOTONIC, &t1);
-    unsigned us = (unsigned)((t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_nsec - t0.tv_nsec) / 1000);
-    if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))
-        return UINT_MAX;
-    return us;
-}
-
 /* parse limit for cmd from perf file data (microseconds); 0 = not found */
 static unsigned perf_limit(const char *data, const char *cmd) {
     if (!data) return 0;
@@ -49,7 +20,6 @@ static unsigned perf_limit(const char *data, const char *cmd) {
     return 0;
 }
 
-/* format microseconds for display: "350us" or "1.5ms" or "2.3s" */
 static void fmt_us(unsigned us, char *buf, size_t sz) {
     if (us < 1000) snprintf(buf, sz, "%uus", us);
     else if (us < 1000000) snprintf(buf, sz, "%.1fms", us / 1000.0);
@@ -93,35 +63,84 @@ static int cmd_perf(int argc, char **argv) {
 
     if (!strcmp(sub, "bench")) {
         char *data = readf(pf, NULL);
-        printf("PERF BENCH — device: %s\n", DEV);
+        int ncmds = 0; for (const char **c = BENCH_CMDS; *c; c++) ncmds++;
+        typedef struct { const char *cmd; pid_t pid; unsigned us, old_lim, new_lim; int done, pass; } res_t;
+        res_t *res = calloc((size_t)ncmds, sizeof(res_t));
+
+        /* fork all commands in parallel */
+        struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
+        int nul = open("/dev/null", O_RDWR);
+        char bin[P]; snprintf(bin, P, "%s/a", SDIR);
+        for (int i = 0; i < ncmds; i++) {
+            res[i].cmd = BENCH_CMDS[i];
+            res[i].old_lim = perf_limit(data, BENCH_CMDS[i]);
+            pid_t p = fork();
+            if (p == 0) {
+                dup2(nul, STDIN_FILENO); dup2(nul, STDOUT_FILENO); dup2(nul, STDERR_FILENO);
+                setpgid(0, 0);
+                execl(bin, "a", BENCH_CMDS[i], (char *)NULL);
+                _exit(127);
+            }
+            res[i].pid = p;
+            setpgid(p, p); /* race-safe: set in both parent and child */
+        }
+        close(nul);
+
+        /* reap with 5s hard deadline */
+        int remaining = ncmds;
+        while (remaining > 0) {
+            struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
+            unsigned long elapsed = (unsigned long)(now.tv_sec - t0.tv_sec) * 1000000
+                + (unsigned long)(now.tv_nsec - t0.tv_nsec) / 1000;
+            if (elapsed > 5000000) {
+                for (int i = 0; i < ncmds; i++) if (!res[i].done) {
+                    kill(-res[i].pid, SIGKILL); kill(res[i].pid, SIGKILL);
+                    waitpid(res[i].pid, NULL, 0);
+                    res[i].done = 1; res[i].us = UINT_MAX; remaining--;
+                }
+                break;
+            }
+            int status; pid_t p = waitpid(-1, &status, WNOHANG);
+            if (p > 0) {
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                unsigned us = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
+                    + (now.tv_nsec - t0.tv_nsec) / 1000);
+                for (int i = 0; i < ncmds; i++) if (res[i].pid == p && !res[i].done) {
+                    res[i].done = 1; remaining--;
+                    if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) == 124))
+                        { res[i].us = UINT_MAX; }
+                    else { res[i].us = us; res[i].pass = 1; }
+                    break;
+                }
+            } else usleep(500);
+        }
+
+        /* compute limits + display */
+        struct timespec tend; clock_gettime(CLOCK_MONOTONIC, &tend);
+        unsigned total_us = (unsigned)((tend.tv_sec - t0.tv_sec) * 1000000
+            + (tend.tv_nsec - t0.tv_nsec) / 1000);
+        char ft_total[32]; fmt_us(total_us, ft_total, 32);
+        printf("PERF BENCH — device: %s (%s)\n", DEV, ft_total);
         puts("─────────────────────────────────────────────────────────────");
         printf("%-12s %10s %10s %10s  %s\n", "COMMAND", "TIME", "LIMIT", "NEW", "STATUS");
         puts("─────────────────────────────────────────────────────────────");
-        typedef struct { const char *cmd; unsigned us, old_lim, new_lim; int pass; } res_t;
-        int ncmds = 0; for (const char **c = BENCH_CMDS; *c; c++) ncmds++;
-        res_t *res = malloc((size_t)ncmds * sizeof(res_t));
         int passed = 0, tightened = 0;
-        for (int i = 0; BENCH_CMDS[i]; i++) {
-            const char *cmd = BENCH_CMDS[i];
-            unsigned us = perf_run(cmd);
-            unsigned old = perf_limit(data, cmd);
-            /* 1.3x measured, min 500us, never loosen */
-            int killed = us == UINT_MAX;
-            unsigned t = killed ? 0 : us;
+        for (int i = 0; i < ncmds; i++) {
+            int killed = res[i].us == UINT_MAX;
+            unsigned t = killed ? 0 : res[i].us;
             unsigned proposed = (t * 13 + 9) / 10;
             if (proposed < 500) proposed = 500;
-            unsigned new_lim = old;
-            int tight = 0;
-            if (killed) { new_lim = old; }
-            else if (!old) { new_lim = proposed; tight = 1; }
-            else if (proposed < old) { new_lim = proposed; tight = 1; }
-            res[i] = (res_t){cmd, t, old, new_lim, !killed};
+            unsigned old = res[i].old_lim; int tight = 0;
+            res[i].new_lim = old;
+            if (killed) { /* keep old */ }
+            else if (!old) { res[i].new_lim = proposed; tight = 1; }
+            else if (proposed < old) { res[i].new_lim = proposed; tight = 1; }
             if (!killed) passed++;
             if (tight) tightened++;
             char ft[32], fo[32], fn[32];
-            fmt_us(t, ft, 32); fmt_us(old, fo, 32); fmt_us(new_lim, fn, 32);
-            const char *st = killed ? "\033[31mKILLED\033[0m" : tight ? "\033[32m↓ tight\033[0m" : "\033[32m✓\033[0m";
-            printf("%-12s %10s %10s %10s  %s\n", cmd, ft, old ? fo : "-", fn, st);
+            fmt_us(t, ft, 32); fmt_us(old, fo, 32); fmt_us(res[i].new_lim, fn, 32);
+            const char *st = killed ? "\033[31mKILLED\033[0m" : tight ? "\033[32m↓ tight\033[0m" : "\033[32m\xe2\x9c\x93\033[0m";
+            printf("%-12s %10s %10s %10s  %s\n", res[i].cmd, ft, old ? fo : "-", fn, st);
         }
         puts("─────────────────────────────────────────────────────────────");
         printf("%d/%d passed, %d tightened\n\n", passed, ncmds, tightened);
@@ -129,11 +148,10 @@ static int cmd_perf(int argc, char **argv) {
             char pd[P]; snprintf(pd, P, "%s/perf", SROOT); mkdirp(pd);
             FILE *f = fopen(pf, "w");
             if (f) {
-                for (int i = 0; BENCH_CMDS[i]; i++)
+                for (int i = 0; i < ncmds; i++)
                     fprintf(f, "%s:%u\n", res[i].cmd, res[i].new_lim);
                 fclose(f);
-                printf("\033[32m✓\033[0m Saved: %s\n", pf);
-                printf("  Limits only tighten — faster code = tighter limits next bench\n");
+                printf("\033[32m\xe2\x9c\x93\033[0m Saved: %s\n", pf);
             }
         } else puts("No limits tightened — all commands at or above current limits.");
         free(data); free(res);
