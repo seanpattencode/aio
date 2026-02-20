@@ -60,7 +60,7 @@ static void send_prefix_bg(const char *sn, const char *agent, const char *wd, co
             if (strstr(lo,"context") || strstr(lo,"claude") || strstr(lo,"opus") || strstr(lo,"gemini") || strstr(lo,"codex")) break;
         }
         tm_send(sn, pre);
-        if (extra) { usleep(100000); execlp("tmux","tmux","send-keys","-t",sn,"Enter",(char*)NULL); }
+        if (extra) { sleep(1); execlp("tmux","tmux","send-keys","-t",sn,"Enter",(char*)NULL); }
         _exit(0);
     }
 }

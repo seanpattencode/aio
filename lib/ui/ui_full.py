@@ -145,13 +145,18 @@ async def jobs_api(r):
         d = await r.json()
         prompt, project, count, device = d.get('prompt', '').strip(), d.get('project', ''), d.get('count', 1), d.get('device', '')
         if not prompt: return web.json_response({'error': 'no prompt'}, status=400)
-        q = prompt.replace("'", "'\\''")
-        cd = f"cd {os.path.expanduser('~/projects/' + os.path.basename(project)) if device else project} && " if project else ''
-        cmd = f"{cd}{_A} all l:{count} '{q}'" if count > 1 else f"{cd}{_A} c '{q}'"
-        if device: cmd = f"{_A} ssh {device} \"{cmd.replace(chr(34), chr(92)+chr(34))}\""
-        name = f'job-{int(time.time())}'
-        S.Popen(['tmux', 'new-session', '-d', '-s', name, cmd])
-        return web.json_response({'session': name, 'command': cmd})
+        env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
+        # call a directly — it creates its own tmux sessions and sends prompt + Enter
+        args = [_A, 'all', f'l:{count}'] if count > 1 else [_A, 'c']
+        if project: args.append(project)
+        args.append(prompt)
+        if device:
+            q = prompt.replace("'", "'\\''")
+            cd = f"cd ~/projects/{os.path.basename(project)} && " if project else ''
+            inner = f"{cd}{_A} all l:{count} '{q}'" if count > 1 else f"{cd}{_A} c '{q}'"
+            args = [_A, 'ssh', device, inner]
+        S.Popen(args, env=env, start_new_session=True, stdout=S.DEVNULL, stderr=S.DEVNULL)
+        return web.json_response({'command': ' '.join(args)})
     p = S.run([_A, 'jobs'], capture_output=True, text=True, timeout=10)
     return web.Response(text=p.stdout or 'No jobs')
 
