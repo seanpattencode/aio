@@ -21,9 +21,7 @@ static unsigned perf_limit(const char *data, const char *cmd) {
 }
 
 static void fmt_us(unsigned us, char *buf, size_t sz) {
-    if (us < 1000) snprintf(buf, sz, "%uus", us);
-    else if (us < 1000000) snprintf(buf, sz, "%.1fms", us / 1000.0);
-    else snprintf(buf, sz, "%.2fs", us / 1000000.0);
+    snprintf(buf, sz, "%.3fms", us / 1000.0);
 }
 
 static int cmd_perf(int argc, char **argv) {
