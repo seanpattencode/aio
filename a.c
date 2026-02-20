@@ -59,6 +59,7 @@ _warn_flags() {
     WARN+=" -Wno-padded -Wno-disabled-macro-expansion -Wno-reserved-id-macro"
     WARN+=" -Wno-documentation -Wno-declaration-after-statement"
     WARN+=" -Wno-unsafe-buffer-usage -Wno-used-but-marked-unused"
+    WARN+=" -Wno-pre-c11-compat" # glibc expands _Generic at call site; not actionable, already c17
     WARN+=" --system-header-prefix=/usr/include -isystem /usr/local/include"
     $CC -Werror -Wno-implicit-void-ptr-cast -x c -c /dev/null -o /dev/null 2>/dev/null && WARN+=" -Wno-implicit-void-ptr-cast" || :
     $CC -Werror -Wno-nullable-to-nonnull-conversion -x c -c /dev/null -o /dev/null 2>/dev/null && WARN+=" -Wno-nullable-to-nonnull-conversion" || :
