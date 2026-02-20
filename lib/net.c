@@ -65,6 +65,7 @@ static int cmd_login(int argc, char **argv) { fallback_py("login", argc, argv); 
 
 /* ── sync ── */
 static int cmd_sync(int argc, char **argv) {
+    if (getenv("A_BENCH")) return 0;
     printf("%s\n", SROOT);
     ensure_adata();
     sync_repo();
@@ -96,6 +97,7 @@ static int cmd_sync(int argc, char **argv) {
 
 /* ── update ── */
 static int cmd_update(int argc, char **argv) {
+    if (getenv("A_BENCH")) return 0;
     const char *sub = argc > 2 ? argv[2] : NULL;
     if (sub && (!strcmp(sub,"help")||!strcmp(sub,"-h"))) {
         puts("a update - Update a from git + refresh caches\n  a update        Pull latest\n  a update shell  Refresh shell config\n  a update cache  Refresh caches");

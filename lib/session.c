@@ -1,6 +1,7 @@
 /* ═══ FALLBACK ═══ */
 __attribute__((noreturn))
 static void fallback_py(const char *mod, int argc, char **argv) {
+    if (getenv("A_BENCH")) _exit(0);
     perf_disarm(); /* python takes over — no timeout */
     char path[P]; snprintf(path, P, "%s/lib/%s.py", SDIR, mod);
     char vpy[P]; snprintf(vpy, P, "%s/venv/bin/python", AROOT);

@@ -97,7 +97,7 @@ static int cmd_perf(int argc, char **argv) {
                 for (int i = 0; i < ncmds; i++) if (!res[i].done) {
                     kill(-res[i].pid, SIGKILL); kill(res[i].pid, SIGKILL);
                     waitpid(res[i].pid, NULL, 0);
-                    res[i].done = 1; res[i].us = UINT_MAX; remaining--;
+                    res[i].done = 1; res[i].us = (unsigned)elapsed; remaining--;
                 }
                 break;
             }
@@ -110,8 +110,7 @@ static int cmd_perf(int argc, char **argv) {
                 res[i].us = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
                     + (now.tv_nsec - t0.tv_nsec) / 1000);
                 res[i].done = 1; remaining--; any = 1;
-                if (WIFSIGNALED(status)) res[i].us = UINT_MAX;
-                else res[i].pass = 1;
+                res[i].pass = !WIFSIGNALED(status);
             }
             if (!any) usleep(500);
         }
@@ -127,8 +126,8 @@ static int cmd_perf(int argc, char **argv) {
         puts("─────────────────────────────────────────────────────────────");
         int passed = 0, tightened = 0;
         for (int i = 0; i < ncmds; i++) {
-            int killed = res[i].us == UINT_MAX;
-            unsigned t = killed ? 0 : res[i].us;
+            int killed = !res[i].pass;
+            unsigned t = res[i].us;
             unsigned proposed = (t * 13 + 9) / 10;
             if (proposed < 500) proposed = 500;
             unsigned old = res[i].old_lim; int tight = 0;

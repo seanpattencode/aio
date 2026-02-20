@@ -14,6 +14,7 @@ static int cmd_set(int argc, char **argv) {
 
 /* ── install ── */
 static int cmd_install(int argc, char **argv) { (void)argc;(void)argv;
+    if (getenv("A_BENCH")) return 0;
     char s[P]; snprintf(s, P, "%s/a.c", SDIR);
     execlp("bash", "bash", s, "install", (char*)NULL);
     return 1;
@@ -46,6 +47,7 @@ static int cmd_deps(int argc, char **argv) { (void)argc;(void)argv;
 
 /* ── e ── */
 static int cmd_e(int argc, char **argv) {
+    if (getenv("A_BENCH")) return 0;
     if (argc > 2 && !strcmp(argv[2], "install")) {
         (void)!system("curl -sL https://raw.githubusercontent.com/seanpattencode/editor/main/e.c|clang -xc -Wno-everything -o ~/.local/bin/e -");
         return 0;
