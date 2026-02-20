@@ -92,10 +92,11 @@ static int cmd_perf(int argc, char **argv) {
             const char *cmd = BENCH_CMDS[i];
             unsigned ms = perf_run(cmd);
             unsigned old = perf_limit(data, cmd);
-            /* new limit: 3x measured, min 50ms, but never loosen */
+            /* new limit: 1.3x measured, min 50ms, never loosen */
             int killed = ms == UINT_MAX;
             unsigned t = killed ? 0 : ms;
-            unsigned proposed = t * 3 < 50 ? 50 : t * 3;
+            unsigned proposed = (t * 13 + 9) / 10; /* ceil(1.3x) */
+            if (proposed < 50) proposed = 50;
             unsigned new_lim = old;
             int tight = 0;
             if (killed) { new_lim = old; } /* killed — keep old */
