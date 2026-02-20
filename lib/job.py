@@ -1,0 +1,226 @@
+"""a job — full lifecycle: worktree → agent → PR → email
+Usage: a job <project|path> <prompt> [--device DEV] [--agent c|g|l]
+Flow: create worktree branch, launch agent session with prompt, wait for completion,
+      git add+commit, gh pr create, email PR URL. Works locally or via SSH."""
+import sys, os, subprocess as S, time
+sys.stdout.reconfigure(line_buffering=True)
+from datetime import datetime
+from _common import init_db, load_cfg, load_sess, load_proj, db, DEVICE_ID, SCRIPT_DIR, ADATA_ROOT
+
+_A = os.path.join(SCRIPT_DIR, 'a')
+
+def _db_job(name, step, status, path='', session=''):
+    with db() as c: c.execute("INSERT OR REPLACE INTO jobs VALUES(?,?,?,?,?,?)", (name, step, status, path, session, int(time.time())))
+
+def _ssh(dev, cmd, timeout=300):
+    r = S.run([_A, 'ssh', dev, cmd], capture_output=True, text=True, timeout=timeout)
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+def _ssh_wait_ready(dev, sn, timeout=60):
+    """Poll remote tmux pane until claude is ready to accept input"""
+    for _ in range(timeout // 3):
+        rc, out, _ = _ssh(dev, f"tmux capture-pane -t '{sn}' -p 2>/dev/null | tail -10", timeout=10)
+        if rc != 0: time.sleep(3); continue
+        lo = out.lower()
+        if 'type your message' in lo or 'claude' in lo or '>' in out: return True
+        time.sleep(3)
+    return False
+
+def _ssh_wait_done(dev, sn, timeout=600):
+    """Wait for remote agent — idle 30s = done"""
+    last_change, prev = time.time(), ''
+    while time.time() - last_change < timeout:
+        rc, out, _ = _ssh(dev, f"tmux capture-pane -t '{sn}' -p 2>/dev/null | tail -10", timeout=10)
+        if rc != 0: return False
+        if out != prev: prev = out; last_change = time.time()
+        elif time.time() - last_change > 30: return True
+        time.sleep(5)
+    return True
+
+def _extract_pr_url(text):
+    import re
+    text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)  # strip ANSI
+    for line in text.split('\n'):
+        line = line.strip()
+        if line.startswith('https://github.com/') and '/pull/' in line: return line
+    return ''
+
+def run():
+    init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
+    args = sys.argv[2:]
+    if not args or args[0] in ('-h', '--help', 'help'):
+        print("a job <project|path> <prompt> [--device DEV] [--agent c|g|l]\n"
+              "  Creates worktree, runs agent, creates PR, emails result.\n"
+              "  --device: run on remote device via SSH (default: local)\n"
+              "  --agent:  c=claude g=gemini l=claude (default: l)\n\n"
+              "How to email: a email \"subject\" \"body\"\n"
+              "How to PR:    gh pr create --title T --body B (in a git branch)\n"
+              "  PR requires: branch != main, commits pushed, gh authenticated")
+        return
+    # Parse args
+    dev, ak, proj, pp = '', 'l', '', []
+    i = 0
+    while i < len(args):
+        if args[i] == '--device' and i+1 < len(args): dev = args[i+1]; i += 2
+        elif args[i] == '--agent' and i+1 < len(args): ak = args[i+1]; i += 2
+        elif not proj:
+            if args[i].isdigit() and int(args[i]) < len(PROJ): proj = PROJ[int(args[i])][0]; i += 1
+            elif os.path.isdir(os.path.expanduser(args[i])): proj = os.path.expanduser(args[i]); i += 1
+            elif os.path.isdir(os.path.expanduser(f'~/projects/{args[i]}')): proj = os.path.expanduser(f'~/projects/{args[i]}'); i += 1
+            else: pp.append(args[i]); i += 1
+        else: pp.append(args[i]); i += 1
+    prompt = ' '.join(pp)
+    if not proj: proj = os.getcwd()
+    if not prompt: print("x No prompt"); sys.exit(1)
+    if not os.path.isdir(os.path.join(proj, '.git')):
+        p2 = os.path.expanduser(f"~/projects/{proj}")
+        if os.path.isdir(os.path.join(p2, '.git')): proj = p2
+        else: print(f"x Not a git repo: {proj}"); sys.exit(1)
+
+    rn = os.path.basename(proj)
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+    br = f'job-{rn}-{ts}'
+    jn = f'{rn}-{ts}'
+    sn = f'job-{jn}'
+    wt = cfg.get('worktrees_dir', os.path.expanduser('~/projects/aWorktrees'))
+    wp = os.path.join(wt, f'{rn}-{ts}')
+
+    print(f"Job: {jn}\n  Repo: {rn}\n  Agent: {ak}\n  Device: {dev or 'local'}\n  Prompt: {prompt[:80]}")
+
+    if dev: _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn)
+    else: _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn)
+
+def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn):
+    _db_job(jn, 'worktree', 'running', wp, sn)
+    os.makedirs(wt, exist_ok=True)
+    r = S.run(['git', '-C', proj, 'worktree', 'add', '-b', br, wp, 'HEAD'], capture_output=True, text=True)
+    if r.returncode: print(f"x Worktree: {r.stderr}"); return
+    print(f"+ Worktree: {wp}")
+
+    _db_job(jn, 'agent', 'running', wp, sn)
+    env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
+    S.Popen([_A, 'c', wp, prompt], env=env, start_new_session=True, stdout=S.DEVNULL, stderr=S.DEVNULL)
+    # Find actual session name
+    time.sleep(3)
+    r = S.run(['tmux', 'list-sessions', '-F', '#{session_name}'], capture_output=True, text=True)
+    actual = sn
+    for line in r.stdout.strip().split('\n'):
+        if os.path.basename(wp) in line: actual = line; break
+    print(f"+ Agent: {actual}")
+
+    _db_job(jn, 'waiting', 'running', wp, actual)
+    print("Waiting...")
+    last = time.time()
+    while time.time() - last < 600:
+        r = S.run(['tmux', 'display-message', '-p', '-t', actual, '#{window_activity}'], capture_output=True, text=True)
+        if r.returncode != 0: break
+        try: act = int(r.stdout.strip())
+        except: act = 0
+        if time.time() - act < 5: last = time.time()
+        elif time.time() - last > 20: break
+        time.sleep(3)
+    print("+ Done")
+
+    _db_job(jn, 'pr', 'running', wp, actual)
+    pr = _make_pr(wp, br, rn, prompt)
+    if pr:
+        _db_job(jn, 'email', 'running', wp, actual)
+        _email(jn, rn, prompt, pr, wp)
+        _db_job(jn, 'done', 'done', wp, actual)
+    else:
+        _db_job(jn, 'no-changes', 'done', wp, actual)
+
+def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
+    _db_job(jn, 'ssh-setup', 'running')
+    # Ensure repo on remote
+    rc, _, _ = _ssh(dev, f'test -d ~/projects/{rn}/.git', timeout=10)
+    if rc:
+        r = S.run(['git', '-C', proj, 'remote', 'get-url', 'origin'], capture_output=True, text=True)
+        url = r.stdout.strip()
+        if not url: print("x No remote origin"); return
+        print(f"  Cloning {rn} on {dev}...")
+        rc, _, err = _ssh(dev, f'git clone {url} ~/projects/{rn}', timeout=60)
+        if rc: print(f"x Clone: {err}"); return
+    else:
+        _ssh(dev, f'cd ~/projects/{rn} && git checkout main && git pull --ff-only', timeout=30)
+
+    # Worktree
+    wt = f'~/projects/aWorktrees/{rn}-{ts}'
+    _db_job(jn, 'worktree', 'running')
+    rc, _, err = _ssh(dev, f'mkdir -p ~/projects/aWorktrees && git -C ~/projects/{rn} worktree add -b {br} {wt} HEAD', timeout=30)
+    if rc: print(f"x Worktree: {err}"); return
+    print(f"+ Worktree: {wt}")
+
+    # Launch agent — detached tmux, wait for ready, send prompt
+    _db_job(jn, 'agent', 'running')
+    q = prompt.replace("'", "'\\''")
+    rc, _, err = _ssh(dev, f"tmux new-session -d -s '{sn}' -c {wt} 'claude --dangerously-skip-permissions'", timeout=15)
+    if rc: print(f"x Session: {err}"); return
+    print(f"+ Session: {sn}")
+    print("  Waiting for claude to start...")
+    if not _ssh_wait_ready(dev, sn, timeout=120):
+        print("x Claude didn't start"); return
+    # Send prompt via temp file to preserve spaces through SSH quoting
+    import base64 as b64
+    enc = b64.b64encode(prompt.encode()).decode()
+    _ssh(dev, f"echo {enc} | base64 -d > /tmp/a_job_prompt.txt && tmux load-buffer /tmp/a_job_prompt.txt && tmux paste-buffer -t '{sn}'", timeout=10)
+    time.sleep(1)
+    _ssh(dev, f"tmux send-keys -t '{sn}' Enter", timeout=10)
+    print(f"+ Prompt sent")
+
+    # Wait for completion
+    _db_job(jn, 'waiting', 'running')
+    print("Waiting for agent...")
+    _ssh_wait_done(dev, sn, timeout=600)
+    print("+ Agent finished")
+
+    # PR on remote — write script to avoid shell quoting issues
+    _db_job(jn, 'pr', 'running')
+    import base64 as b64
+    short = prompt[:50].replace('"', "'")
+    script = f'''#!/bin/bash
+cd {wt}
+git add -A
+[ -z "$(git status --porcelain)" ] && echo "NO_CHANGES" && exit 0
+git commit -m "job: {short}"
+git push -u origin {br}
+gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "'")}"
+'''
+    encoded = b64.b64encode(script.encode()).decode()
+    rc, out, _ = _ssh(dev, f"echo {encoded} | base64 -d > /tmp/a_job_pr.sh && bash /tmp/a_job_pr.sh", timeout=60)
+    pr = _extract_pr_url(out + '\n' + err)
+    if pr:
+        print(f"+ PR: {pr}")
+        _db_job(jn, 'email', 'running')
+        _email(jn, rn, prompt, pr, '')
+        _db_job(jn, 'done', 'done', '', sn)
+        print(f"+ Done: {pr}")
+    else:
+        print(f"x PR failed: {out}\n{err}")
+        _db_job(jn, 'pr-failed', 'failed')
+
+def _make_pr(wp, br, rn, prompt):
+    r = S.run(['git', '-C', wp, 'status', '--porcelain'], capture_output=True, text=True)
+    if not r.stdout.strip(): print("x No changes"); return None
+    S.run(['git', '-C', wp, 'add', '-A'], capture_output=True)
+    short = prompt[:50]
+    S.run(['git', '-C', wp, 'commit', '-m', f'job: {short}'], capture_output=True, text=True)
+    r = S.run(['git', '-C', wp, 'push', '-u', 'origin', br], capture_output=True, text=True)
+    if r.returncode: print(f"x Push: {r.stderr}"); return None
+    r = S.run(['gh', 'pr', 'create', '--title', f'job: {short}', '--body',
+               f'Prompt: {prompt[:200]}\n\nDevice: {DEVICE_ID}'],
+              capture_output=True, text=True, cwd=wp)
+    return _extract_pr_url(r.stdout + '\n' + r.stderr) or None
+
+def _email(jn, rn, prompt, pr_url, wp):
+    """Email via a email (avoids copy.py import collision)"""
+    subj = f'[a job] {rn}: {prompt[:40]}'
+    body = f'Job: {jn}\nRepo: {rn}\nPrompt: {prompt}\n\nPR: {pr_url}\nDevice: {DEVICE_ID}\n'
+    if wp:
+        r = S.run(['git', '-C', wp, 'diff', 'HEAD~1', '--stat'], capture_output=True, text=True)
+        if r.stdout.strip(): body += f'\nDiff:\n{r.stdout.strip()}\n'
+    r = S.run([_A, 'email', subj, body], capture_output=True, text=True, timeout=30)
+    if r.returncode == 0: print(f"+ Emailed")
+    else: print(f"x Email: {r.stderr or r.stdout}")
+
+run()

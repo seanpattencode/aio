@@ -382,6 +382,7 @@ static void perf_disarm(void);
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
+static int cmd_job(int argc, char **argv)    { fallback_py("job", argc, argv); }
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 
@@ -408,7 +409,7 @@ static const cmd_t CMDS[] = {
     {"hel",cmd_help_full},{"help",cmd_help_full},{"hi",cmd_hi},
     {"hub",cmd_hub},{"i",cmd_i},
     {"ins",cmd_install},{"install",cmd_install},
-    {"job",cmd_jobs},{"jobs",cmd_jobs},
+    {"job",cmd_job},{"jobs",cmd_jobs},
     {"kil",cmd_kill},{"kill",cmd_kill},{"killall",cmd_kill},
     {"log",cmd_log},{"login",cmd_login},{"logs",cmd_log},{"ls",cmd_ls},
     {"mono",cmd_mono},{"monolith",cmd_mono},
@@ -442,7 +443,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
 }
 static void perf_arm(const char *cmd) {
     if (isdigit(*cmd)) return;
-    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan","send","watch",NULL};
+    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","log","note","scan","send","watch","job",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
     /* per-device override: adata/git/perf/{DEV}.txt — command:ms */

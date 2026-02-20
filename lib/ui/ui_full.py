@@ -46,6 +46,7 @@ HTML = '''<!doctype html>
   <div style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=jc placeholder="prompt" onkeydown="if(event.key==='Enter')runjob()" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <select id=jn style="font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+    <label style="color:#4af;font-size:18px;display:flex;align-items:center;gap:4px"><input type=checkbox id=jpr>PR</label>
     <button onclick="runjob()" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
   </div>
   <div id=jl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px;font-family:monospace;font-size:14px;white-space:pre;color:#aaa"></div>
@@ -63,9 +64,14 @@ var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T,
 function go(p){history.pushState(null,'',p);show(p);}
 function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);if(p==='/note')loadn();if(p==='/jobs')loadjobs();}
 function loadn(){fetch('/api/notes').then(function(r){return r.json()}).then(function(d){nl.innerHTML=d.map(function(t){return'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222">'+t+'</div>'}).join('');});}
-function loadjobs(){fetch('/api/jobs').then(function(r){return r.text()}).then(function(d){jl.textContent=d;});}
+function loadjobs(){fetch('/api/jobs').then(function(r){return r.text()}).then(function(d){
+  var h=d;fetch('/api/job-status').then(function(r){return r.json()}).then(function(js){
+    if(js.length){h+='\\n\\n--- Job PRs ---\\n';js.forEach(function(j){
+      h+=j.status+(j.step?' ['+j.step+']':'')+' '+j.name;
+      if(j.session)h+=' ('+j.session+')';h+='\\n';});}
+    jl.textContent=h;});});}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
-function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value),d=jd.value;if(!v)return;fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v,project:p,count:n,device:d})}).then(function(r){return r.json()}).then(function(r){jc.value='';jc.placeholder=r.session||r.error;loadjobs();});}
+function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value),d=jd.value,pr=jpr.checked;if(!v)return;fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v,project:p,count:n,device:d,pr:pr})}).then(function(r){return r.json()}).then(function(r){jc.value='';jc.placeholder=r.command||r.error;loadjobs();});}
 fetch('/api/projects').then(function(r){return r.json()}).then(function(d){jp.innerHTML='<option value="">~ (home)</option>';d.forEach(function(p){jp.innerHTML+='<option value="'+p.path+'">'+p.name+'</option>';});});
 fetch('/api/devices').then(function(r){return r.json()}).then(function(d){jd.innerHTML='<option value="">local</option>';d.forEach(function(h){jd.innerHTML+='<option value="'+h.name+'"'+(h.live?'':' style="color:#666"')+'>'+h.name+(h.live?' ✓':' ✗')+'</option>';});});
 window.onpopstate=function(){show(location.pathname);};
@@ -143,22 +149,35 @@ async def devices_api(r):
 async def jobs_api(r):
     if r.method == 'POST':
         d = await r.json()
-        prompt, project, count, device = d.get('prompt', '').strip(), d.get('project', ''), d.get('count', 1), d.get('device', '')
+        prompt, project, count, device, pr = d.get('prompt', '').strip(), d.get('project', ''), d.get('count', 1), d.get('device', ''), d.get('pr', False)
         if not prompt: return web.json_response({'error': 'no prompt'}, status=400)
         env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
-        # call a directly — it creates its own tmux sessions and sends prompt + Enter
-        args = [_A, 'all', f'l:{count}'] if count > 1 else [_A, 'c']
-        if project: args.append(project)
-        args.append(prompt)
-        if device:
-            q = prompt.replace("'", "'\\''")
-            cd = f"cd ~/projects/{os.path.basename(project)} && " if project else ''
-            inner = f"{cd}{_A} all l:{count} '{q}'" if count > 1 else f"{cd}{_A} c '{q}'"
-            args = [_A, 'ssh', device, inner]
+        if pr:
+            # Full job: worktree → agent → PR → email
+            args = [_A, 'job', project or '.', prompt]
+            if device: args += ['--device', device]
+        else:
+            args = [_A, 'all', f'l:{count}'] if count > 1 else [_A, 'c']
+            if project: args.append(project)
+            args.append(prompt)
+            if device:
+                q = prompt.replace("'", "'\\''")
+                cd = f"cd ~/projects/{os.path.basename(project)} && " if project else ''
+                inner = f"{cd}{_A} all l:{count} '{q}'" if count > 1 else f"{cd}{_A} c '{q}'"
+                args = [_A, 'ssh', device, inner]
         S.Popen(args, env=env, start_new_session=True, stdout=S.DEVNULL, stderr=S.DEVNULL)
         return web.json_response({'command': ' '.join(args)})
     p = S.run([_A, 'jobs'], capture_output=True, text=True, timeout=10)
     return web.Response(text=p.stdout or 'No jobs')
+
+async def job_status_api(r):
+    import sqlite3
+    dp = f'{_D}/adata/local/aio.db'
+    if not os.path.exists(dp): return web.json_response([])
+    c = sqlite3.connect(dp); c.row_factory = sqlite3.Row
+    rows = c.execute("SELECT name,step,status,path,session,updated_at FROM jobs ORDER BY updated_at DESC LIMIT 20").fetchall()
+    c.close()
+    return web.json_response([dict(r) for r in rows])
 
 async def term_capture(r):
     s = r.query.get('session', ''); n = int(r.query.get('lines', '500'))
@@ -179,6 +198,6 @@ async def notes_list(r):
                 if line.startswith('Text: '): ns.append(line[6:].strip()); break
     return web.json_response(ns)
 
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/term', term_capture), web.post('/note', note_api)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
