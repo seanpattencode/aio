@@ -1,6 +1,6 @@
 /* ── perf: benchmark + timing display ── */
 static const char *BENCH_CMDS[] = {
-    "help","config","task","backup","ls","add","agent","copy","done","docs",
+    "","help","config","task","backup","ls","add","agent","copy","done","docs",
     "hi","i","move","prompt","rebuild","remove","repo","send","set","setup",
     "uninstall","watch","web",/* "x" kills tmux server, destroys active dev sessions */
     "e","kill","revert","deps","dash","hub",
@@ -48,9 +48,10 @@ static int cmd_perf(int argc, char **argv) {
         printf("%-15s %10s  %8s\n", "COMMAND", "LIMIT", "TIMEOUT");
         puts("──────────────────────────────────────────────────");
         for (const char **c = BENCH_CMDS; *c; c++) {
-            unsigned lim = perf_limit(data, *c);
-            if (lim) { char fb[32]; fmt_us(lim, fb, 32); printf("%-15s %10s  %5us\n", *c, fb, (lim + 999999) / 1000000); }
-            else printf("%-15s %10s  %5s\n", *c, "-", "1s");
+            const char *label = (*c)[0] ? *c : "(bare)";
+            unsigned lim = perf_limit(data, label);
+            if (lim) { char fb[32]; fmt_us(lim, fb, 32); printf("%-15s %10s  %5us\n", label, fb, (lim + 999999) / 1000000); }
+            else printf("%-15s %10s  %5s\n", label, "-", "1s");
         }
         puts("──────────────────────────────────────────────────");
         puts("\nDefault: 1s (local). Override with per-device file.");
@@ -61,32 +62,35 @@ static int cmd_perf(int argc, char **argv) {
 
     if (!strcmp(sub, "bench")) {
         char *data = readf(pf, NULL);
+        const char *only = argc > 3 ? argv[3] : NULL;
         int ncmds = 0; for (const char **c = BENCH_CMDS; *c; c++) ncmds++;
-        typedef struct { const char *cmd; pid_t pid; unsigned us, old_lim, new_lim; int done, pass; } res_t;
+        typedef struct { const char *cmd; pid_t pid; unsigned us, old_lim, new_lim; int done, pass, skip; } res_t;
         res_t *res = calloc((size_t)ncmds, sizeof(res_t));
 
-        /* fork all commands in parallel */
+        /* fork commands in parallel */
         struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
         int nul = open("/dev/null", O_RDWR);
         char bin[P]; snprintf(bin, P, "%s/a", SDIR);
         for (int i = 0; i < ncmds; i++) {
             res[i].cmd = BENCH_CMDS[i];
-            res[i].old_lim = perf_limit(data, BENCH_CMDS[i]);
+            res[i].old_lim = perf_limit(data, BENCH_CMDS[i][0] ? BENCH_CMDS[i] : "(bare)");
+            if (only && strcmp(only, BENCH_CMDS[i][0] ? BENCH_CMDS[i] : "bare")) { res[i].skip = 1; res[i].done = 1; continue; }
             pid_t p = fork();
             if (p == 0) {
                 dup2(nul, STDIN_FILENO); dup2(nul, STDOUT_FILENO); dup2(nul, STDERR_FILENO);
                 setpgid(0, 0);
                 putenv("A_BENCH=1");
-                execl(bin, "a", BENCH_CMDS[i], (char *)NULL);
+                if (BENCH_CMDS[i][0]) execl(bin, "a", BENCH_CMDS[i], (char *)NULL);
+                else execl(bin, "a", (char *)NULL);
                 _exit(127);
             }
             res[i].pid = p;
-            setpgid(p, p); /* race-safe: set in both parent and child */
+            setpgid(p, p);
         }
         close(nul);
 
         /* reap with 5s hard deadline — poll each child by PID (not -1) */
-        int remaining = ncmds;
+        int remaining = 0; for (int i = 0; i < ncmds; i++) if (!res[i].skip) remaining++;
         while (remaining > 0) {
             struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
             unsigned elapsed = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
@@ -122,8 +126,10 @@ static int cmd_perf(int argc, char **argv) {
         puts("─────────────────────────────────────────────────────────────");
         printf("%-12s %10s %10s %10s  %s\n", "COMMAND", "TIME", "LIMIT", "NEW", "STATUS");
         puts("─────────────────────────────────────────────────────────────");
-        int passed = 0, tightened = 0;
+        int passed = 0, tightened = 0, shown = 0;
         for (int i = 0; i < ncmds; i++) {
+            if (res[i].skip) continue;
+            shown++;
             int killed = !res[i].pass;
             unsigned t = res[i].us;
             unsigned proposed = (t * 13 + 9) / 10;
@@ -135,19 +141,28 @@ static int cmd_perf(int argc, char **argv) {
             else if (proposed < old) { res[i].new_lim = proposed; tight = 1; }
             if (!killed) passed++;
             if (tight) tightened++;
+            const char *label = res[i].cmd[0] ? res[i].cmd : "(bare)";
             char ft[32], fo[32], fn[32];
             fmt_us(t, ft, 32); fmt_us(old, fo, 32); fmt_us(res[i].new_lim, fn, 32);
             const char *st = killed ? "\033[31mKILLED\033[0m" : tight ? "\033[32m↓ tight\033[0m" : "\033[32m\xe2\x9c\x93\033[0m";
-            printf("%-12s %10s %10s %10s  %s\n", res[i].cmd, ft, old ? fo : "-", fn, st);
+            printf("%-12s %10s %10s %10s  %s\n", label, ft, old ? fo : "-", fn, st);
         }
         puts("─────────────────────────────────────────────────────────────");
-        printf("%d/%d passed, %d tightened\n\n", passed, ncmds, tightened);
+        printf("%d/%d passed, %d tightened\n\n", passed, shown, tightened);
         if (tightened > 0) {
+            /* merge: read existing limits, update benched ones, write back */
+            unsigned lims[256]; const char *keys[256]; int nlims = 0;
+            for (int i = 0; i < ncmds; i++) {
+                const char *k = BENCH_CMDS[i][0] ? BENCH_CMDS[i] : "(bare)";
+                keys[nlims] = k;
+                lims[nlims] = res[i].skip ? perf_limit(data, k) : res[i].new_lim;
+                nlims++;
+            }
             char pd[P]; snprintf(pd, P, "%s/perf", SROOT); mkdirp(pd);
             FILE *f = fopen(pf, "w");
             if (f) {
-                for (int i = 0; i < ncmds; i++)
-                    fprintf(f, "%s:%u\n", res[i].cmd, res[i].new_lim);
+                for (int i = 0; i < nlims; i++)
+                    fprintf(f, "%s:%u\n", keys[i], lims[i]);
                 fclose(f);
                 printf("\033[32m\xe2\x9c\x93\033[0m Saved: %s\n", pf);
             }
