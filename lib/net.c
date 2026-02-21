@@ -126,6 +126,7 @@ static int cmd_update(int argc, char **argv) {
     /* Self-build: prefer clang, fall back to gcc */
     snprintf(c, B, "sh '%s/a.c'", SDIR);
     if (system(c) == 0) puts("\xe2\x9c\x93 Built"); else puts("x Build failed");
+    (void)!system("pkill -x a-i 2>/dev/null");
     /* Re-link ~/.local/bin/a -> built binary */
     snprintf(c, B, "ln -sf '%s/a' '%s/.local/bin/a'", SDIR, getenv("HOME"));
     (void)!system(c);
