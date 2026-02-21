@@ -131,9 +131,9 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
         int top=sel>=maxshow?sel-maxshow+1:0, show=nm-top<maxshow?nm-top:maxshow;
         /* Render */
         printf("\r\033[K%s> %s\n", prefix, buf);
-        for (int i=0;i<show;i++){int j=top+i;char*t=strchr(matches[j],'\t');int ml=t?(int)(t-matches[j]):(int)strlen(matches[j]);
-            printf("\033[K%s a %.*s",j==sel?" >":"  ",ml,matches[j]);
-            if(t){printf("\033[%dG\033[90m%s\033[0m",ws.ws_col-(int)strlen(t+1),t+1);}putchar('\n');}
+        for (int i=0;i<show;i++){int j=top+i,W=ws.ws_col;char*t=strchr(matches[j],'\t');int ml=t?(int)(t-matches[j]):(int)strlen(matches[j]);
+            if(ml>W-5)ml=W-5;printf("\033[K%s a %.*s",j==sel?" >":"  ",ml,matches[j]);
+            {char*px=getenv("PREFIX");if(t&&!(px&&strstr(px,"termux"))&&ml+5+(int)strlen(t+1)<W)printf("\033[%dG\033[90m%s\033[0m",W-(int)strlen(t+1),t+1);}putchar('\n');}
         printf("\033[%dA\033[%dC\033[?25h", show+1, plen+blen+3);
         fflush(stdout);
         /* Read key */

@@ -123,12 +123,10 @@ static int run_tui(cache_t *c, int tty_in, int tty_out, char *result, int rsz) {
         int l = snprintf(line, 512, "\r\033[K%s> %s\n", prefix, filter);
         WR(line, (size_t)l);
         for (int i = 0; i < show; i++) {
-            int j = top + i;
-            char *t = strchr(matches[j], '\t');
-            int ml = t ? (int)(t - matches[j]) : (int)strlen(matches[j]);
-            l = snprintf(line, 512, "\033[K%s a %.*s", j == sel ? " >" : "  ", ml, matches[j]);
-            WR(line, (size_t)l);
-            if (t) { l = snprintf(line, 512, "\033[%dG\033[90m%s\033[0m", ws.ws_col - (int)strlen(t+1), t+1); WR(line, (size_t)l); }
+            int j=top+i,W=ws.ws_col; char *t=strchr(matches[j],'\t');
+            int ml=t?(int)(t-matches[j]):(int)strlen(matches[j]); if(ml>W-5)ml=W-5;
+            l=snprintf(line,512,"\033[K%s a %.*s",j==sel?" >":"  ",ml,matches[j]); WR(line,(size_t)l);
+            {char*px=getenv("PREFIX");if(t&&!(px&&strstr(px,"termux"))&&ml+5+(int)strlen(t+1)<W){l=snprintf(line,512,"\033[%dG\033[90m%s\033[0m",W-(int)strlen(t+1),t+1);WR(line,(size_t)l);}}
             WRS("\n");
         }
         l = snprintf(line, 512, "\033[%dA\033[%dC\033[?25h", show + 1, plen + flen + 3);
