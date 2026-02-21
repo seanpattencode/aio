@@ -110,10 +110,9 @@ static int cmd_add(int argc, char **argv) {
         for(int i=1,l=0;i<na;i++) l+=snprintf(cmd+l,(size_t)(B-l),"%s%s",i>1?" ":"",args[i]);
         char d[P]; snprintf(d, P, "%s/workspace/cmds", SROOT); mkdirp(d);
         char f[P]; snprintf(f, P, "%s/%s.txt", d, name);
-        if (fexists(f)) { printf("x Exists: %s\n", name); return 1; }
         char cwd[P]; if(!getcwd(cwd,P)) snprintf(cwd,P,".");
         char data[B]; snprintf(data, B, "Name: %s\nCommand: %s\n", name, cmd);
-        writef(f, data); sync_repo();
+        writef(f, data); sync_bg();
         printf("\xe2\x9c\x93 Added: %s\n", name); list_all(1, 0); return 0;
     }
     /* Project add */
@@ -124,11 +123,10 @@ static int cmd_add(int argc, char **argv) {
     const char *name = bname(path);
     char d[P]; snprintf(d, P, "%s/workspace/projects", SROOT); mkdirp(d);
     char f[P]; snprintf(f, P, "%s/%s.txt", d, name);
-    if (fexists(f)) { printf("x Exists: %s\n", name); return 1; }
     char repo[512] = ""; char c[B]; snprintf(c, B, "git -C '%s' remote get-url origin 2>/dev/null", path);
     pcmd(c, repo, 512); repo[strcspn(repo,"\n")] = 0;
     char data[B]; snprintf(data, B, "Name: %s\nPath: %s\n%s%s%s", name, path, repo[0]?"Repo: ":"", repo, repo[0]?"\n":"");
-    writef(f, data); sync_repo();
+    writef(f, data); sync_bg();
     printf("\xe2\x9c\x93 Added: %s\n", name); list_all(1, 0); return 0;
 }
 

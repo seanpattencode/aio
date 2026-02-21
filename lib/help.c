@@ -75,6 +75,7 @@ static void list_all(int cache, int quiet) {
         char cf[P]; snprintf(cf, P, "%s/help_cache.txt", DDIR);
         FILE *f = fopen(cf, "w");
         if (f) { fprintf(f, "%s\n%s", HELP_SHORT, out); fclose(f); }
+        snprintf(cf, P, "%s/i_cache.txt", DDIR); unlink(cf);
     }
 }
 
