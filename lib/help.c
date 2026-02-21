@@ -82,8 +82,8 @@ static void gen_icache(void) {
     load_proj(); load_apps();
     char ic[P]; snprintf(ic, P, "%s/i_cache.txt", DDIR);
     FILE *f = fopen(ic, "w"); if (!f) return;
-    for (int i=0;i<NPJ;i++) fprintf(f, "%d: %s\tcd %s\n", i, bname(PJ[i].path), PJ[i].path);
-    for (int i=0;i<NAP;i++) fprintf(f, "%d: %s\t%s\n", NPJ+i, AP[i].name, AP[i].cmd);
+    for (int i=0;i<NPJ;i++) fprintf(f, "%d: %s\tproject\n", i, bname(PJ[i].path));
+    for (int i=0;i<NAP;i++) fprintf(f, "%d: %s\tcmd\n", NPJ+i, AP[i].name);
     fputs("add\tregister project\nagent\tai agent run\nall\tall ai sessions\n"
     "ask\task ai question\nattach\tjoin tmux pane\nbackup\tbackup sync data\n"
     "cleanup\trm dead sessions\nconfig\tedit config file\ncopy\tscp to hosts\n"
