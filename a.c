@@ -457,6 +457,7 @@ static void perf_disarm(void) { alarm(0); signal(SIGALRM, SIG_DFL); }
 /* ═══ MAIN ═══ */
 int main(int argc, char **argv) {
     init_paths();
+    printf("hello from a job\n");
     G_argc = argc; G_argv = argv;
 
     if (argc < 2) return cmd_help(argc, argv);
