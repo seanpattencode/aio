@@ -70,6 +70,14 @@ Not agent-to-agent communication. Not workflow DAGs. Not autonomous chaining.
 - Performance ratchet (perf_arm/perf_alarm, limits only tighten)
 - Zero-dependency 27KB binary
 
+## Future: Frecency Sorting in `a i`
+- `timing.jsonl` already logs every command with timestamp from shell function
+- `gen_icache` currently uses static order — ignores usage data
+- Sort projects + commands by frequency count from timing data during cache gen
+- Highest value: most-used projects/cmds float to top like Chrome omnibox
+- Risk: shifting positions break muscle memory for numbered items
+- Low priority — current type-to-filter is adequate, static order is predictable
+
 ## Architecture Weaknesses
 - note.c is 518 lines / 20% of C code — cmd_task needs decomposition
 - Shell injection surface via system() + snprintf with user data
