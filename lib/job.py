@@ -51,36 +51,37 @@ def run():
     init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
     args = sys.argv[2:]
     if not args or args[0] in ('-h', '--help', 'help'):
-        print("a job <project|path> <prompt> [--watch] [--device DEV] [--agent c|g|l]\n"
+        print("a job <project|path> <prompt> [--watch] [--timeout S] [--device DEV] [--agent c|g|l]\n"
               "  Creates worktree, runs agent, creates PR, emails result.\n"
-              "  --watch/-w: attach to agent tmux session (Ctrl-B d to detach)\n"
-              "  --device:   run on remote device via SSH (default: local)\n"
-              "  --agent:    c=claude g=gemini l=claude (default: l)\n\n"
+              "  --watch/-w:   attach to agent tmux session (Ctrl-B d to detach)\n"
+              "  --timeout S:  kill agent after S seconds (default: 600)\n"
+              "  --device DEV: run on remote device via SSH\n"
+              "  --agent c|g|l: c=claude g=gemini l=claude (default: l)\n\n"
               "Examples:\n"
               "  a job myproject \"fix the bug in main.py\"\n"
               "  a job myproject \"add tests\" --watch\n"
-              "  a job 3 \"refactor login\" --device phone\n")
+              "  a job myproject \"quick fix\" --timeout 30\n")
         return
     # Parse args
-    dev, ak, proj, pp, watch = '', 'l', '', [], False
+    dev, ak, proj, pp, watch, timeout = '', 'l', '', [], False, 600
     i = 0
     while i < len(args):
         if args[i] == '--watch' or args[i] == '-w': watch = True; i += 1
+        elif args[i] == '--timeout' and i+1 < len(args): timeout = int(args[i+1]); i += 2
         elif args[i] == '--device' and i+1 < len(args): dev = args[i+1]; i += 2
         elif args[i] == '--agent' and i+1 < len(args): ak = args[i+1]; i += 2
         elif not proj:
             if args[i].isdigit() and int(args[i]) < len(PROJ): proj = PROJ[int(args[i])][0]; i += 1
             elif os.path.isdir(os.path.expanduser(args[i])): proj = os.path.expanduser(args[i]); i += 1
             elif os.path.isdir(os.path.expanduser(f'~/projects/{args[i]}')): proj = os.path.expanduser(f'~/projects/{args[i]}'); i += 1
-            else: pp.append(args[i]); i += 1
+            else:
+                u=next((r for p,r in PROJ if os.path.basename(p)==args[i] and r),'');d=os.path.expanduser(f'~/projects/{args[i]}');proj=d if u and not S.run(['git','clone',u,d],capture_output=True).returncode else sys.exit(print(f"x No local project: {args[i]}"))
+                i+=1;continue
         else: pp.append(args[i]); i += 1
     prompt = ' '.join(pp)
-    if not proj: proj = os.getcwd()
     if not prompt: print("x No prompt"); sys.exit(1)
     if not os.path.isdir(os.path.join(proj, '.git')):
-        p2 = os.path.expanduser(f"~/projects/{proj}")
-        if os.path.isdir(os.path.join(p2, '.git')): proj = p2
-        else: print(f"x Not a git repo: {proj}"); sys.exit(1)
+        print(f"x Not a git repo: {proj}"); sys.exit(1)
 
     rn = os.path.basename(proj)
     now = datetime.now()
@@ -95,9 +96,9 @@ def run():
     print(f"Job: {jn}\n  Repo: {rn}\n  Agent: {ak}\n  Device: {dev or 'local'}\n  Prompt: {prompt[:80]}")
 
     if dev: _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn)
-    else: _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch)
+    else: _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch, timeout)
 
-def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False):
+def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=600):
     _db_job(jn, 'worktree', 'running', wp, sn)
     os.makedirs(wt, exist_ok=True)
     r = S.run(['git', '-C', proj, 'worktree', 'add', '-b', br, wp, 'HEAD'], capture_output=True, text=True)
@@ -120,18 +121,21 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False):
     _db_job(jn, 'waiting', 'running', wp, sn)
     done_file = os.path.join(DATA_DIR, '.done')
     if os.path.exists(done_file): os.unlink(done_file)
+    timed_out = False
     if watch:
         print(f"Attaching to {sn}... (Ctrl-B d to detach)")
         S.run(['tmux', 'attach', '-t', sn], env=env)
     else:
         print("Waiting for agent...")
         start = time.time()
-        while time.time() - start < 600:
+        while time.time() - start < timeout:
             if os.path.exists(done_file): break
             r = S.run(['tmux', 'has-session', '-t', sn], capture_output=True)
             if r.returncode != 0: break
             time.sleep(3)
-    print("+ Done")
+        else: timed_out = True
+    S.run(['tmux', 'kill-session', '-t', sn], capture_output=True, env=env)
+    print("+ Done" if not timed_out else "x Timeout — killed")
 
     _db_job(jn, 'pr', 'running', wp, sn)
     pr = _make_pr(wp, br, rn, prompt)
