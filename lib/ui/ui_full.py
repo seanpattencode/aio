@@ -35,9 +35,6 @@ HTML = '''<!doctype html>
   <div id=bar style="position:fixed;bottom:0;left:0;right:0;height:140px;padding:10px;box-sizing:border-box;background:#1a1a2e;border-top:2px solid #4a4a6a;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px">
     <input id=i autofocus placeholder="command" style="width:100%;padding:18px;font-size:20px;background:#0d0d1a;color:#fff;border:2px solid #4a4a6a;border-radius:8px;outline:none;box-sizing:border-box">
     <button onclick="var v=i.value;i.value='';ws(v+'\\n');i.focus()" style="flex:1;padding:18px;font-size:22px;min-width:60px">&#9654;</button>
-    <button onclick="ws('aio\\n')" style="flex:1;padding:18px;font-size:22px;min-width:60px">aio</button>
-    <button onclick="go('/note')" style="flex:1;padding:18px;font-size:22px;min-width:60px">note</button>
-    <button onclick="go('/')" style="flex:1;padding:18px;font-size:22px;min-width:60px">&#8962;</button>
   </div>
 </div>
 <div id=v_jobs style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff">
@@ -62,7 +59,7 @@ HTML = '''<!doctype html>
 <script>
 var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
-function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);if(p==='/note')loadn();if(p==='/jobs')loadjobs();}
+function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit();T.focus()},0);if(p==='/note')loadn();if(p==='/jobs')loadjobs();}
 function arcn(f,el){fetch('/api/note/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({f:f})});el.parentElement.remove();}
 function loadn(){fetch('/api/notes').then(function(r){return r.json()}).then(function(d){nl.innerHTML=d.map(function(n){return'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\\''+n.f+'\\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>'+n.t+'</span></div>'}).join('');});}
 function loadjobs(){fetch('/api/jobs').then(function(r){return r.text()}).then(function(d){
