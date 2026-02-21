@@ -198,6 +198,7 @@ static int task_getkey(void){
     tcsetattr(0,TCSAFLUSH,&raw);int c=getchar();tcsetattr(0,TCSAFLUSH,&old);return c;
 }
 static int cmd_task(int argc,char**argv){
+    perf_disarm();
     char dir[P];snprintf(dir,P,"%s/tasks",SROOT);mkdirp(dir);const char*sub=argc>2?argv[2]:NULL;
     if(!sub||!strcmp(sub,"v")||!strcmp(sub,"vision")){
         char vf[P];snprintf(vf,P,"%s/vision.txt",SROOT);
