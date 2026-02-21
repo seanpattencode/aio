@@ -1,6 +1,6 @@
 /* ── email ── */
 static int cmd_email(int argc, char **argv) {
-    char bp[P]; snprintf(bp,P,"%s/agents/base.py",SDIR);
+    char bp[P]; snprintf(bp,P,"%s/personal/base.py",SDIR);
     char **na=malloc(((unsigned)argc+2)*sizeof(char*));
     na[0]="python3"; na[1]=bp;
     for(int i=2;i<argc;i++) na[i]=argv[i];

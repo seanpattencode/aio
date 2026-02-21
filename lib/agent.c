@@ -21,7 +21,21 @@ static int cmd_run(int argc, char **argv) { fallback_py("run", argc, argv); }
 
 /* ── agent ── */
 static int cmd_agent(int argc, char **argv) {
-    if (argc < 3) { puts("Usage: a agent [g|c|l] <task>"); return 1; }
+    if (argc < 3) { puts("Usage: a agent [run <name>|g|c|l] <task>"); return 1; }
+    /* a agent run <name> [args...] — exec personal/<name>.py directly */
+    if (!strcmp(argv[2],"run") && argc > 3) {
+        char py[P]; snprintf(py,P,"%s/personal/%s.py",SDIR,argv[3]);
+        if (!fexists(py)) { fprintf(stderr,"x %s\n",py); return 1; }
+        perf_disarm();
+        char vpy[P]; snprintf(vpy,P,"%s/venv/bin/python",AROOT);
+        char **na=malloc(((unsigned)argc)*sizeof(char*));
+        na[0]="python"; na[1]=py;
+        for(int i=4;i<argc;i++) na[i-2]=argv[i];
+        na[argc-2]=NULL;
+        if(access(vpy,X_OK)==0) execv(vpy,na);
+        na[0]="python3"; execvp("python3",na);
+        perror("python3"); return 1;
+    }
     init_db(); load_cfg(); load_sess();
     const char *wda = argv[2];
     sess_t *s = find_sess(wda);
