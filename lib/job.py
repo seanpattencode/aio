@@ -28,11 +28,13 @@ def _ssh_wait_ready(dev, sn, timeout=60):
 
 def _ssh_wait_done(dev, sn, timeout=600):
     """Wait for remote agent — idle 30s = done"""
-    last_change, prev = time.time(), ''
-    while time.time() - last_change < timeout:
+    import re
+    last_change, prev, start = time.time(), '', time.time()
+    while time.time() - start < timeout:
         rc, out, _ = _ssh(dev, f"tmux capture-pane -t '{sn}' -p 2>/dev/null | tail -10", timeout=10)
         if rc != 0: return False
-        if out != prev: prev = out; last_change = time.time()
+        stable = re.sub(r'\d+[ms] \d+s|\d+s','',out)
+        if stable != prev: prev = stable; last_change = time.time()
         elif time.time() - last_change > 30: return True
         time.sleep(5)
     return True
@@ -91,7 +93,7 @@ def run():
                 _go_one(qdir,f[:-4],files,_A)
             return
         if sel.isdigit()and int(sel)<len(files):sel=files[int(sel)][:-4]
-        _go_one(qdir,sel,files,_A)
+        _go_one(qdir,sel,files,_A);return
     # Parse args
     dev, ak, proj, pp, watch, timeout, use_prefix, use_agents = '', 'l', '', [], False, 600, True, True
     i = 0
