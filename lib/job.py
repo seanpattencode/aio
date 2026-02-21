@@ -60,7 +60,8 @@ def run():
               "Examples:\n"
               "  a job myproject \"fix the bug in main.py\"\n"
               "  a job myproject \"add tests\" --watch\n"
-              "  a job myproject \"quick fix\" --timeout 30\n")
+              "  a job myproject \"quick fix\" --timeout 30\n"
+              "  a job myproject              (opens editor for long prompt)\n")
         return
     # Parse args
     dev, ak, proj, pp, watch, timeout = '', 'l', '', [], False, 600
@@ -79,6 +80,8 @@ def run():
                 i+=1;continue
         else: pp.append(args[i]); i += 1
     prompt = ' '.join(pp)
+    if not prompt:
+        tf='/tmp/a_job_prompt.txt';open(tf,'w').close();S.run(['e',tf]);prompt=open(tf).read().strip()
     if not prompt: print("x No prompt"); sys.exit(1)
     if not os.path.isdir(os.path.join(proj, '.git')):
         print(f"x Not a git repo: {proj}"); sys.exit(1)
