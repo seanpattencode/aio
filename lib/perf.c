@@ -169,7 +169,8 @@ static int cmd_perf(int argc, char **argv) {
             }
         } else puts("No limits tightened — all commands at or above current limits.");
         if(passed<shown){char c[B];snprintf(c,B,"'%s/a' email '[a perf] %d/%d FAILED on %s' 'bench failure'",SDIR,shown-passed,shown,DEV);(void)!system(c);
-            snprintf(c,B,"'%s/a' job a 'a perf bench has %d/%d commands killed. Find and fix the slow commands. Run a perf bench to verify.' --timeout 300",SDIR,shown-passed,shown);(void)!system(c);}
+            char fl[B]=""; int fll=0; for(int i=0;i<ncmds;i++) if(!res[i].skip&&!res[i].pass){char ft[32];fmt_us(res[i].us,ft,32);fll+=snprintf(fl+fll,(size_t)(B-fll),"%s(%s) ",res[i].cmd[0]?res[i].cmd:"(bare)",ft);}
+            snprintf(c,B,"'%s/a' job a 'a perf bench FAILED: %s— run a perf bench yourself, read the killed commands source, fix them, run a perf bench to verify all pass.' --timeout 300",SDIR,fl);(void)!system(c);}
         free(data); free(res);
         return 0;
     }
