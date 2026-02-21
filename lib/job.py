@@ -75,17 +75,19 @@ def run():
               "  a job log <name>                  view agent output")
         return
     if args[0]=='add':
-        qf=os.path.join(qdir,(args[1]if len(args)>1 else'job')+'.txt');os.path.exists(qf)or open(qf,'w').write('Project: a\nDevice: hsu\nPrompt: \nTimeout: 600\n');S.run(['e',qf]);return
+        qf=os.path.join(qdir,(args[1]if len(args)>1 else'job')+'.txt');os.path.exists(qf)or open(qf,'w').write('Project: a\nDevice: hsu\nPrompt: \nTimeout: 600\nPrefix: on\nAgents: on\n');S.run(['e',qf]);return
     if args[0]=='go':
         sel=args[1]if len(args)>1 else'';files=sorted(f for f in os.listdir(qdir)if f.endswith('.txt'))
         if sel.isdigit()and int(sel)<len(files):sel=files[int(sel)][:-4]
         kv=dict(l.split(': ',1)for l in open(os.path.join(qdir,sel+'.txt')).read().strip().split('\n')if': 'in l)
-        cmd=[_A,'job',kv['Project'],kv.get('Prompt','')]+(['--device',kv['Device']]if kv.get('Device')else[])+(['--timeout',kv['Timeout']]if kv.get('Timeout')else[]);os.execv(_A,cmd)
+        cmd=[_A,'job',kv['Project'],kv.get('Prompt','')]+(['--device',kv['Device']]if kv.get('Device')else[])+(['--timeout',kv['Timeout']]if kv.get('Timeout')else[])+(['--no-prefix']if kv.get('Prefix','on')=='off'else[])+(['--no-agents']if kv.get('Agents','on')=='off'else[]);os.execv(_A,cmd)
     # Parse args
-    dev, ak, proj, pp, watch, timeout = '', 'l', '', [], False, 600
+    dev, ak, proj, pp, watch, timeout, use_prefix, use_agents = '', 'l', '', [], False, 600, True, True
     i = 0
     while i < len(args):
         if args[i] == '--watch' or args[i] == '-w': watch = True; i += 1
+        elif args[i] == '--no-prefix': use_prefix = False; i += 1
+        elif args[i] == '--no-agents': use_agents = False; i += 1
         elif args[i] == '--timeout' and i+1 < len(args): timeout = int(args[i+1]); i += 2
         elif args[i] == '--device' and i+1 < len(args): dev = args[i+1]; i += 2
         elif args[i] == '--agent' and i+1 < len(args): ak = args[i+1]; i += 2
@@ -104,6 +106,11 @@ def run():
     elif not prompt:
         pf=os.path.join(pdir,'_draft.txt');open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
     if not prompt: print("x No prompt"); sys.exit(1)
+    if use_prefix or use_agents:
+        from _common import get_prefix
+        pfx=get_prefix('claude',cfg,proj) if use_prefix else '';af=os.path.join(proj,'AGENTS.md')
+        agents=open(af).read().strip() if use_agents and os.path.exists(af) else ''
+        prompt=(pfx+' ' if pfx else '')+prompt+('\n\n'+agents if agents else '')
     if not os.path.isdir(os.path.join(proj, '.git')):
         print(f"x Not a git repo: {proj}"); sys.exit(1)
 
@@ -202,10 +209,11 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     print("  Waiting for claude to start...")
     if not _ssh_wait_ready(dev, sn, timeout=120):
         print("x Claude didn't start"); return
-    # Send prompt via temp file to preserve spaces through SSH quoting
+    # Send prompt in chunks — SSH command buffer is 4K
     import base64 as b64
-    enc = b64.b64encode(prompt.encode()).decode()
-    _ssh(dev, f"echo {enc} | base64 -d > /tmp/a_job_prompt.txt && tmux load-buffer /tmp/a_job_prompt.txt && tmux paste-buffer -t '{sn}'", timeout=10)
+    enc=b64.b64encode(prompt.encode()).decode();_ssh(dev,"rm -f /tmp/a_job_prompt.b64",5)
+    for i in range(0,len(enc),3000): _ssh(dev,f"echo -n '{enc[i:i+3000]}' >> /tmp/a_job_prompt.b64",10)
+    _ssh(dev,f"base64 -d /tmp/a_job_prompt.b64 > /tmp/a_job_prompt.txt && tmux load-buffer /tmp/a_job_prompt.txt && tmux paste-buffer -t '{sn}'",10)
     time.sleep(1)
     _ssh(dev, f"tmux send-keys -t '{sn}' Enter", timeout=10)
     print(f"+ Prompt sent")
