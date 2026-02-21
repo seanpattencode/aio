@@ -95,12 +95,13 @@ static int cmd_perf(int argc, char **argv) {
             struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
             unsigned elapsed = (unsigned)((now.tv_sec - t0.tv_sec) * 1000000
                 + (now.tv_nsec - t0.tv_nsec) / 1000);
-            if (elapsed > 5000000) {
+            if (elapsed > 1000000) {
                 for (int i = 0; i < ncmds; i++) if (!res[i].done) {
                     kill(-res[i].pid, SIGKILL); kill(res[i].pid, SIGKILL);
                     waitpid(res[i].pid, NULL, 0);
                     res[i].done = 1; res[i].us = (unsigned)elapsed; remaining--;
                 }
+                fprintf(stderr, "\033[31mx\033[0m a perf bench exceeded 1s — make slow commands faster\n");
                 break;
             }
             int any = 0;

@@ -129,7 +129,6 @@ static int cmd_diff(int argc, char **argv) {
     }
     /* Full diff — colored + stats */
     char cwd[P]; if(!getcwd(cwd,P)) snprintf(cwd,P,".");
-    (void)!system("git fetch origin 2>/dev/null");
     char br[128]; pcmd("git rev-parse --abbrev-ref HEAD 2>/dev/null",br,128); br[strcspn(br,"\n")]=0;
     char tgt[256]; snprintf(tgt,256,"origin/%s",sel?sel:strncmp(br,"wt-",3)?br:"main");
     char ts[64]; pcmd("git log -1 --format=%cd --date=format:'%Y-%m-%d %I:%M:%S %p' 2>/dev/null",ts,64); ts[strcspn(ts,"\n")]=0;
