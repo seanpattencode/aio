@@ -1,5 +1,5 @@
 """Shared utilities for aio commands - like git's libgit"""
-import sys, os, subprocess as sp, sqlite3, json, shutil, time, re, socket
+import sys, os, subprocess as sp, sqlite3, json, shutil, time, socket
 from datetime import datetime
 from pathlib import Path
 
@@ -87,20 +87,6 @@ def _git_push(p, b, env, force=False):
 def _env():
     e = os.environ.copy(); e.pop('DISPLAY', None); e.pop('GPG_AGENT_INFO', None); e['GIT_TERMINAL_PROMPT'] = '0'
     return e
-def ensure_git_cfg():
-    n, e = sp.run(['git', 'config', 'user.name'], capture_output=True, text=True), sp.run(['git', 'config', 'user.email'], capture_output=True, text=True)
-    if n.returncode == 0 and e.returncode == 0 and n.stdout.strip() and e.stdout.strip(): return True
-    if not shutil.which('gh'): return False
-    try:
-        r = sp.run(['gh', 'api', 'user'], capture_output=True, text=True)
-        if r.returncode != 0: return False
-        u = json.loads(r.stdout); gn, gl = u.get('name') or u.get('login', ''), u.get('login', '')
-        ge = u.get('email') or f"{gl}@users.noreply.github.com"
-        gn and not n.stdout.strip() and sp.run(['git', 'config', '--global', 'user.name', gn], capture_output=True)
-        ge and not e.stdout.strip() and sp.run(['git', 'config', '--global', 'user.email', ge], capture_output=True)
-        return True
-    except: return False
-
 # Database
 def db(): c = sqlite3.connect(DB_PATH); c.execute("PRAGMA journal_mode=WAL;"); return c
 
@@ -236,7 +222,6 @@ def _configured_remotes():
     r = sp.run([rc, 'listremotes'], capture_output=True, text=True)
     if r.returncode != 0: return []
     return [l.rstrip(':') for l in r.stdout.splitlines() if l.rstrip(':').startswith(RCLONE_REMOTE_PREFIX)]
-def cloud_configured(): return bool(_configured_remotes())
 def cloud_account(remote=None):
     if not (rc := get_rclone()): return "(no rclone)"
     try:
@@ -512,50 +497,6 @@ def launch_dir(d, term=None):
     cmds = {'ptyxis': ['ptyxis', '--working-directory', d], 'gnome-terminal': ['gnome-terminal', f'--working-directory={d}'], 'alacritty': ['alacritty', '--working-directory', d]}
     try: sp.Popen(cmds.get(term, [])); print(f"✓ {term}: {d}"); return True
     except Exception as e: print(f"x {e}"); return False
-
-# Prompt toolkit
-_prompt_toolkit = None
-def _get_pt():
-    global _prompt_toolkit
-    if _prompt_toolkit is None:
-        try:
-            from prompt_toolkit import Application
-            from prompt_toolkit.layout import Layout
-            from prompt_toolkit.widgets import TextArea, Frame
-            from prompt_toolkit.key_binding import KeyBindings
-            _prompt_toolkit = {'A': Application, 'L': Layout, 'T': TextArea, 'F': Frame, 'K': KeyBindings}
-        except: _prompt_toolkit = False
-    return _prompt_toolkit if _prompt_toolkit else None
-
-def input_box(prefill="", title="Ctrl+D to run, Ctrl+C to cancel"):
-    pt = _get_pt()
-    if not sys.stdin.isatty() or 'TMUX' in os.environ or not pt:
-        print(f"[{title}] " if not prefill else f"[{title}]\n{prefill}\n> ", end="", flush=True)
-        try: return input() if not prefill else prefill
-        except: print("\nCancelled"); return None
-    kb, cancelled = pt['K'](), [False]
-    @kb.add('c-d')
-    def _(e): e.app.exit()
-    @kb.add('c-c')
-    def _(e): cancelled[0] = True; e.app.exit()
-    ta = pt['T'](text=prefill, multiline=True, focus_on_click=True)
-    pt['A'](layout=pt['L'](pt['F'](ta, title=title)), key_bindings=kb, full_screen=True, mouse_support=True).run()
-    return None if cancelled[0] else ta.text
-
-# Update checking
-def check_updates():
-    ts = os.path.join(DATA_DIR, '.update_check')
-    if os.path.exists(ts) and time.time() - os.path.getmtime(ts) < 1800: return
-    if not hasattr(os, 'fork') or os.fork() != 0: return
-    try: Path(ts).touch(); r = _sg('fetch', '--dry-run', timeout=5); r.returncode == 0 and r.stderr.strip() and Path(os.path.join(DATA_DIR, '.update_available')).touch()
-    except: pass
-    os._exit(0)
-
-def show_update():
-    m = os.path.join(DATA_DIR, '.update_available')
-    if os.path.exists(m):
-        if 'behind' in _sg('status', '-uno').stdout: print("! Update available! Run 'a update'")
-        else: os.path.exists(m) and os.remove(m)
 
 # Help text
 HELP_SHORT = """a c|co|g|ai     Start claude/codex/gemini/aider
