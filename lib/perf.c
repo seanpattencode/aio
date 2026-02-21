@@ -168,6 +168,7 @@ static int cmd_perf(int argc, char **argv) {
                 printf("\033[32m\xe2\x9c\x93\033[0m Saved: %s\n", pf);
             }
         } else puts("No limits tightened — all commands at or above current limits.");
+        if(passed<shown){char c[B];snprintf(c,B,"'%s/a' email '[a perf] %d/%d FAILED on %s' 'bench failure'",SDIR,shown-passed,shown,DEV);(void)!system(c);}
         free(data); free(res);
         return 0;
     }
