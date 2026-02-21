@@ -135,13 +135,14 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
             time.sleep(3)
         else: timed_out = True
     S.run(['tmux', 'kill-session', '-t', sn], capture_output=True, env=env)
-    print("+ Done" if not timed_out else "x Timeout — killed")
+    resume = f"cd {wp} && claude --continue"
+    print(("+ Done" if not timed_out else "x Timeout — killed") + f"\n  Resume: {resume}")
 
     _db_job(jn, 'pr', 'running', wp, sn)
     pr = _make_pr(wp, br, rn, prompt)
     if pr:
         _db_job(jn, 'email', 'running', wp, sn)
-        _email(jn, rn, prompt, pr, wp)
+        _email(jn, rn, prompt, pr, wp, resume)
         _db_job(jn, 'done', 'done', wp, sn)
     else:
         _db_job(jn, 'no-changes', 'done', wp, sn)
@@ -225,10 +226,11 @@ def _make_pr(wp, br, rn, prompt):
     else: print(f"x PR: {r.stdout} {r.stderr}")
     return url or None
 
-def _email(jn, rn, prompt, pr_url, wp):
+def _email(jn, rn, prompt, pr_url, wp, resume=''):
     """Email via a email (avoids copy.py import collision)"""
     subj = f'[a job] {rn}: {prompt[:40]}'
     body = f'Job: {jn}\nRepo: {rn}\nPrompt: {prompt}\n\nPR: {pr_url}\nDevice: {DEVICE_ID}\n'
+    if resume: body += f'\nResume: {resume}\n'
     if wp:
         r = S.run(['git', '-C', wp, 'diff', 'HEAD~1', '--stat'], capture_output=True, text=True)
         if r.stdout.strip(): body += f'\nDiff:\n{r.stdout.strip()}\n'
