@@ -1,67 +1,25 @@
 /*
- * aid.c — interactive picker daemon + client (sub-1ms startup)
- *
- * Daemon: stays resident, listens on unix socket, i_cache in memory.
- *         Receives terminal fds via SCM_RIGHTS, runs TUI, returns cmd.
- * Client: connects to socket, passes fds, waits for result, execs.
- *
+ * aid.c — interactive picker (direct, no daemon)
  * Build: cc -O2 -o a-i lib/aid.c
- * Usage: a-i --daemon &   (auto-started by shell function)
- *        a-i              (client mode, default)
+ * Usage: a-i            (runs TUI, execs selected command)
+ *        a-i --stop     (no-op, kept for compat)
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <termios.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <sys/wait.h>
 #include <ctype.h>
-#include <errno.h>
 
-#define SOCK_NAME "/tmp/aid-%d.sock"
 #define MAX_LINES 512
-#define BUF 4096
-
-/* ── fd passing over unix socket ── */
-static int send_fds(int sock, int fd0, int fd1) {
-    int fds[2] = {fd0, fd1};
-    char buf[1] = {0};
-    struct iovec iov = {.iov_base = buf, .iov_len = 1};
-    union { struct cmsghdr h; char b[CMSG_SPACE(sizeof(fds))]; } ctrl;
-    struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1,
-        .msg_control = ctrl.b, .msg_controllen = sizeof(ctrl.b)};
-    struct cmsghdr *cm = CMSG_FIRSTHDR(&msg);
-    cm->cmsg_level = SOL_SOCKET; cm->cmsg_type = SCM_RIGHTS;
-    cm->cmsg_len = CMSG_LEN(sizeof(fds));
-    memcpy(CMSG_DATA(cm), fds, sizeof(fds));
-    return sendmsg(sock, &msg, 0) >= 0 ? 0 : -1;
-}
-
-static int recv_fds(int sock, int *fd0, int *fd1) {
-    int fds[2] = {-1, -1};
-    char buf[1];
-    struct iovec iov = {.iov_base = buf, .iov_len = 1};
-    union { struct cmsghdr h; char b[CMSG_SPACE(sizeof(fds))]; } ctrl;
-    struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1,
-        .msg_control = ctrl.b, .msg_controllen = sizeof(ctrl.b)};
-    if (recvmsg(sock, &msg, 0) < 0) return -1;
-    struct cmsghdr *cm = CMSG_FIRSTHDR(&msg);
-    if (cm && cm->cmsg_type == SCM_RIGHTS) memcpy(fds, CMSG_DATA(cm), sizeof(fds));
-    *fd0 = fds[0]; *fd1 = fds[1];
-    return (fds[0] >= 0 && fds[1] >= 0) ? 0 : -1;
-}
 
 /* ── cache loading ── */
 typedef struct { char *lines[MAX_LINES]; int n; char *raw; } cache_t;
 
 static void load_cache(cache_t *c, const char *path) {
-    if (c->raw) free(c->raw);
     c->n = 0;
     int fd = open(path, O_RDONLY); if (fd < 0) return;
     struct stat st; if (fstat(fd, &st) < 0) { close(fd); return; }
@@ -79,22 +37,22 @@ static void load_cache(cache_t *c, const char *path) {
     }
 }
 
-/* ── TUI picker (runs on client's terminal fds) ── */
-static int run_tui(cache_t *c, int tty_in, int tty_out, char *result, int rsz) {
+/* ── TUI picker ── */
+static int run_tui(cache_t *c, char *result, int rsz) {
     if (!c->n) return -1;
-    struct winsize ws; ioctl(tty_out, TIOCGWINSZ, &ws);
+    struct winsize ws; ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
     int maxshow = ws.ws_row > 6 ? ws.ws_row - 3 : 10;
 
     struct termios old, raw;
-    tcgetattr(tty_in, &old); raw = old;
+    tcgetattr(STDIN_FILENO, &old); raw = old;
     raw.c_lflag &= ~(tcflag_t)(ICANON | ECHO | ISIG);
     raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0;
-    tcsetattr(tty_in, TCSANOW, &raw);
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
 
     char filter[256] = ""; int flen = 0, sel = 0;
     char prefix[256] = "";
 
-#define WR(s, l) (void)!write(tty_out, s, l)
+#define WR(s, l) (void)!write(STDOUT_FILENO, s, l)
 #define WRS(s) WR(s, strlen(s))
 
     WRS("Filter (\xe2\x86\x91\xe2\x86\x93/Tab=cycle, Enter=run, Esc=quit)\n");
@@ -133,12 +91,12 @@ static int run_tui(cache_t *c, int tty_in, int tty_out, char *result, int rsz) {
         WR(line, (size_t)l);
 
         /* read key */
-        char ch; if (read(tty_in, &ch, 1) != 1) break;
+        char ch; if (read(STDIN_FILENO, &ch, 1) != 1) break;
         if (ch == '\x1b') {
             char seq[2];
-            if (read(tty_in, &seq[0], 1) != 1) break;
+            if (read(STDIN_FILENO, &seq[0], 1) != 1) break;
             if (seq[0] == '[') {
-                if (read(tty_in, &seq[1], 1) != 1) break;
+                if (read(STDIN_FILENO, &seq[1], 1) != 1) break;
                 if (seq[1] == 'A') { if (sel > 0) sel--; }
                 else if (seq[1] == 'B') { if (sel < nm - 1) sel++; }
             } else if (prefix[0]) { prefix[0] = 0; filter[0] = 0; flen = 0; sel = 0; }
@@ -167,7 +125,7 @@ static int run_tui(cache_t *c, int tty_in, int tty_out, char *result, int rsz) {
                 filter[0] = 0; flen = 0; sel = 0;
                 WRS("\033[J"); continue;
             }
-            tcsetattr(tty_in, TCSANOW, &old);
+            tcsetattr(STDIN_FILENO, TCSANOW, &old);
             l = snprintf(line, 512, "\n\n\033[KRunning: a %s\n", cmd);
             WR(line, (size_t)l);
             snprintf(result, rsz, "%s", cmd);
@@ -178,150 +136,32 @@ static int run_tui(cache_t *c, int tty_in, int tty_out, char *result, int rsz) {
             { if (flen < 254) { filter[flen++] = ch; filter[flen] = 0; sel = 0; } }
         WRS("\033[J");
     }
-    tcsetattr(tty_in, TCSANOW, &old);
+    tcsetattr(STDIN_FILENO, TCSANOW, &old);
     WRS("\033[2J\033[H");
 done:
     return ret;
 }
 
-/* ── socket path ── */
-static void sock_path(char *buf, int sz) { snprintf(buf, (size_t)sz, SOCK_NAME, getuid()); }
+/* ── main ── */
+int main(int argc, char **argv) {
+    if (argc > 1 && !strcmp(argv[1], "--stop")) return 0; /* compat */
 
-/* ── daemon mode ── */
-static int run_daemon(const char *cache_path) {
-    /* detach */
-    if (fork() > 0) _exit(0);
-    setsid();
-    signal(SIGPIPE, SIG_IGN);
+    const char *ddir = getenv("_ADD");
+    char cp[512];
+    if (ddir) snprintf(cp, 512, "%s/i_cache.txt", ddir);
+    else {
+        const char *h = getenv("HOME"); if (!h) h = "/tmp";
+        snprintf(cp, 512, "%s/projects/a/adata/local/i_cache.txt", h);
+    }
 
-    char sp[256]; sock_path(sp, 256);
-    unlink(sp);
-
-    int srv = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (srv < 0) { perror("socket"); return 1; }
-    struct sockaddr_un addr = {.sun_family = AF_UNIX};
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sp);
-    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
-    chmod(sp, 0700);
-    listen(srv, 4);
-
-    /* load cache */
     cache_t cache = {.n = 0, .raw = NULL};
-    load_cache(&cache, cache_path);
+    load_cache(&cache, cp);
 
-    /* write pid file */
-    char pf[256]; snprintf(pf, 256, "%s.pid", sp);
-    FILE *f = fopen(pf, "w"); if (f) { fprintf(f, "%d", getpid()); fclose(f); }
-
-    /* serve */
-    while (1) {
-        int cli = accept(srv, NULL, NULL);
-        if (cli < 0) { if (errno == EINTR) continue; break; }
-
-        /* receive: 'q' = quit, 'r' = reload, 'i' = interactive */
-        char op;
-        if (read(cli, &op, 1) != 1) { close(cli); continue; }
-
-        if (op == 'q') { close(cli); break; }
-
-        if (op == 'r') {
-            load_cache(&cache, cache_path);
-            write(cli, "ok", 2);
-            close(cli); continue;
-        }
-
-        if (op == 'i') {
-            int fd_in, fd_out;
-            if (recv_fds(cli, &fd_in, &fd_out) < 0) { close(cli); continue; }
-
-            /* reload cache if stale (check mtime) */
-            struct stat st;
-            static time_t last_mtime;
-            if (stat(cache_path, &st) == 0 && st.st_mtime != last_mtime) {
-                load_cache(&cache, cache_path);
-                last_mtime = st.st_mtime;
-            }
-
-            char result[256] = "";
-            int ok = run_tui(&cache, fd_in, fd_out, result, 256);
-            close(fd_in); close(fd_out);
-
-            if (ok == 0 && result[0])
-                write(cli, result, strlen(result));
-            close(cli);
-        }
-    }
-
-    unlink(sp);
-    char pidf[256]; snprintf(pidf, 256, "%s.pid", sp);
-    unlink(pidf);
-    if (cache.raw) free(cache.raw);
-    close(srv);
-    return 0;
-}
-
-/* ── ensure daemon is running, return 1 if started ── */
-static int ensure_daemon(const char *cache_path) {
-    char sp[256]; sock_path(sp, 256);
-    char pf[256]; snprintf(pf, 256, "%s.pid", sp);
-
-    /* check existing pid */
-    FILE *f = fopen(pf, "r");
-    if (f) {
-        int pid; if (fscanf(f, "%d", &pid) == 1) {
-            fclose(f);
-            if (kill(pid, 0) == 0) return 0; /* already running */
-        } else fclose(f);
-    }
-
-    /* start daemon */
-    pid_t p = fork();
-    if (p == 0) {
-        run_daemon(cache_path);
-        _exit(0);
-    }
-    /* wait briefly for socket to appear */
-    for (int i = 0; i < 50; i++) {
-        usleep(1000);
-        struct stat st;
-        if (stat(sp, &st) == 0) return 1;
-    }
-    return -1;
-}
-
-/* ── client mode ── */
-static int run_client(const char *cache_path) {
-    ensure_daemon(cache_path);
-
-    char sp[256]; sock_path(sp, 256);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return 1;
-    struct sockaddr_un addr = {.sun_family = AF_UNIX};
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sp);
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(fd);
-        /* daemon not ready, fall back to direct exec */
-        execlp("a", "a", "i", (char *)NULL);
-        return 1;
-    }
-
-    /* send 'i' + our terminal fds */
-    write(fd, "i", 1);
-    if (send_fds(fd, STDIN_FILENO, STDOUT_FILENO) < 0) {
-        close(fd);
-        execlp("a", "a", "i", (char *)NULL);
-        return 1;
-    }
-
-    /* wait for result */
     char result[256] = "";
-    ssize_t n = read(fd, result, 255);
-    close(fd);
+    if (run_tui(&cache, result, 256) != 0) return 0;
+    if (cache.raw) free(cache.raw);
 
-    if (n <= 0) return 0; /* user cancelled */
-    result[n] = 0;
-
-    /* exec the selected command */
+    /* exec selected command */
     char *args[32]; int ac = 0;
     args[ac++] = "a";
     char *p = result;
@@ -335,36 +175,4 @@ static int run_client(const char *cache_path) {
     args[ac] = NULL;
     execvp("a", args);
     return 0;
-}
-
-/* ── main ── */
-int main(int argc, char **argv) {
-    /* resolve cache path from env or default */
-    const char *ddir = getenv("_ADD");
-    char cache_path[512];
-    if (ddir) snprintf(cache_path, 512, "%s/i_cache.txt", ddir);
-    else {
-        const char *h = getenv("HOME");
-        if (!h) h = "/tmp";
-        snprintf(cache_path, 512, "%s/projects/a/adata/local/i_cache.txt", h);
-    }
-
-    if (argc > 1 && !strcmp(argv[1], "--daemon")) return run_daemon(cache_path);
-    if (argc > 1 && !strcmp(argv[1], "--reload")) {
-        char sp[256]; sock_path(sp, 256);
-        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-        struct sockaddr_un addr = {.sun_family = AF_UNIX};
-        snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sp);
-        if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) { write(fd, "r", 1); close(fd); }
-        return 0;
-    }
-    if (argc > 1 && !strcmp(argv[1], "--stop")) {
-        char sp[256]; sock_path(sp, 256);
-        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-        struct sockaddr_un addr = {.sun_family = AF_UNIX};
-        snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sp);
-        if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) { write(fd, "q", 1); close(fd); }
-        return 0;
-    }
-    return run_client(cache_path);
 }
