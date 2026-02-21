@@ -50,18 +50,18 @@ def _extract_pr_url(text):
 def run():
     init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
     args = sys.argv[2:]
-    if not args or args[0] in ('-h', '--help', 'help'):
-        print("a job <project|path> <prompt> [--watch] [--timeout S] [--device DEV] [--agent c|g|l]\n"
-              "  Creates worktree, runs agent, creates PR, emails result.\n"
-              "  --watch/-w:   attach to agent tmux session (Ctrl-B d to detach)\n"
-              "  --timeout S:  kill agent after S seconds (default: 600)\n"
-              "  --device DEV: run on remote device via SSH\n"
-              "  --agent c|g|l: c=claude g=gemini l=claude (default: l)\n\n"
-              "Examples:\n"
-              "  a job myproject \"fix the bug in main.py\"\n"
-              "  a job myproject \"add tests\" --watch\n"
-              "  a job myproject \"quick fix\" --timeout 30\n"
-              "  a job myproject              (opens editor for long prompt)\n")
+    if not args or args[0]=='status':
+        for n,step,st,p,sn,ts in db().execute("SELECT name,step,status,path,session,updated_at FROM jobs ORDER BY updated_at DESC LIMIT 10"):
+            live=''
+            if st=='running' and p and '/' not in p:
+                try: live=' LIVE' if not _ssh(p,f"tmux has-session -t '{sn}'",5)[0] else ' DONE'
+                except: live=''
+            print(f"  {'+'if st=='done'else'x'if st=='failed'else'~'} {n:30s} {step:10s} {(int(time.time())-ts)//3600}h{live}")
+        return
+    if args[0]=='log':
+        ldir=os.path.join(DATA_DIR,'job_logs');print(open(os.path.join(ldir,args[1]+'.log')).read() if len(args)>1 and os.path.exists(os.path.join(ldir,args[1]+'.log')) else '\n'.join(sorted(os.listdir(ldir))[-10:]) if os.path.isdir(ldir) else 'No logs');return
+    if args[0] in ('-h', '--help', 'help'):
+        print("a job <project> <prompt> [--watch] [--timeout S] [--device DEV] [--agent c|g|l]")
         return
     # Parse args
     dev, ak, proj, pp, watch, timeout = '', 'l', '', [], False, 600
@@ -151,7 +151,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
         _db_job(jn, 'no-changes', 'done', wp, sn)
 
 def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
-    _db_job(jn, 'ssh-setup', 'running')
+    _db_job(jn, 'ssh-setup', 'running', dev, sn)
     # Ensure repo on remote
     rc, _, _ = _ssh(dev, f'test -d ~/projects/{rn}/.git', timeout=10)
     if rc:
@@ -166,13 +166,13 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
 
     # Worktree
     wt = f'~/projects/a/adata/worktrees/{jn}'
-    _db_job(jn, 'worktree', 'running')
+    _db_job(jn, 'worktree', 'running', dev, sn)
     rc, _, err = _ssh(dev, f'mkdir -p ~/projects/a/adata/worktrees && git -C ~/projects/{rn} worktree add -b {br} {wt} HEAD', timeout=30)
     if rc: print(f"x Worktree: {err}"); return
     print(f"+ Worktree: {wt}")
 
     # Launch agent — detached tmux, wait for ready, send prompt
-    _db_job(jn, 'agent', 'running')
+    _db_job(jn, 'agent', 'running', dev, sn)
     q = prompt.replace("'", "'\\''")
     rc, _, err = _ssh(dev, f"tmux new-session -d -s '{sn}' -c {wt} 'claude --dangerously-skip-permissions'", timeout=15)
     if rc: print(f"x Session: {err}"); return
@@ -189,13 +189,14 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     print(f"+ Prompt sent")
 
     # Wait for completion
-    _db_job(jn, 'waiting', 'running')
+    _db_job(jn, 'waiting', 'running', dev, sn)
     print("Waiting for agent...")
     _ssh_wait_done(dev, sn, timeout=600)
+    os.makedirs(ld:=os.path.join(DATA_DIR,'job_logs'),exist_ok=True);_,lg,_=_ssh(dev,f"tmux capture-pane -t '{sn}' -S -1000 -p",10);lg and open(os.path.join(ld,jn+'.log'),'w').write(lg)
     print("+ Agent finished")
 
     # PR on remote — write script to avoid shell quoting issues
-    _db_job(jn, 'pr', 'running')
+    _db_job(jn, 'pr', 'running', dev, sn)
     import base64 as b64
     short = prompt[:50].replace('"', "'")
     script = f'''#!/bin/bash
@@ -211,13 +212,13 @@ gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "
     pr = _extract_pr_url(out + '\n' + err)
     if pr:
         print(f"+ PR: {pr}")
-        _db_job(jn, 'email', 'running')
+        _db_job(jn, 'email', 'running', dev, sn)
         _email(jn, rn, prompt, pr, '')
-        _db_job(jn, 'done', 'done', '', sn)
+        _db_job(jn, 'done', 'done', dev, sn)
         print(f"+ Done: {pr}")
     else:
         print(f"x PR failed: {out}\n{err}")
-        _db_job(jn, 'pr-failed', 'failed')
+        _db_job(jn, 'pr-failed', 'failed', dev, sn)
 
 def _make_pr(wp, br, rn, prompt):
     dirty = S.run(['git', '-C', wp, 'status', '--porcelain'], capture_output=True, text=True).stdout.strip()
