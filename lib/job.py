@@ -51,19 +51,22 @@ def run():
     init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
     args = sys.argv[2:]
     if not args or args[0] in ('-h', '--help', 'help'):
-        print("a job <project|path> <prompt> [--device DEV] [--agent c|g|l]\n"
+        print("a job <project|path> <prompt> [--watch] [--device DEV] [--agent c|g|l]\n"
               "  Creates worktree, runs agent, creates PR, emails result.\n"
-              "  --device: run on remote device via SSH (default: local)\n"
-              "  --agent:  c=claude g=gemini l=claude (default: l)\n\n"
-              "How to email: a email \"subject\" \"body\"\n"
-              "How to PR:    gh pr create --title T --body B (in a git branch)\n"
-              "  PR requires: branch != main, commits pushed, gh authenticated")
+              "  --watch/-w: attach to agent tmux session (Ctrl-B d to detach)\n"
+              "  --device:   run on remote device via SSH (default: local)\n"
+              "  --agent:    c=claude g=gemini l=claude (default: l)\n\n"
+              "Examples:\n"
+              "  a job myproject \"fix the bug in main.py\"\n"
+              "  a job myproject \"add tests\" --watch\n"
+              "  a job 3 \"refactor login\" --device phone\n")
         return
     # Parse args
-    dev, ak, proj, pp = '', 'l', '', []
+    dev, ak, proj, pp, watch = '', 'l', '', [], False
     i = 0
     while i < len(args):
-        if args[i] == '--device' and i+1 < len(args): dev = args[i+1]; i += 2
+        if args[i] == '--watch' or args[i] == '-w': watch = True; i += 1
+        elif args[i] == '--device' and i+1 < len(args): dev = args[i+1]; i += 2
         elif args[i] == '--agent' and i+1 < len(args): ak = args[i+1]; i += 2
         elif not proj:
             if args[i].isdigit() and int(args[i]) < len(PROJ): proj = PROJ[int(args[i])][0]; i += 1
@@ -92,9 +95,9 @@ def run():
     print(f"Job: {jn}\n  Repo: {rn}\n  Agent: {ak}\n  Device: {dev or 'local'}\n  Prompt: {prompt[:80]}")
 
     if dev: _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn)
-    else: _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn)
+    else: _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch)
 
-def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn):
+def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False):
     _db_job(jn, 'worktree', 'running', wp, sn)
     os.makedirs(wt, exist_ok=True)
     r = S.run(['git', '-C', proj, 'worktree', 'add', '-b', br, wp, 'HEAD'], capture_output=True, text=True)
@@ -117,13 +120,17 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn):
     _db_job(jn, 'waiting', 'running', wp, sn)
     done_file = os.path.join(DATA_DIR, '.done')
     if os.path.exists(done_file): os.unlink(done_file)
-    print("Waiting for agent...")
-    start = time.time()
-    while time.time() - start < 600:
-        if os.path.exists(done_file): break
-        r = S.run(['tmux', 'has-session', '-t', sn], capture_output=True)
-        if r.returncode != 0: break
-        time.sleep(3)
+    if watch:
+        print(f"Attaching to {sn}... (Ctrl-B d to detach)")
+        S.run(['tmux', 'attach', '-t', sn], env=env)
+    else:
+        print("Waiting for agent...")
+        start = time.time()
+        while time.time() - start < 600:
+            if os.path.exists(done_file): break
+            r = S.run(['tmux', 'has-session', '-t', sn], capture_output=True)
+            if r.returncode != 0: break
+            time.sleep(3)
     print("+ Done")
 
     _db_job(jn, 'pr', 'running', wp, sn)
