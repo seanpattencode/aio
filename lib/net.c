@@ -108,9 +108,10 @@ static int cmd_update(int argc, char **argv) {
         gen_icache();
         puts("\xe2\x9c\x93 Cache"); return 0;
     }
-    /* Full update */
+    /* Pull, rebuild, exec new */
     char c[B]; snprintf(c, B, "git -C '%s' rev-parse --git-dir >/dev/null 2>&1", SDIR);
     if (system(c) != 0) { puts("x Not in git repo"); return 0; }
+    snprintf(c, B, "git -C '%s' checkout -- a-i 2>/dev/null", SDIR); (void)!system(c);
     snprintf(c, B, "git -C '%s' fetch 2>/dev/null", SDIR); (void)!system(c);
     snprintf(c, B, "git -C '%s' status -uno 2>/dev/null", SDIR);
     char out[B]; pcmd(c, out, B);
@@ -123,24 +124,19 @@ static int cmd_update(int argc, char **argv) {
     } else {
         printf("\xe2\x9c\x93 Up to date\n");
     }
-    /* Self-build: prefer clang, fall back to gcc */
     snprintf(c, B, "sh '%s/a.c'", SDIR);
     if (system(c) == 0) puts("\xe2\x9c\x93 Built"); else puts("x Build failed");
     { char ai[P]; snprintf(ai,P,"%s/a-i",SDIR); if(!access(ai,X_OK)){snprintf(c,B,"'%s' --stop",ai);(void)!system(c);} }
-    /* Re-link ~/.local/bin/a -> built binary */
     snprintf(c, B, "ln -sf '%s/a' '%s/.local/bin/a'", SDIR, getenv("HOME"));
     (void)!system(c);
-    /* Refresh venv deps */
     { char vp[P]; snprintf(vp, P, "%s/venv/bin/pip", AROOT);
       if (access(vp, X_OK) == 0) {
           snprintf(c, B, "'%s' install -q pexpect prompt_toolkit aiohttp 2>/dev/null", vp);
-          if (system(c) == 0) puts("\xe2\x9c\x93 Python deps"); else puts("x pip install failed");
+          if (system(c) == 0) puts("\xe2\x9c\x93 Python deps"); else puts("x pip failed");
       }
     }
-    /* Refresh shell + caches */
     snprintf(c, B, "bash '%s/a.c' shell 2>/dev/null", SDIR); (void)!system(c);
-    init_db(); load_cfg(); list_all(1, 1);
-    /* Ensure adata/git exists + sync */
+    snprintf(c, B, "'%s/a' update cache", SDIR); (void)!system(c);
     ensure_adata();
     sync_repo();
     if (sub && !strcmp(sub, "all")) {
