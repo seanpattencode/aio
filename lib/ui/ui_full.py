@@ -63,7 +63,8 @@ HTML = '''<!doctype html>
 var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
 function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit()},0);if(p==='/note')loadn();if(p==='/jobs')loadjobs();}
-function loadn(){fetch('/api/notes').then(function(r){return r.json()}).then(function(d){nl.innerHTML=d.map(function(t){return'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222">'+t+'</div>'}).join('');});}
+function arcn(f,el){fetch('/api/note/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({f:f})});el.parentElement.remove();}
+function loadn(){fetch('/api/notes').then(function(r){return r.json()}).then(function(d){nl.innerHTML=d.map(function(n){return'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\\''+n.f+'\\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>'+n.t+'</span></div>'}).join('');});}
 function loadjobs(){fetch('/api/jobs').then(function(r){return r.text()}).then(function(d){
   var h=d;fetch('/api/job-status').then(function(r){return r.json()}).then(function(js){
     if(js.length){h+='\\n\\n--- Job PRs ---\\n';js.forEach(function(j){
@@ -188,6 +189,7 @@ async def term_capture(r):
 async def note_api(r):
     if r.method == 'POST': d = await r.post(); c = d.get('c', '').strip(); c and S.Popen([_A, 'note', c]); return web.Response(text='ok')
     return web.Response(text='')
+async def note_archive(r): d=await r.json();f=os.path.basename(d.get('f',''));nd=f'{_G}/notes';ad=f'{nd}/.archive';os.makedirs(ad,exist_ok=True);p=f'{nd}/{f}';os.path.isfile(p) and os.rename(p,f'{ad}/{f}');return web.Response(text='ok')
 
 async def notes_list(r):
     d = f'{_G}/notes'; ns = []
@@ -195,9 +197,9 @@ async def notes_list(r):
         for f in sorted(os.listdir(d), key=lambda x: x.rsplit('_', 1)[-1] if '_' in x else '0', reverse=True):
             if not f.endswith('.txt') or f.startswith('.'): continue
             for line in open(f'{d}/{f}'):
-                if line.startswith('Text: '): ns.append(line[6:].strip()); break
+                if line.startswith('Text: '): ns.append({'t':line[6:].strip(),'f':f}); break
     return web.json_response(ns)
 
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api), web.post('/api/note/archive', note_archive)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
