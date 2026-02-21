@@ -99,6 +99,7 @@ build)
     $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$D/a" "$D/a.c" $LDFLAGS & P2=$!
     $CC -O2 -march=native -w -o "$D/a-i" "$D/lib/aid.c" & P3=$!
     wait $P1 && wait $P2 && wait $P3
+    "$D/a-i" --stop 2>/dev/null || :
     ;;
 analyze)
     _ensure_cc

@@ -112,7 +112,7 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
     /* Raw mode */
     struct termios old, raw_t;
     tcgetattr(STDIN_FILENO, &old); raw_t = old;
-    raw_t.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
+    raw_t.c_lflag &= ~(tcflag_t)(ICANON | ECHO | ISIG);
     raw_t.c_cc[VMIN] = 1; raw_t.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &raw_t);
     char buf[256] = ""; int blen = 0, sel = 0; char prefix[256] = "";

@@ -87,7 +87,7 @@ static int run_tui(cache_t *c, int tty_in, int tty_out, char *result, int rsz) {
 
     struct termios old, raw;
     tcgetattr(tty_in, &old); raw = old;
-    raw.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
+    raw.c_lflag &= ~(tcflag_t)(ICANON | ECHO | ISIG);
     raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0;
     tcsetattr(tty_in, TCSANOW, &raw);
 
