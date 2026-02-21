@@ -505,6 +505,9 @@ int main(int argc, char **argv) {
     if (strlen(arg) <= 3 && arg[0] >= 'a' && arg[0] <= 'z')
         return cmd_sess(argc, argv);
 
+    /* "a job-foo-bar" — attach to existing tmux session by name */
+    if (tm_has(arg)) { tm_go(arg); return 0; }
+
     /* Not a command — error in C, no silent Python fallback */
     fprintf(stderr, "a: '%s' is not a command. See 'a help'.\n", arg);
     return 1;

@@ -129,7 +129,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     S.run(['tmux', 'send-keys', '-t', sn, '-l', full], env=env)
     time.sleep(0.5)
     S.run(['tmux', 'send-keys', '-t', sn, 'Enter'], env=env)
-    print(f"+ Agent: {sn}")
+    print(f"+ Attach: a {sn}")
 
     _db_job(jn, 'waiting', 'running', wp, sn)
     done_file = os.path.join(DATA_DIR, '.done')
@@ -186,7 +186,7 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     q = prompt.replace("'", "'\\''")
     rc, _, err = _ssh(dev, f"tmux new-session -d -s '{sn}' -c {wt} 'claude --dangerously-skip-permissions'", timeout=15)
     if rc: print(f"x Session: {err}"); return
-    print(f"+ Session: {sn}")
+    print(f"+ Attach: a ssh {dev} \"a {sn}\"")
     print("  Waiting for claude to start...")
     if not _ssh_wait_ready(dev, sn, timeout=120):
         print("x Claude didn't start"); return
