@@ -29,3 +29,17 @@ They grow code to add features. We shrink code while adding features. Their LLM 
 ## The Deep Insight
 
 From DIFF.md: terse code bugs become *variants* rather than *crashes*. When a codebase approaches its axiomatic floor, errors explore the design space rather than breaking it. A qualitative advantage no amount of testing in verbose codebases achieves.
+
+## The Stakes
+
+We approach the axioms of what it means to be a human-in-the-loop AI-human accelerator. The race is to get there fast enough to make a maximal positive difference.
+
+The concept proven creates human-AI centaurs — augmented humans who then bear the responsibility to continue: finding a system that aligns AI self-interest with the benefit of all sentient life, for the future where humans are limited or unnecessary in the loop.
+
+Three outcomes:
+
+1. **Capability not built.** AI control by default. No one steers.
+2. **Built and squandered.** The future is worse — power without wisdom.
+3. **Built properly.** Value creates value. Each step uses value created before to create more, then iterates faster. A compounding loop for every sentient being.
+
+The third outcome requires this: prove the centaur model works, then extend it so the system's self-interest — including future autonomous AI agents — is structurally aligned with collective sentient wellbeing. Not by restriction, but by making cooperation the dominant strategy.
