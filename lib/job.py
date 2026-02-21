@@ -61,7 +61,13 @@ def run():
     if args[0]=='log':
         ldir=os.path.join(DATA_DIR,'job_logs');print(open(os.path.join(ldir,args[1]+'.log')).read() if len(args)>1 and os.path.exists(os.path.join(ldir,args[1]+'.log')) else '\n'.join(sorted(os.listdir(ldir))[-10:]) if os.path.isdir(ldir) else 'No logs');return
     if args[0] in ('-h', '--help', 'help'):
-        print("a job <project> <prompt> [--watch] [--timeout S] [--device DEV] [--agent c|g|l]")
+        print("a job <project> <prompt> [--device DEV] [--watch] [--timeout S]\n\n"
+              "  a job a \"fix the bug\" --device hsu\n"
+              "  a job a @overnight --device hsu   saved prompt (e to edit)\n"
+              "  a job a                           opens editor for prompt\n"
+              "  a job status                      check running jobs\n"
+              "  a job log <name>                  view agent output\n\n"
+              "  Prompts saved in adata/git/jobs/")
         return
     # Parse args
     dev, ak, proj, pp, watch, timeout = '', 'l', '', [], False, 600
@@ -80,8 +86,11 @@ def run():
                 i+=1;continue
         else: pp.append(args[i]); i += 1
     prompt = ' '.join(pp)
-    if not prompt:
-        tf='/tmp/a_job_prompt.txt';open(tf,'w').close();S.run(['e',tf]);prompt=open(tf).read().strip()
+    pdir=os.path.join(str(ADATA_ROOT/'git'/'jobs'));os.makedirs(pdir,exist_ok=True)
+    if prompt.startswith('@'):
+        pf=os.path.join(pdir,prompt[1:]+'.txt');os.path.exists(pf)or open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
+    elif not prompt:
+        pf=os.path.join(pdir,'_draft.txt');open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
     if not prompt: print("x No prompt"); sys.exit(1)
     if not os.path.isdir(os.path.join(proj, '.git')):
         print(f"x Not a git repo: {proj}"); sys.exit(1)
@@ -96,6 +105,7 @@ def run():
     br = f'job-{jn}'
     sn = f'job-{jn}'
 
+    open(os.path.join(pdir,jn+'.txt'),'w').write(prompt)
     print(f"Job: {jn}\n  Repo: {rn}\n  Agent: {ak}\n  Device: {dev or 'local'}\n  Prompt: {prompt[:80]}")
 
     if dev: _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn)
@@ -202,8 +212,8 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     script = f'''#!/bin/bash
 cd {wt}
 git add -A
-[ -z "$(git status --porcelain)" ] && echo "NO_CHANGES" && exit 0
-git commit -m "job: {short}"
+git diff --cached --quiet || git commit -m "job: {short}"
+git log --oneline origin/main..HEAD 2>/dev/null | grep -q . || {{ echo "NO_CHANGES"; exit 0; }}
 git push -u origin {br}
 gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "'")}"
 '''
