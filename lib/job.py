@@ -47,6 +47,11 @@ def _extract_pr_url(text):
             if u: return u
     return ''
 
+def _go_one(qdir,sel,files,_A):
+    kv=dict(l.split(': ',1)for l in open(os.path.join(qdir,sel+'.txt')).read().strip().split('\n')if': 'in l)
+    cmd=[_A,'job',kv['Project'],kv.get('Prompt','')]+(['--device',kv['Device']]if kv.get('Device')else[])+(['--timeout',kv['Timeout']]if kv.get('Timeout')else[])+(['--no-prefix']if kv.get('Prefix','on')=='off'else[])+(['--no-agents']if kv.get('Agents','on')=='off'else[])
+    print(f">>> {sel}");S.call(cmd)
+
 def run():
     init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
     args = sys.argv[2:]
@@ -61,7 +66,7 @@ def run():
         files=sorted(f for f in os.listdir(qdir) if f.endswith('.txt'))
         if files: print(f"\nQueue:")
         for i,f in enumerate(files): kv=dict(l.split(': ',1)for l in open(os.path.join(qdir,f)).read().split('\n')if': 'in l);print(f"  {i} {f[:-4]:20s} {kv.get('Device','local'):8s} {kv.get('Prompt','')[:50]}")
-        print(f"\n  a job add <name>    stage a job\n  a job go <#>        launch\n  e {qdir}/<name>.txt  edit")
+        print(f"\n  a job add <name>    stage a job\n  a job go <#>        launch\n  a job go all        launch all\n  e {qdir}/<name>.txt  edit")
         return
     if args[0]=='log':
         ldir=os.path.join(DATA_DIR,'job_logs');print(open(os.path.join(ldir,args[1]+'.log')).read() if len(args)>1 and os.path.exists(os.path.join(ldir,args[1]+'.log')) else '\n'.join(sorted(os.listdir(ldir))[-10:]) if os.path.isdir(ldir) else 'No logs');return
@@ -69,6 +74,7 @@ def run():
         print("a job <project> <prompt> [--device DEV] [--watch] [--timeout S]\n\n"
               "  a job add <name>                  stage job (opens editor)\n"
               "  a job go <name|#>                 launch staged job\n"
+              "  a job go all [--interval 300]     launch all queued\n"
               "  a job a \"fix bug\" --device hsu    run directly\n"
               "  a job a @prompt --device hsu      saved prompt\n"
               "  a job status                      running + queue\n"
@@ -78,9 +84,14 @@ def run():
         qf=os.path.join(qdir,(args[1]if len(args)>1 else'job')+'.txt');os.path.exists(qf)or open(qf,'w').write('Project: a\nDevice: hsu\nPrompt: \nTimeout: 600\nPrefix: on\nAgents: on\n');S.run(['e',qf]);return
     if args[0]=='go':
         sel=args[1]if len(args)>1 else'';files=sorted(f for f in os.listdir(qdir)if f.endswith('.txt'))
+        iv=int(args[args.index('--interval')+1])if '--interval'in args else 0
+        if sel=='all':
+            for i,f in enumerate(files):
+                if i and iv:print(f"  sleeping {iv}s...");time.sleep(iv)
+                _go_one(qdir,f[:-4],files,_A)
+            return
         if sel.isdigit()and int(sel)<len(files):sel=files[int(sel)][:-4]
-        kv=dict(l.split(': ',1)for l in open(os.path.join(qdir,sel+'.txt')).read().strip().split('\n')if': 'in l)
-        cmd=[_A,'job',kv['Project'],kv.get('Prompt','')]+(['--device',kv['Device']]if kv.get('Device')else[])+(['--timeout',kv['Timeout']]if kv.get('Timeout')else[])+(['--no-prefix']if kv.get('Prefix','on')=='off'else[])+(['--no-agents']if kv.get('Agents','on')=='off'else[]);os.execv(_A,cmd)
+        _go_one(qdir,sel,files,_A)
     # Parse args
     dev, ak, proj, pp, watch, timeout, use_prefix, use_agents = '', 'l', '', [], False, 600, True, True
     i = 0
