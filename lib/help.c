@@ -108,10 +108,9 @@ static void gen_icache(void) {
     "work\tgit worktrees\nx\texperimental\n",f);
     char sd[P]; snprintf(sd, P, "%s/ssh", SROOT);
     char sp[32][P]; int sn = listdir(sd, sp, 32);
-    for (int i=0,hi=0;i<sn;i++) {
+    for (int i=0;i<sn;i++) {
         kvs_t kv = kvfile(sp[i]);
-        const char *nm = kvget(&kv,"Name"); if (!nm) continue;
-        const char *host = kvget(&kv,"Host"); fprintf(f, "ssh %d: %s (%s)\n", hi++, nm, host?host:"");
+        const char *nm = kvget(&kv,"Name"); if (!nm) continue;  fprintf(f, "ssh %s\thost\n", nm);
     }
     fclose(f);
 }
