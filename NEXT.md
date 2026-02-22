@@ -85,6 +85,43 @@ adata/git/day/
   2026-02-18.txt     gate:nootropics 09:15
 ```
 
+## 3. agui: browser automation → web LLMs as native session types
+
+Existing playwright controller (separate agui project) becomes a's interface to
+every website LLM. ChatGPT, Gemini web, Grok, Le Chat, Perplexity — all become
+session types accessible via `a send`, same protocol as CLI agents.
+
+### Why
+- Every web LLM is a free/subscription API endpoint you already pay for
+- Model diversity without API costs — run same prompt through 5 models, compare
+- PhD thesis (aicombo) runs on free infrastructure: combine web LLMs at scale
+- Agents can delegate to models that have no CLI (Grok, Perplexity, etc.)
+
+### Architecture
+- agui stays separate — it's the browser engine, not an a feature
+- a gets new session types: `a w` for web-chatgpt, etc.
+- `a send web-chatgpt "prompt" --wait` — same interface as CLI agents
+- Under the hood: playwright types into text box, reads response div
+- Agent calling it doesn't know or care it's a browser not a terminal
+
+### Auth strategy
+- Run browser visible on a monitor. When auth/captcha appears, swivel chair,
+  click it, go back to work. 30-second human interrupt, not a blocker.
+- LLM vision can handle simple captchas (checkbox type) automatically
+- If LLM fails captcha: `a email` notifies you, agent blocks until resolved
+- Fallback chain: LLM auto-click → email human → human clicks → continues
+
+### Steps
+1. Sync agui data via adata/ (same mechanism as everything else)
+2. Add web LLM session types to sessions.txt defaults
+3. Adapter: translate a send/watch to playwright type/read (~20-30 lines)
+4. Test: `a send web-chatgpt "hello" --wait` round-trips successfully
+
+### What NOT to build
+- Full browser automation framework (playwright already is one)
+- Captcha solving service (LLM + human fallback is sufficient)
+- Auth token extraction/replay (just run visible and click when needed)
+
 ## Order of operations
 1. App first — fork Termux, add foreground service + persistent notification, basic GUI toggle
 2. a day — build the C command while app is being set up
