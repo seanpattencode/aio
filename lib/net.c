@@ -92,27 +92,31 @@ static int cmd_log(int argc, char **argv) {
     snprintf(c, B, "ls -d '%s/backup'/*/ 2>/dev/null | wc -l", AROOT);
     pcmd(c, nout, 64); int nbak = atoi(nout);
     time_t now = time(NULL); char ago[32]; struct stat fst;
+    /* gdrive remote name */
+    pcmd("rclone listremotes 2>/dev/null | head -1", nout, 64); nout[strcspn(nout,"\n:")]=0;
+    /* github user from git url */
+    char ghu[64]=""; { char *s=strstr(gurl,"github.com/"); if(s){s+=11;char*e=strchr(s,'/');if(e){int l=(int)(e-s);if(l<63){memcpy(ghu,s,(size_t)l);ghu[l]=0;}}} }
     /* LLM transcripts: newest .log in LOGDIR */
     snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", LOGDIR);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int llm_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (llm_age >= 0) AGO(ago, 32, llm_age); else snprintf(ago, 32, "never");
-    printf("\n%s LLM transcripts  %3d  gdrive (a log sync)  last: %s\n",
-        nlogs ? "\xe2\x9c\x93" : "x", nlogs, ago);
+    printf("\n%s LLM transcripts  %3d  %s:adata/backup/%s/  last: %s\n",
+        nlogs ? "\xe2\x9c\x93" : "x", nlogs, nout[0]?nout:"gdrive", DEV, ago);
     /* Job tmux logs: newest .log in git/jobs */
     snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", jdir);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int job_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (job_age >= 0) AGO(ago, 32, job_age); else snprintf(ago, 32, "never");
-    printf("%s Job tmux logs    %3d  git%s  last: %s\n",
-        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, git_ok ? " (auto-synced)" : " (no remote)", ago);
+    printf("%s Job tmux logs    %3d  %s  last: %s\n",
+        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, git_ok ? gurl : "git (no remote)", ago);
     /* JSONL backup: newest file in backup dirs */
     snprintf(c, B, "ls -t '%s/backup'/*/*.jsonl '%s/backup'/*/*.log 2>/dev/null | head -1", AROOT, AROOT);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int bak_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (bak_age >= 0) AGO(ago, 32, bak_age); else snprintf(ago, 32, "never");
-    printf("%s JSONL backup          %s  last: %s\n",
-        nbak ? "\xe2\x9c\x93" : "x", nbak ? "active" : "not configured", ago);
+    printf("%s JSONL backup          adata/backup/ (a log backup)  last: %s\n",
+        nbak ? "\xe2\x9c\x93" : "x", ago);
     #undef AGO
     return 0;
 }
