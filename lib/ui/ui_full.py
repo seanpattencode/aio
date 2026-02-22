@@ -56,7 +56,7 @@ HTML = '''<!doctype html>
   </form>
   <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px"></div>
 </div>
-<div id=v_dc style="position:fixed;inset:0;background:#000;color:red;text-align:center;padding-top:45vh">not connected</div>
+<div id=v_dc style="position:fixed;inset:0;background:#000;color:red;text-align:center;padding-top:45vh;display:none">not connected</div>
 <script>
 var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
