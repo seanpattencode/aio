@@ -262,7 +262,7 @@ gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "
     if pr:
         print(f"+ PR: {pr}")
         _db_job(jn, 'email', 'running', dev, sn)
-        _email(jn, rn, prompt, pr, '', '', summary, lg)
+        _email(jn, rn, prompt, pr, '', f'a ssh {dev} "cd {wt} && claude --continue"', summary, lg)
         _db_job(jn, 'done', 'done', dev, sn)
         print(f"+ Done: {pr}")
     else:
@@ -280,16 +280,18 @@ def _make_pr(wp, br, rn, prompt):
     return url or None
 
 def _email(jn, rn, prompt, pr_url, wp, resume='', summary='', log=''):
-    subj = f'[a job] {rn}: {prompt[:40]}'
-    body = f'Job: {jn}\nRepo: {rn}\nPrompt: {prompt}\n\nPR: {pr_url}\nDevice: {DEVICE_ID}\n'
-    if summary: body += f'\nSummary:\n{summary}\n'
-    if resume: body += f'\nResume: {resume}\n'
+    sep='='*60+'\n'
+    subj=f'[a job] {rn}: {summary[:60] if summary else prompt[:40]}'
+    body=f'{sep}JOB: {jn} | REPO: {rn} | DEVICE: {DEVICE_ID}\n{sep}\n'
+    if summary: body+=f'>>> SUMMARY\n{summary}\n\n'
+    body+=f'>>> PR\n{pr_url}\n\n>>> PROMPT\n{prompt}\n\n'
+    if resume: body+=f'>>> RESUME\n{resume}\n\n'
     if wp:
-        r = S.run(['git', '-C', wp, 'diff', 'HEAD~1', '--stat'], capture_output=True, text=True)
-        if r.stdout.strip(): body += f'\nDiff:\n{r.stdout.strip()}\n'
-    if log: body += f'\n{"="*60}\nFull Log:\n{"="*60}\n{log}\n'
-    r = S.run([_A, 'email', subj, body], capture_output=True, text=True, timeout=30)
-    if r.returncode == 0: print(f"+ Emailed")
+        r=S.run(['git','-C',wp,'diff','HEAD~1','--stat'],capture_output=True,text=True)
+        if r.stdout.strip(): body+=f'>>> DIFF\n{r.stdout.strip()}\n\n'
+    if log: body+=f'{sep}FULL LOG\n{sep}{log}\n'
+    r=S.run([_A,'email',subj,body],capture_output=True,text=True,timeout=30)
+    if r.returncode==0: print(f"+ Emailed")
     else: print(f"x Email: {r.stderr or r.stdout}")
 
 run()
