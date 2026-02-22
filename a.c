@@ -287,10 +287,13 @@ exit 0
  *   Remote:  a ssh <host> a send <session> ...   cross-device delegation
  *   ADB:     a adb ssh                           start sshd on USB Termux devices
  *   Tmux:    tmux send-keys / capture-pane       raw escape hatch for fine control
- *   Prefer a commands over raw tmux: shorter (~10 vs ~30 tokens), handles
- *   timing/idle detection atomically, fewer errors over many invocations.
- *   An agent solving a problem can spin up another agent (even a different
- *   model) to handle a subtask — same interface humans use, no special API.
+ *   Always use a commands, not raw tmux. "a g" launches gemini with --yolo
+ *   (auto-approve), env fixes, named session — vs raw tmux which needs manual
+ *   permission clicks, env setup, session naming. Shorter commands (~10 vs ~30
+ *   tokens) means faster LLM generation, fewer errors, and less chance of an
+ *   agent using the wrong flags. Brevity compounds across thousands of calls.
+ *   An agent can spin up another agent (even a different model) to handle a
+ *   subtask — same interface humans use, no special API.
  *
  * References:
  *   Dispatch — sorted table + bsearch, inspired by Linux syscall_64.c
