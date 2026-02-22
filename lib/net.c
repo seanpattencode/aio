@@ -152,10 +152,16 @@ static int cmd_sync(int argc, char **argv) {
         char cnt[16]; pcmd(cnt_cmd, cnt, 16); cnt[strcspn(cnt,"\n")] = 0;
         printf("  %s: %s files\n", folders[i], cnt);
     }
-    /* background rclone push of JSONL backups to gdrive */
-    snprintf(c, B, "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
-        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q &",
-        AROOT, DEV, DEV);
+    /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
+    snprintf(c, B, "("
+        "mkdir -p '%s/backup/%s' && "
+        "find ~/.claude/projects -name '*.jsonl' -newer '%s/backup/%s/.last_grab' 2>/dev/null "
+        "| while read f; do cp -n \"$f\" '%s/backup/%s/' 2>/dev/null; done; "
+        "touch '%s/backup/%s/.last_grab'; "
+        "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
+        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q"
+        ") &",
+        AROOT, DEV, AROOT, DEV, AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
     (void)!system(c);
     if (argc > 2 && !strcmp(argv[2], "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
@@ -214,10 +220,16 @@ static int cmd_update(int argc, char **argv) {
     snprintf(c, B, "'%s/a' update cache", SDIR); (void)!system(c);
     ensure_adata();
     sync_repo();
-    /* background rclone push of JSONL backups to gdrive */
-    snprintf(c, B, "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
-        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q &",
-        AROOT, DEV, DEV);
+    /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
+    snprintf(c, B, "("
+        "mkdir -p '%s/backup/%s' && "
+        "find ~/.claude/projects -name '*.jsonl' -newer '%s/backup/%s/.last_grab' 2>/dev/null "
+        "| while read f; do cp -n \"$f\" '%s/backup/%s/' 2>/dev/null; done; "
+        "touch '%s/backup/%s/.last_grab'; "
+        "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
+        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q"
+        ") &",
+        AROOT, DEV, AROOT, DEV, AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
     (void)!system(c);
     if (sub && !strcmp(sub, "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
