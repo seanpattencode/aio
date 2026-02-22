@@ -278,17 +278,19 @@ exit 0
  * Add a command:  write lib/foo.c, add #include + dispatch line here.
  * Remove:         delete the file, delete two lines.
  *
- * Agent-to-agent control:
- *   Local:   a send <session> <prompt> --wait    send + wait for idle
+ * Agent-to-agent control (agents can launch and delegate to other agents):
+ *   Launch:  a g                                 start gemini in current dir
+ *            a c / a co / a g                    claude / codex / gemini
+ *            a c 3 "fix the bug"                 claude in project #3 with prompt
+ *   Send:    a send <session> <prompt> --wait    send + wait for idle
  *            a watch <session> [duration]         read pane output
- *   Remote:  a ssh <host> a send <session> <prompt> --wait
- *            a ssh <host> a watch <session>
+ *   Remote:  a ssh <host> a send <session> ...   cross-device delegation
  *   ADB:     a adb ssh                           start sshd on USB Termux devices
- *   Tmux:    tmux send-keys / capture-pane         raw escape hatch for fine control
+ *   Tmux:    tmux send-keys / capture-pane       raw escape hatch for fine control
  *   Prefer a commands over raw tmux: shorter (~10 vs ~30 tokens), handles
  *   timing/idle detection atomically, fewer errors over many invocations.
- *   Same principle as short unix commands — brevity compounds at scale.
- *   These compose: any agent on any device can control any other via SSH+tmux.
+ *   An agent solving a problem can spin up another agent (even a different
+ *   model) to handle a subtask — same interface humans use, no special API.
  *
  * References:
  *   Dispatch — sorted table + bsearch, inspired by Linux syscall_64.c
@@ -365,7 +367,7 @@ exit 0
  *   backup/                   rclone move ->, all devices, logs+state
  *     {device}/               LOGDIR — session logs ({device}__{session}.log)
  *                             + claude JSONL transcripts (full conversation, 1-13MB)
- *                             (tmux visual logs are small → git/jobs/*.log instead)
+ *                             (tmux visual logs are small, in git/jobs/ instead)
  * ~/.local/bin/a              symlink to compiled binary
  */
 
