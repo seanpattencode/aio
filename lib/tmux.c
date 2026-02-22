@@ -95,6 +95,11 @@ static void tm_ensure_conf(void) {
         "detach) tmux detach;; esc) tmux send-keys Escape;; "
         "kbd) tmux set -g mouse off; tmux display-message \"Mouse off 3s\"; "
         "(sleep 3; tmux set -g mouse on) &;; esac' }\n", f);
+    /* Termux: /tmp is owned by shell:shell (0771), Termux app user can't mkdir
+     * inside it. Claude Code sandbox does mkdir /tmp/claude-* before every tool
+     * call, failing with EACCES. CLAUDE_CODE_TMPDIR redirects to writable dir */
+    if (access("/data/data/com.termux",F_OK)==0)
+        fprintf(f,"set-environment -g CLAUDE_CODE_TMPDIR \"%s/.tmp\"\n",HOME);
     if (cc) fprintf(f, "set -s copy-command \"%s\"\n", cc);
     if (cc) {
         fprintf(f, "bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel \"%s\"\n", cc);

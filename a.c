@@ -166,7 +166,9 @@ install)
         fedora)
             if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi ;;
-        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone termux-services && ok "pkgs" ;;
+        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone termux-services && ok "pkgs"
+            # /tmp owned by shell:shell (0771) — Claude Code mkdir /tmp/claude-* fails EACCES
+            mkdir -p "$HOME/.tmp"; grep -q CLAUDE_CODE_TMPDIR "$HOME/.bashrc" 2>/dev/null || echo "export CLAUDE_CODE_TMPDIR=\"\$HOME/.tmp\"" >> "$HOME/.bashrc" ;;
         *) install_node; warn "Unknown OS - install tmux manually" ;;
     esac
     _ensure_cc
