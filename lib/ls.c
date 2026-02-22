@@ -51,26 +51,23 @@ static int cmd_kill(int argc, char **argv) {
 static int cmd_copy(int argc, char **argv) { (void)argc;(void)argv;
     if (!getenv("TMUX")) { puts("x Not in tmux"); return 1; }
     (void)!system("tmux capture-pane -pJ -S -99 > /tmp/ac_copy.tmp");
-    /* Simplified: copy last output block */
     char *d = readf("/tmp/ac_copy.tmp", NULL);
     if (!d) return 1;
-    /* Find last prompt line (contains $ and @) */
     char *lines[1024]; int nl = 0; char *p = d;
     while (*p && nl < 1024) { lines[nl++] = p; char *e = strchr(p,'\n'); if (e) { *e=0; p=e+1; } else break; }
     int last_prompt = -1;
-    for (int i = nl - 1; i >= 0; i--)
-        if (strstr(lines[i], "$") && strstr(lines[i], "@")) {
-            if (strstr(lines[i], "copy")) { last_prompt = i; continue; }
-            /* Find output between this prompt and the 'copy' prompt */
-            char out[B]=""; int ol=0;
-            for(int j=i+1;j<last_prompt&&j<nl;j++) ol+=snprintf(out+ol,(size_t)(B-ol),"%s%s",ol?"\n":"",lines[j]);
-            /* Try to copy to clipboard */
-            FILE *fp = popen("wl-copy 2>/dev/null || xclip -selection clipboard -i 2>/dev/null", "w");
-            if (fp) { fputs(out, fp); pclose(fp); }
-            char s[54]; snprintf(s, 54, "%s", out); for (char *c=s;*c;c++) if(*c=='\n')*c=' ';
-            printf("\xe2\x9c\x93 %s\n", s);
-            free(d); return 0;
-        }
+    for (int i = nl - 1; i >= 0; i--) {
+        if (!(strstr(lines[i],"\xe2\x9d\xaf") || (strstr(lines[i],"$") && strstr(lines[i],"@")))) continue;
+        if (strstr(lines[i], "copy")) { last_prompt = i; continue; }
+        if (last_prompt < 0) continue;
+        char out[B]=""; int ol=0;
+        for(int j=i+1;j<last_prompt&&j<nl;j++) ol+=snprintf(out+ol,(size_t)(B-ol),"%s%s",ol?"\n":"",lines[j]);
+        FILE *fp = popen("wl-copy 2>/dev/null || xclip -selection clipboard -i 2>/dev/null", "w");
+        if (fp) { fputs(out, fp); pclose(fp); }
+        char s[54]; snprintf(s, 54, "%s", out); for (char *c=s;*c;c++) if(*c=='\n')*c=' ';
+        printf("\xe2\x9c\x93 %s\n", s);
+        free(d); return 0;
+    }
     free(d); puts("x No output found"); return 0;
 }
 
@@ -148,6 +145,7 @@ static int cmd_jobs(int argc, char **argv) {
     const char *sel=NULL,*rm=NULL; int rf=0;
     for(int i=2;i<argc;i++){if(!strcmp(argv[i],"-r")||!strcmp(argv[i],"--running"))rf=1;
         else if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];else sel=argv[i];}
+    if(sel&&!strcmp(sel,"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","jobs","-r",(char*)0);return 0;}
     struct{char p[P],s[8][128],n[64],r[128];int ns,act;time_t ct;int wt;}J[64];int nj=0;
     /* Tmux sessions -> paths */
     char to[B]; pcmd("tmux list-sessions -F '#{session_name}' 2>/dev/null",to,B);
@@ -191,8 +189,11 @@ static int cmd_jobs(int argc, char **argv) {
     puts("  #  Active  Repo         Worktree");
     for(int i=0;i<cnt;i++){int j=s0+i;char td[16]="";if(J[j].ct){int d=(int)(time(NULL)-J[j].ct);
         if(d<3600)snprintf(td,16," (%dm)",d/60);else if(d<86400)snprintf(td,16," (%dh)",d/3600);else snprintf(td,16," (%dd)",d/86400);}
-        printf("  %d  %s       %-12s %.40s%s\n",i,J[j].act?"\xe2\x97\x8f":"\xe2\x97\x8b",J[j].r,J[j].n,td);}
-    puts("\nSelect:\n  a jobs 0\n  a jobs rm 0");return 0;
+        printf("  %d  %s       %-12s %.40s%s\n",i,J[j].act?"\xe2\x97\x8f":"\xe2\x97\x8b",J[j].r,J[j].n,td);
+        if(J[j].act&&J[j].ns){char o[B];tm_read(J[j].s[0],o,B);
+            char*p=o+strlen(o);while(p>o&&(p[-1]=='\n'||p[-1]==' '))p--;*p=0;
+            char*q=p;while(q>o&&q[-1]!='\n')q--;if(*q)printf("         \033[90m%.70s\033[0m\n",q);}}
+    puts("\nSelect:\n  a jobs 0\n  a jobs watch\n  a jobs rm 0");return 0;
 }
 
 /* ── cleanup ── */
