@@ -356,3 +356,43 @@ understanding of the existing problem to be useful however. So a faster path to 
 internet controllable labs are promising, and using them to refine simualtors is good.
 To make something good and useful therefore we need to get people to attempt a task, then try tiny self scale experiemtns, then
 make experiemtn on demand service, then simulator.
+
+## Projected path (2026-02-22)
+
+10 min:   Still in session. One more push or question to Gemini.
+1 hr:     Session ends. Adb, sandbox fix, agent-to-agent docs on main across
+          devices. Phone environments working for first time.
+1 day:    Hit new friction point, minimal fix, push. Pattern repeats. Maybe
+          start agui integration or something else screams louder.
+10 days:  5-15 friction fixes. Agent-to-agent used on real tasks, discover
+          what actually breaks. PhD semester in motion, aicombo may use
+          multi-device agent setup.
+100 days: ~June 2026. Either has users beyond developer or doesn't. If yes,
+          a install works for someone else in 5 minutes. If no, still 3-5x
+          force multiplier for PhD. Codebase shorter despite doing more.
+          agui validated or abandoned on actual anti-bot data.
+1 year:   Feb 2027. Agent landscape shifted. Models better, cheaper, free.
+          What matters: patterns (terminal as protocol, one-shot delegation,
+          human truth injection), not specific integrations. PhD underway
+          with aicombo results built on this infrastructure.
+10 years: Feb 2036. Code is gone. C/tmux/SSH not the stack. Ideas proved
+          right or wrong: terminal as universal interface, one-shot over
+          multi-turn, cooperative AI incentives. Developer is faculty,
+          industry research, or running something built on these ideas.
+100 years: Feb 2126. Whether ideas about sentient cooperation and mutual
+          incentives mattered. Stable equilibrium, singleton, or something
+          nobody predicted. Code was never the point — it was how thinking
+          happened fast enough to be relevant.
+
+Branch points:
+- Someone finds a useful → personal tool becomes real project
+- API pricing drops to zero → agui pointless, CLI sufficient
+- Major lab ships equivalent → validates or makes redundant
+- PhD advisor redirects → a becomes side project
+- Collaborator appears → no-users problem gone
+- Model reliability 99%+ → multi-turn viable, one-shot weakens
+- Burnout → shortening discipline exists partly to prevent this
+
+Most likely: a stays personal tool making developer unusually productive,
+ideas published through PhD, code rewritten 2-3 times as stack changes.
+Value was always in the thinking, not the implementation.
