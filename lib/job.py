@@ -7,7 +7,7 @@ Logs: two types — tmux visual capture (small, git-synced in adata/git/jobs/*.l
 import sys, os, subprocess as S, time
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
-from _common import init_db, load_cfg, load_sess, load_proj, db, DEVICE_ID, SCRIPT_DIR, ADATA_ROOT, DATA_DIR
+from _common import init_db, load_cfg, load_sess, load_proj, db, DEVICE_ID, SCRIPT_DIR, ADATA_ROOT, DATA_DIR, RCLONE_BACKUP_PATH, _configured_remotes
 
 _A = os.path.join(SCRIPT_DIR, 'a')
 
@@ -23,10 +23,29 @@ def _save_logs(jn, log, wp='', dev=''):
     gdir=str(ADATA_ROOT/'git'/'jobs');os.makedirs(gdir,exist_ok=True)
     if log: open(os.path.join(gdir,jn+'.log'),'w').write(log)
     bdir=os.path.join(str(ADATA_ROOT),'backup',dev or DEVICE_ID);os.makedirs(bdir,exist_ok=True)
-    if dev: _ssh(dev,f"mkdir -p ~/projects/a/adata/backup/{dev} && cp ~/.claude/projects/*{jn}*/*.jsonl ~/projects/a/adata/backup/{dev}/ 2>/dev/null",15)
+    import shutil, glob as G
+    if dev:
+        # copy JSONL on remote, then scp back to local
+        _ssh(dev,f"mkdir -p ~/projects/a/adata/backup/{dev} && cp ~/.claude/projects/*{jn}*/*.jsonl ~/projects/a/adata/backup/{dev}/ 2>/dev/null",15)
+        S.run(f"scp -q {dev}:'~/projects/a/adata/backup/{dev}/*{jn}*.jsonl' '{bdir}/' 2>/dev/null",shell=True,timeout=60)
     else:
-        import shutil,glob as G
         for f in G.glob(os.path.expanduser(f'~/.claude/projects/*{jn}*/*.jsonl')): shutil.copy2(f,bdir)
+    # push to gdrive
+    local_jsonl=G.glob(os.path.join(bdir,f'*{jn}*.jsonl'))
+    remotes=_configured_remotes(); rc=shutil.which('rclone')
+    if remotes and rc and local_jsonl:
+        for f in local_jsonl:
+            bn=os.path.basename(f)
+            for r in remotes: S.Popen([rc,'copyto',f,f'{r}:{RCLONE_BACKUP_PATH}/backup/{DEVICE_ID}/{bn}','-q'],stdout=S.DEVNULL,stderr=S.DEVNULL)
+        # cache gdrive folder ID for 'a log' display
+        idf=os.path.join(bdir,'.gdrive_id')
+        if not os.path.exists(idf) or (time.time()-os.path.getmtime(idf))>86400:
+            try:
+                import json as J
+                r=S.run([rc,'lsjson',f'{remotes[0]}:{RCLONE_BACKUP_PATH}/backup/','-d','--dirs-only'],capture_output=True,text=True,timeout=10)
+                    for d in J.loads(r.stdout or '[]'):
+                        if d['Name']==DEVICE_ID and d.get('ID'): open(idf,'w').write(d['ID']); break
+                except: pass
 
 def _ssh_wait_ready(dev, sn, timeout=60):
     """Poll remote tmux pane until claude is ready to accept input"""

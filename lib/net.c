@@ -92,31 +92,35 @@ static int cmd_log(int argc, char **argv) {
     snprintf(c, B, "ls -d '%s/backup'/*/ 2>/dev/null | wc -l", AROOT);
     pcmd(c, nout, 64); int nbak = atoi(nout);
     time_t now = time(NULL); char ago[32]; struct stat fst;
-    /* gdrive remote name */
-    pcmd("rclone listremotes 2>/dev/null | head -1", nout, 64); nout[strcspn(nout,"\n:")]=0;
-    /* github user from git url */
-    char ghu[64]=""; { char *s=strstr(gurl,"github.com/"); if(s){s+=11;char*e=strchr(s,'/');if(e){int l=(int)(e-s);if(l<63){memcpy(ghu,s,(size_t)l);ghu[l]=0;}}} }
+    /* gdrive folder ID from cache */
+    char gdid[64]=""; { char gp[P]; snprintf(gp,P,"%s/backup/%s/.gdrive_id",AROOT,DEV);
+        FILE *gf=fopen(gp,"r"); if(gf){if(fgets(gdid,64,gf))gdid[strcspn(gdid,"\n")]=0; fclose(gf);} }
     /* LLM transcripts: newest .log in LOGDIR */
     snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", LOGDIR);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int llm_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (llm_age >= 0) AGO(ago, 32, llm_age); else snprintf(ago, 32, "never");
-    printf("\n%s LLM transcripts  %3d  %s:adata/backup/%s/  last: %s\n",
-        nlogs ? "\xe2\x9c\x93" : "x", nlogs, nout[0]?nout:"gdrive", DEV, ago);
+    printf("\n%s LLM transcripts  %3d  adata/backup/%s/  last: %s\n",
+        nlogs ? "\xe2\x9c\x93" : "x", nlogs, DEV, ago);
+    if (gdid[0]) printf("  %s https://drive.google.com/drive/folders/%s\n", "\xe2\x86\x92", gdid);
     /* Job tmux logs: newest .log in git/jobs */
     snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", jdir);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int job_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (job_age >= 0) AGO(ago, 32, job_age); else snprintf(ago, 32, "never");
-    printf("%s Job tmux logs    %3d  %s  last: %s\n",
-        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, git_ok ? gurl : "git (no remote)", ago);
-    /* JSONL backup: newest file in backup dirs */
-    snprintf(c, B, "ls -t '%s/backup'/*/*.jsonl '%s/backup'/*/*.log 2>/dev/null | head -1", AROOT, AROOT);
+    printf("%s Job tmux logs    %3d  adata/git/jobs/  last: %s\n",
+        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, ago);
+    if (git_ok) printf("  %s %s\n", "\xe2\x86\x92", gurl);
+    /* JSONL backup: newest .jsonl in backup dirs (not .log — those are old session logs) */
+    snprintf(c, B, "find '%s/backup' -name '*.jsonl' -maxdepth 3 -printf '%%T@ %%p\\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-", AROOT);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int bak_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (bak_age >= 0) AGO(ago, 32, bak_age); else snprintf(ago, 32, "never");
-    printf("%s JSONL backup          adata/backup/ (a log backup)  last: %s\n",
-        nbak ? "\xe2\x9c\x93" : "x", ago);
+    snprintf(c, B, "pgrep -x rclone >/dev/null 2>&1");
+    int syncing = system(c) == 0;
+    printf("%s JSONL backup          adata/backup/%s/  last: %s%s\n",
+        nbak ? "\xe2\x9c\x93" : "x", DEV, ago, syncing ? "  (syncing)" : "");
+    if (gdid[0]) printf("  %s https://drive.google.com/drive/folders/%s\n", "\xe2\x86\x92", gdid);
     #undef AGO
     return 0;
 }
@@ -148,6 +152,11 @@ static int cmd_sync(int argc, char **argv) {
         char cnt[16]; pcmd(cnt_cmd, cnt, 16); cnt[strcspn(cnt,"\n")] = 0;
         printf("  %s: %s files\n", folders[i], cnt);
     }
+    /* background rclone push of JSONL backups to gdrive */
+    snprintf(c, B, "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
+        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q &",
+        AROOT, DEV, DEV);
+    (void)!system(c);
     if (argc > 2 && !strcmp(argv[2], "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
         char bc[B]; snprintf(bc, B, "%s/lib/a.py", SDIR);
@@ -205,6 +214,11 @@ static int cmd_update(int argc, char **argv) {
     snprintf(c, B, "'%s/a' update cache", SDIR); (void)!system(c);
     ensure_adata();
     sync_repo();
+    /* background rclone push of JSONL backups to gdrive */
+    snprintf(c, B, "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
+        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q &",
+        AROOT, DEV, DEV);
+    (void)!system(c);
     if (sub && !strcmp(sub, "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
         snprintf(c, B, "python3 '%s/lib/ssh.py' ssh all 'a update'", SDIR); (void)!system(c);
