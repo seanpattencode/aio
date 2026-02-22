@@ -13,6 +13,31 @@ static int cmd_log(int argc, char **argv) {
     const char *sub = argc > 2 ? argv[2] : NULL;
     if (sub && !strcmp(sub, "sync")) { fallback_py("log", argc, argv); }
     if (sub && !strcmp(sub, "grab")) { fallback_py("log", argc, argv); }
+    if (sub && !strcmp(sub, "backup")) { perf_disarm();
+        char c[B], cnt[64], bdir[P]; snprintf(bdir, P, "%s/backup", AROOT);
+        char jdir[P]; snprintf(jdir, P, "%s/git/jobs", AROOT);
+        snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", jdir);
+        pcmd(c, cnt, 64); printf("Tmux logs: %d (git-synced in adata/git/jobs/)\n\n", atoi(cnt));
+        snprintf(c, B, "ls -d '%s'/*/ 2>/dev/null", bdir);
+        char dirs[B]; pcmd(c, dirs, B); char *dp = dirs;
+        printf("%-16s %6s %6s  %s\n", "DEVICE", "LOCAL", "JSONL", "STATUS");
+        while (*dp) {
+            char *nl = strchr(dp, '\n'); if (nl) *nl = 0;
+            char dp2[P]; snprintf(dp2, P, "%s", dp); { int l=(int)strlen(dp2); if(l>1&&dp2[l-1]=='/')dp2[l-1]=0; }
+            char dn[128]; snprintf(dn, 128, "%s", bname(dp2));
+            if (!dn[0]||!strcmp(dn,".")||!strcmp(dn,"..")) { if(nl)dp=nl+1;else break;continue; }
+            snprintf(c, B, "ls '%s/%s' 2>/dev/null | wc -l", bdir, dn);
+            pcmd(c, cnt, 64); int loc = atoi(cnt);
+            if (!strcmp(dn, DEV)) { printf("%-16s %6d %6s  local (this device)\n", dn, loc, "-"); }
+            else {
+                snprintf(c, B, "'%s/a' ssh '%s' 'ls ~/projects/a/adata/backup/%s/*.jsonl 2>/dev/null | wc -l' 2>/dev/null", SDIR, dn, dn);
+                pcmd(c, cnt, 64); int rn = atoi(cnt);
+                printf("%-16s %6d %6d  %s\n", dn, loc, rn, rn ? "remote \xe2\x9c\x93" : "remote (no JSONL)");
+            }
+            if (nl) dp = nl + 1; else break;
+        }
+        return 0;
+    }
 
     char adir[P]; snprintf(adir, P, "%s/git/activity", AROOT);
 
@@ -63,6 +88,23 @@ static int cmd_log(int argc, char **argv) {
     pcmd(c, out, 256); int nlogs = atoi(out);
     if (nlogs) printf("LLM transcripts: %s/ (%d files)\n  gdrive: adata/backup/%s/\n  view: a log <#> | sync: a log sync\n", LOGDIR, nlogs, DEV);
 
+    /* Job log + backup status */
+    char jdir[P]; snprintf(jdir, P, "%s/git/jobs", AROOT);
+    snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", jdir);
+    pcmd(c, out, 256); int jlogs = atoi(out);
+    char bdir[P]; snprintf(bdir, P, "%s/backup", AROOT);
+    snprintf(c, B, "ls -d '%s'/*/ 2>/dev/null", bdir);
+    char dirs[B]; pcmd(c, dirs, B);
+    printf("Job logs: %d tmux (git-synced) | Backup:", jlogs);
+    char *dp = dirs;
+    while (*dp) {
+        char *nl = strchr(dp, '\n'); if (nl) *nl = 0;
+        char dp2[P]; snprintf(dp2, P, "%s", dp); { int l=(int)strlen(dp2); if(l>1&&dp2[l-1]=='/')dp2[l-1]=0; }
+        char dn[128]; snprintf(dn, 128, "%s", bname(dp2));
+        if (dn[0] && strcmp(dn,".") && strcmp(dn,"..")) printf(" %s", dn);
+        if (nl) dp = nl + 1; else break;
+    }
+    printf("\n  live check: a log backup\n");
     return 0;
 }
 
