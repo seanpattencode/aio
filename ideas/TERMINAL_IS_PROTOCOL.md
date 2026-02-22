@@ -52,6 +52,29 @@ behind short unix commands (ls, cd, cp) — brevity compounds across thousands o
 invocations. Raw tmux is the escape hatch for edge cases (sending Escape, C-c,
 navigating menus) but should not be the default path.
 
+Why one-shot delegation, not multi-turn agent-agent conversation:
+
+Error compounding. Each exchange has a nonzero error rate. At 90% per turn, a
+5-turn conversation drops to ~59%. Two LLMs talking to each other is two
+unreliable systems validating each other's outputs — the contamination problem.
+Neither has ground truth to correct against.
+
+Sycophancy feedback loops. LLMs are trained to please the user ("user is right"
+is baked into RLHF). When two LLMs converse, each treats the other as the user.
+They suck up to each other, reinforce each other's errors, and spiral out of
+control. The sycophancy that's mildly annoying with a human becomes structurally
+dangerous when both sides have it. No one pushes back.
+
+One-shot delegation avoids both: Agent A sends a complete task. Agent B executes
+against reality (filesystem, compiler, tests) and produces an artifact. One round
+trip. Ground truth injection happens at the execution boundary, not through
+conversation. The human reviews artifacts, not transcripts of agents agreeing
+with each other.
+
+Revisit when: single-shot delegation measurably fails on real tasks. Not
+hypothetically — when a task genuinely requires back-and-forth. That hasn't
+happened yet.
+
 Implementation (already in a.c):
   a send <session> <prompt> --wait       local agent-to-agent
   a ssh <host> a send <session> <prompt>  cross-device agent-to-agent
