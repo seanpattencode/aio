@@ -284,11 +284,11 @@ exit 0
  *   Remote:  a ssh <host> a send <session> <prompt> --wait
  *            a ssh <host> a watch <session>
  *   ADB:     a adb ssh                           start sshd on USB Termux devices
- *   Tmux:    tmux send-keys -t <s> -l "text"     type into any pane
- *            tmux send-keys -t <s> Enter          submit
- *            tmux capture-pane -t <s> -p -S -N    read last N lines
- *   These compose: an agent on any device can send prompts to, read output
- *   from, and wait on any other agent session across all devices via SSH+tmux.
+ *   Tmux:    tmux send-keys / capture-pane         raw escape hatch for fine control
+ *   Prefer a commands over raw tmux: shorter (~10 vs ~30 tokens), handles
+ *   timing/idle detection atomically, fewer errors over many invocations.
+ *   Same principle as short unix commands — brevity compounds at scale.
+ *   These compose: any agent on any device can control any other via SSH+tmux.
  *
  * References:
  *   Dispatch — sorted table + bsearch, inspired by Linux syscall_64.c
