@@ -88,6 +88,12 @@ aio() { a "$@"; }
 ai() { a "$@"; }
 AFUNC
     done
+    # Termux: /tmp owned by shell:shell (0771), Claude Code mkdir /tmp/claude-* fails EACCES
+    if [[ -d /data/data/com.termux ]]; then
+        mkdir -p "$HOME/.tmp"
+        grep -q CLAUDE_CODE_TMPDIR "$HOME/.bashrc" 2>/dev/null || echo 'export CLAUDE_CODE_TMPDIR="$HOME/.tmp"' >> "$HOME/.bashrc"
+        tmux set-environment -g CLAUDE_CODE_TMPDIR "$HOME/.tmp" 2>/dev/null || :
+    fi
     ok "shell functions (bash + zsh)"
 }
 
@@ -166,9 +172,7 @@ install)
         fedora)
             if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi ;;
-        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone termux-services && ok "pkgs"
-            # /tmp owned by shell:shell (0771) — Claude Code mkdir /tmp/claude-* fails EACCES
-            mkdir -p "$HOME/.tmp"; grep -q CLAUDE_CODE_TMPDIR "$HOME/.bashrc" 2>/dev/null || echo "export CLAUDE_CODE_TMPDIR=\"\$HOME/.tmp\"" >> "$HOME/.bashrc" ;;
+        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone termux-services && ok "pkgs" ;;
         *) install_node; warn "Unknown OS - install tmux manually" ;;
     esac
     _ensure_cc
