@@ -75,16 +75,24 @@ static int cmd_log(int argc, char **argv) {
         "printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'", adir);
     (void)!system(c);
 
-    /* Status footer */
+    /* Status footer: ✓ active, x not configured */
     mkdirp(LOGDIR);
     snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", LOGDIR);
     pcmd(c, out, 256); int nlogs = atoi(out);
     char jdir[P]; snprintf(jdir, P, "%s/git/jobs", AROOT);
     snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", jdir);
     char nout[64]; pcmd(c, nout, 64); int jlogs = atoi(nout);
-    printf("\nLLM transcripts  %d  sync: a log sync  view: a log <#>\n", nlogs);
-    printf("Job tmux logs    %d  git-synced (adata/git/jobs/)\n", jlogs);
-    printf("JSONL backup          a log backup (live SSH check)\n");
+    snprintf(c, B, "git -C '%s/git' remote get-url origin 2>/dev/null", AROOT);
+    char gurl[256]; pcmd(c, gurl, 256); gurl[strcspn(gurl,"\n")] = 0;
+    int git_ok = gurl[0] != 0;
+    snprintf(c, B, "ls -d '%s/backup'/*/ 2>/dev/null | wc -l", AROOT);
+    pcmd(c, nout, 64); int nbak = atoi(nout);
+    printf("\n%s LLM transcripts  %3d  gdrive (a log sync) | view: a log <#>\n",
+        nlogs ? "\xe2\x9c\x93" : "x", nlogs);
+    printf("%s Job tmux logs    %3d  git%s\n",
+        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, git_ok ? " (auto-synced)" : " (no remote)");
+    printf("%s JSONL backup          %s\n",
+        nbak ? "\xe2\x9c\x93" : "x", nbak ? "active (a log backup for details)" : "not configured");
     return 0;
 }
 
