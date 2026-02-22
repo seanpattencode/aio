@@ -189,7 +189,8 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     pr = _make_pr(wp, br, rn, prompt)
     if pr:
         _db_job(jn, 'email', 'running', wp, sn)
-        _email(jn, rn, prompt, pr, wp, resume, summary, log)
+        adiff=S.run([_A,'diff'],capture_output=True,text=True,cwd=wp).stdout
+        _email(jn, rn, prompt, pr, wp, resume, summary, log, adiff)
         _db_job(jn, 'done', 'done', wp, sn)
     else:
         _db_job(jn, 'no-changes', 'done', wp, sn)
@@ -262,7 +263,8 @@ gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "
     if pr:
         print(f"+ PR: {pr}")
         _db_job(jn, 'email', 'running', dev, sn)
-        _email(jn, rn, prompt, pr, '', f'a ssh {dev} "cd {wt} && claude --continue"', summary, lg)
+        _,adiff,_=_ssh(dev,f"cd {wt} && a diff",15)
+        _email(jn, rn, prompt, pr, '', f'a ssh {dev} "cd {wt} && claude --continue"', summary, lg, adiff)
         _db_job(jn, 'done', 'done', dev, sn)
         print(f"+ Done: {pr}")
     else:
@@ -279,16 +281,17 @@ def _make_pr(wp, br, rn, prompt):
     else: print(f"x PR: {r.stdout} {r.stderr}")
     return url or None
 
-def _email(jn, rn, prompt, pr_url, wp, resume='', summary='', log=''):
+def _email(jn, rn, prompt, pr_url, wp, resume='', summary='', log='', adiff=''):
     sep='='*60+'\n'
     subj=f'[a job] {rn}: {summary[:60] if summary else prompt[:40]}'
     body=f'{sep}JOB: {jn} | REPO: {rn} | DEVICE: {DEVICE_ID}\n{sep}\n'
+    dl=[l for l in adiff.strip().split('\n') if l.strip()] if adiff else []
+    ds=dl[-1] if dl else ''
+    if ds: body+=f'>>> DIFF: {ds}\n\n'
     if summary: body+=f'>>> SUMMARY\n{summary}\n\n'
     body+=f'>>> PR\n{pr_url}\n\n>>> PROMPT\n{prompt}\n\n'
     if resume: body+=f'>>> RESUME\n{resume}\n\n'
-    if wp:
-        r=S.run(['git','-C',wp,'diff','HEAD~1','--stat'],capture_output=True,text=True)
-        if r.stdout.strip(): body+=f'>>> DIFF\n{r.stdout.strip()}\n\n'
+    if adiff: body+=f'>>> FULL DIFF\n{adiff}\n\n'
     if log: body+=f'{sep}FULL LOG\n{sep}{log}\n'
     r=S.run([_A,'email',subj,body],capture_output=True,text=True,timeout=30)
     if r.returncode==0: print(f"+ Emailed")
