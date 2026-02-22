@@ -22,6 +22,25 @@ solved that.
 Less elegant than formal agent protocols but zero additional code — tmux and SSH
 existed before any of this. The terminal is the protocol.
 
+The entire agent-to-agent layer is ~10 lines of C:
+  tm_send — 4 lines (fork, execlp send-keys -l, wait)
+  tm_read — 2 lines (popen capture-pane)
+  tm_key  — 4 lines (fork, execlp send-keys, wait)
+
+Works with Claude, Gemini, Codex — any CLI agent that takes text in and puts
+text out. Tested: Claude on desktop controlling Gemini on desktop, Claude on
+desktop controlling Claude on Pixel 7 Pro over SSH. Same a send command, no
+code change between agents or devices.
+
+Most agent frameworks ship thousands of lines to do what tmux already does. They
+build serialization, routing, discovery, capability negotiation — then the agents
+still just talk in natural language underneath all of it. The abstraction adds
+complexity without adding capability.
+
+The bet: the terminal is already the universal agent interface. Every agent
+already speaks it. The manager's job is just connecting terminals together, which
+is what tmux and SSH were built for decades ago.
+
 Implementation (already in a.c):
   a send <session> <prompt> --wait       local agent-to-agent
   a ssh <host> a send <session> <prompt>  cross-device agent-to-agent
