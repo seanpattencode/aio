@@ -75,7 +75,11 @@ static int cmd_log(int argc, char **argv) {
         "printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'", adir);
     (void)!system(c);
 
-    /* Status footer: ✓ active, x not configured */
+    /* Status footer: ✓ active, x not configured, last sync time */
+    #define AGO(buf,sz,sec) do { int _s=(int)(sec); if(_s<60)snprintf(buf,sz,"%ds ago",_s); \
+        else if(_s<3600)snprintf(buf,sz,"%dm ago",_s/60); \
+        else if(_s<86400)snprintf(buf,sz,"%dh ago",_s/3600); \
+        else snprintf(buf,sz,"%dd ago",_s/86400); } while(0)
     mkdirp(LOGDIR);
     snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", LOGDIR);
     pcmd(c, out, 256); int nlogs = atoi(out);
@@ -87,12 +91,29 @@ static int cmd_log(int argc, char **argv) {
     int git_ok = gurl[0] != 0;
     snprintf(c, B, "ls -d '%s/backup'/*/ 2>/dev/null | wc -l", AROOT);
     pcmd(c, nout, 64); int nbak = atoi(nout);
-    printf("\n%s LLM transcripts  %3d  gdrive (a log sync) | view: a log <#>\n",
-        nlogs ? "\xe2\x9c\x93" : "x", nlogs);
-    printf("%s Job tmux logs    %3d  git%s\n",
-        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, git_ok ? " (auto-synced)" : " (no remote)");
-    printf("%s JSONL backup          %s\n",
-        nbak ? "\xe2\x9c\x93" : "x", nbak ? "active (a log backup for details)" : "not configured");
+    time_t now = time(NULL); char ago[32]; struct stat fst;
+    /* LLM transcripts: newest .log in LOGDIR */
+    snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", LOGDIR);
+    pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
+    int llm_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
+    if (llm_age >= 0) AGO(ago, 32, llm_age); else snprintf(ago, 32, "never");
+    printf("\n%s LLM transcripts  %3d  gdrive (a log sync)  last: %s\n",
+        nlogs ? "\xe2\x9c\x93" : "x", nlogs, ago);
+    /* Job tmux logs: newest .log in git/jobs */
+    snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", jdir);
+    pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
+    int job_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
+    if (job_age >= 0) AGO(ago, 32, job_age); else snprintf(ago, 32, "never");
+    printf("%s Job tmux logs    %3d  git%s  last: %s\n",
+        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, git_ok ? " (auto-synced)" : " (no remote)", ago);
+    /* JSONL backup: newest file in backup dirs */
+    snprintf(c, B, "ls -t '%s/backup'/*/*.jsonl '%s/backup'/*/*.log 2>/dev/null | head -1", AROOT, AROOT);
+    pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
+    int bak_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
+    if (bak_age >= 0) AGO(ago, 32, bak_age); else snprintf(ago, 32, "never");
+    printf("%s JSONL backup          %s  last: %s\n",
+        nbak ? "\xe2\x9c\x93" : "x", nbak ? "active" : "not configured", ago);
+    #undef AGO
     return 0;
 }
 
