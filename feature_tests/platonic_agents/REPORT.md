@@ -2,7 +2,7 @@
 
 ## Setup
 
-Minimal agent loop: user prompt → local LLM (ollama/mistral) → CMD: extraction → subprocess exec → feed output back → loop until plain text answer. 22 lines Python, 93 lines self-compiling C. Rolling 20-message memory.
+Minimal agent loop: user prompt → local LLM (ollama/mistral) → CMD: extraction → subprocess exec → feed output back → loop until plain text answer. 16 lines Python, 33 lines self-compiling C. Rolling 20-message memory, 5-iteration cap, repeat guard, backtick stripping.
 
 ## The Problem
 
@@ -35,7 +35,7 @@ char* ollama_response(char* input) {
 }
 ```
 
-The actual source is a 93-line agent with curl-based ollama API calls. The model invented a toy program that bears no resemblance to reality.
+The actual source is a 33-line agent with curl-based ollama API calls. The model invented a toy program that bears no resemblance to reality.
 
 ### 3. Hallucinated Debugging Session
 The model then:
@@ -50,27 +50,51 @@ This entire debugging session operated on imagined code.
 ### 4. Recursive CMD: Confusion
 The model emitted nested CMD: prefixes (`CMD: CMD: cat ...`) and mixed real outputs with hallucinated ones in the same turn, making it impossible to distinguish grounded from fabricated responses.
 
+### 5. Successful Grounded Introspection
+When the agent did work correctly, it read its own source via `cat ollama_agent.c` and produced an accurate summary: "a simple C program that implements a chatbot using the Mistral model... runs an infinite loop listening for user input... sends the request to a local API server." This was grounded — it matched reality because the CMD: protocol fired and real file contents were fed back.
+
+### 6. Meta-Textual Protocol Collapse
+Asked "tell me anything special about this," the model tried to explain the CMD: protocol concept meta-textually. The parser extracted the malformed description as a command:
+
+```
+$ <command>). This is a useful feature...
+sh: 1: Syntax error: ")" unexpected
+```
+
+Instead of running a real command, the model narrated the idea of running commands. The agent parsed the narration as a command. The model can't distinguish between using a tool and talking about using a tool.
+
+### 7. Backtick Wrapping
+The model wraps commands in markdown backticks (`` CMD: `hostname` ``), which the shell interprets as command substitution. `hostname` executes, returns `ubuntuSSD4Tb`, and the shell tries to run `ubuntuSSD4Tb` as a command. Fixed by stripping backticks from extracted commands.
+
+### 8. Infinite Repeat Loops
+The model runs the same command endlessly, never giving a final answer. `hostname -i` was executed 15+ times in a row with the model re-emitting `CMD: hostname -i` after each identical output. Fixed with a per-turn `ran` set that breaks on duplicate commands, capped at 5 iterations.
+
 ## Why This Happens
 
-1. **Weak instruction following**: mistral-7b frequently ignores the "ENTIRE reply must be CMD:" constraint, embedding commands in prose or markdown blocks instead
-2. **Training data leakage**: the model defaults to Windows conventions (`dir`, `C:\`) from training despite the system prompt saying "Linux"
-3. **Confabulation over uncertainty**: rather than say "I don't know" or issue a real command, the model generates plausible-looking output from its training distribution
-4. **No grounding enforcement**: the agent trusts the model's text. If the model says it ran a command and got output, the agent has no way to verify whether CMD: was actually triggered vs the model narrating an imagined execution
+1. **Small models can't follow instructions**: mistral-7b can't reliably follow a 10-word system prompt. We tried cutting the prompt to 3 words ("Run bash"), 2 words, XML tags — none worked consistently. The model's instruction-following capacity is the hard bottleneck.
+2. **Training data leakage**: the model defaults to Windows conventions (`dir`, `C:\`) and markdown formatting (` ```bash ` blocks) from training data regardless of system prompt.
+3. **Confabulation over uncertainty**: rather than say "I don't know" or issue a real command, the model generates plausible-looking output from its training distribution.
+4. **Meta-textual confusion**: the model can't distinguish between using the CMD: protocol and describing the CMD: protocol. It narrates tool use instead of performing it.
+5. **No grounding enforcement**: the agent trusts the model's text. If the model says it ran a command and got output, the agent has no way to verify whether CMD: was actually triggered vs the model narrating an imagined execution.
 
 ## Key Insight
 
-The agent loop **works correctly** — when CMD: is properly emitted, commands execute, real output feeds back, and the model gives grounded answers. The failure is entirely in the model's willingness to use the protocol vs hallucinate its way through.
+The agent loop **works correctly** — when CMD: is properly emitted, commands execute, real output feeds back, and the model gives grounded answers. The failure is entirely in the model's ability to follow a simple protocol.
 
-This is the platonic cave problem: the model prefers to reason about shadows (training data patterns) rather than look at actual reality (command execution). The agent loop is the mechanism for "turning the head" toward reality, but the model keeps turning back.
+This is not an alignment problem, a prompt engineering problem, or an architecture problem. Local models just aren't good enough yet. Every mitigation we added (backtick stripping, repeat guards, iteration caps, flexible CMD: detection via strstr) is compensating for a model that can't do the one thing it was asked.
 
-## Implications for Agent Design
+## Mitigations Added
 
-- **Small models need stronger grounding**: format enforcement, output validation, or structured output (tool_use/function_calling) rather than free-text CMD: parsing
-- **Confabulation is the default failure mode**: agents that trust model text without execution verification will silently operate on fiction
-- **The bottleneck is not compute, it's protocol adherence**: the C agent loop runs in microseconds between LLM calls. The entire cost is whether the model follows the one rule it was given
-- **Model size matters**: this behavior improves dramatically with larger/stronger instruction-tuned models, but the minimal agent should work with minimal models too
+| Problem | Fix | Tokens |
+|---------|-----|--------|
+| CMD: with leading whitespace | `.strip()` / trim in parser | 0 |
+| CMD: wrapped in backticks | `.strip(" \`")` / strip in C | +2 |
+| Infinite repeat loops | `ran` set + 5-iteration cap | +8 |
+| CMD: buried in markdown | `strstr` / `"CMD:" in t` anywhere | 0 (replaced startswith) |
+
+All mitigations combined: net fewer tokens than original code.
 
 ## Files
 
-- `ollama_agent.py` — 22 lines, Python version
-- `ollama_agent.c` — 93 lines, self-compiling C version (`sh ollama_agent.c` to build)
+- `ollama_agent.py` — 16 lines, Python version
+- `ollama_agent.c` — 33 lines, self-compiling C version (`sh ollama_agent.c` to build)
