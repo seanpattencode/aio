@@ -396,3 +396,7 @@ Branch points:
 Most likely: a stays personal tool making developer unusually productive,
 ideas published through PhD, code rewritten 2-3 times as stack changes.
 Value was always in the thinking, not the implementation.
+
+I reject this path and will move towards the maximum value for sentient life I
+can, and consider the above the plausible scenario I must avoid at all costs by
+doing things better.
