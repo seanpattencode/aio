@@ -38,10 +38,16 @@ static int cmd_log(int argc, char **argv) {
 
     /* Default: recent activity with AM/PM display + header */
     char c[B], out[256];
-    printf("%-5s %-7s %-16s %-20s %-30s %s\n", "DATE", "TIME", "DEVICE", "CMD", "CWD", "GIT");
+    printf("%-5s %-8s %-12s %-40s %s\n", "DATE", "TIME", "DEVICE", "CMD", "DIR");
     fflush(stdout);
     snprintf(c, B, "cat $(ls '%s'/*.txt 2>/dev/null | sort | tail -30) 2>/dev/null"
-        " | awk '{split($2,t,\":\"); h=int(t[1]); m=t[2]; ap=\"AM\"; if(h>=12){ap=\"PM\"; if(h>12)h-=12} if(h==0)h=12; $2=h\":\"m ap} 1'", adir);
+        " | awk '/^[0-9][0-9]\\/[0-9][0-9] /{"
+        "split($2,t,\":\");h=int(t[1]);m=t[2];ap=\"AM\";"
+        "if(h>=12){ap=\"PM\";if(h>12)h-=12}if(h==0)h=12;"
+        "c=\"\";for(i=4;i<NF;i++){if(i>4)c=c\" \";c=c$i}"
+        "if(length(c)>40)c=substr(c,1,18)\"...\"substr(c,length(c)-14);"
+        "n=split($NF,p,\"/\");d=p[n];"
+        "printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'", adir);
     (void)!system(c);
 
     /* Git remote for activity log */
