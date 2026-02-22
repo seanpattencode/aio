@@ -75,6 +75,29 @@ Revisit when: single-shot delegation measurably fails on real tasks. Not
 hypothetically — when a task genuinely requires back-and-forth. That hasn't
 happened yet.
 
+Tmux is the kernel, not the product.
+
+Tmux gives you pty management — create a pane, run a process, read its output.
+It does not give you agent management. The gap between "I can create a pane" and
+"I can reliably launch, monitor, send to, wait on, and recover agent sessions
+across devices" is the actual product. That gap took months to fill, not because
+any piece was hard but because the pieces aren't obvious until you hit each wall:
+  - Session naming that maps to projects and agent types
+  - Send + wait-for-idle (polling window_activity)
+  - SSH host registry for cross-device reach
+  - ADB bridge to wake Termux and start sshd
+  - Environment fixes (CLAUDE_CODE_TMPDIR for /tmp sandbox)
+  - Shell functions that make "a c" context-aware
+  - Perf timeouts, logging, config through one dispatch
+
+None of that is tmux. All of it is necessary. And none of it was designable in
+advance — each piece was discovered by using the system and finding what's
+missing. Infrastructure is discovered, not designed.
+
+Tmux itself scales fine (1000+ sessions, just raise fd ulimit, ~5MB RAM per
+pane). Multiple servers via tmux -L for isolation. No need to build a custom pty
+manager — tmux is a dependency you'll never outgrow for this use case.
+
 Implementation (already in a.c):
   a send <session> <prompt> --wait       local agent-to-agent
   a ssh <host> a send <session> <prompt>  cross-device agent-to-agent
