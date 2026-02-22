@@ -278,6 +278,18 @@ exit 0
  * Add a command:  write lib/foo.c, add #include + dispatch line here.
  * Remove:         delete the file, delete two lines.
  *
+ * Agent-to-agent control:
+ *   Local:   a send <session> <prompt> --wait    send + wait for idle
+ *            a watch <session> [duration]         read pane output
+ *   Remote:  a ssh <host> a send <session> <prompt> --wait
+ *            a ssh <host> a watch <session>
+ *   ADB:     a adb ssh                           start sshd on USB Termux devices
+ *   Tmux:    tmux send-keys -t <s> -l "text"     type into any pane
+ *            tmux send-keys -t <s> Enter          submit
+ *            tmux capture-pane -t <s> -p -S -N    read last N lines
+ *   These compose: an agent on any device can send prompts to, read output
+ *   from, and wait on any other agent session across all devices via SSH+tmux.
+ *
  * References:
  *   Dispatch — sorted table + bsearch, inspired by Linux syscall_64.c
  *     (integer→function via switch/jump table). Our analog: sorted string→
@@ -340,6 +352,7 @@ exit 0
  *     workspace/cmds/           custom commands (.txt per command)
  *     ssh/                      host registry (.txt per host)
  *     common/prompts/           shared prompt templates
+ *     jobs/                     saved prompts (.txt) + tmux visual logs (.log)
  *     context/                  agent context files (.txt, togglable)
  *     docs/                     user documents
  *   venv/                     Python venv — isolated deps (aiohttp, pexpect, etc)
@@ -351,6 +364,8 @@ exit 0
  *   vault/                    rclone copy on-demand, big devices, models
  *   backup/                   rclone move ->, all devices, logs+state
  *     {device}/               LOGDIR — session logs ({device}__{session}.log)
+ *                             + claude JSONL transcripts (full conversation, 1-13MB)
+ *                             (tmux visual logs are small → git/jobs/*.log instead)
  * ~/.local/bin/a              symlink to compiled binary
  */
 

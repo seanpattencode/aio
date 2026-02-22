@@ -1,7 +1,9 @@
 """a job — full lifecycle: worktree → agent → PR → email
 Usage: a job <project|path> <prompt> [--device DEV] [--agent c|g|l]
 Flow: create worktree branch, launch agent session with prompt, wait for completion,
-      git add+commit, gh pr create, email PR URL. Works locally or via SSH."""
+      git add+commit, gh pr create, email PR URL. Works locally or via SSH.
+Logs: two types — tmux visual capture (small, git-synced in adata/git/jobs/*.log)
+      and claude JSONL transcripts (large, backed up to adata/backup/{device}/ for rclone)."""
 import sys, os, subprocess as S, time
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
@@ -15,6 +17,16 @@ def _db_job(name, step, status, path='', session=''):
 def _ssh(dev, cmd, timeout=300):
     r = S.run([_A, 'ssh', dev, cmd], capture_output=True, text=True, timeout=timeout)
     return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+def _save_logs(jn, log, wp='', dev=''):
+    """Tmux visual log → git/jobs/ (synced). Claude JSONL → backup/{device}/ (rclone)."""
+    gdir=str(ADATA_ROOT/'git'/'jobs');os.makedirs(gdir,exist_ok=True)
+    if log: open(os.path.join(gdir,jn+'.log'),'w').write(log)
+    bdir=os.path.join(str(ADATA_ROOT),'backup',dev or DEVICE_ID);os.makedirs(bdir,exist_ok=True)
+    if dev: _ssh(dev,f"mkdir -p ~/projects/a/adata/backup/{dev} && cp ~/.claude/projects/*{jn}*/*.jsonl ~/projects/a/adata/backup/{dev}/ 2>/dev/null",15)
+    else:
+        import shutil,glob as G
+        for f in G.glob(os.path.expanduser(f'~/.claude/projects/*{jn}*/*.jsonl')): shutil.copy2(f,bdir)
 
 def _ssh_wait_ready(dev, sn, timeout=60):
     """Poll remote tmux pane until claude is ready to accept input"""
@@ -58,6 +70,12 @@ def run():
     init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
     args = sys.argv[2:]
     qdir=os.path.join(str(ADATA_ROOT/'git'/'jobs'),'queue');os.makedirs(qdir,exist_ok=True)
+    # migrate old local logs → git/jobs/ (one-time)
+    _lj=os.path.join(DATA_DIR,'job_logs');_gj=str(ADATA_ROOT/'git'/'jobs')
+    if os.path.isdir(_lj):
+        for f in os.listdir(_lj):
+            if f.endswith('.log') and not os.path.exists(os.path.join(_gj,f)):
+                import shutil;shutil.copy2(os.path.join(_lj,f),os.path.join(_gj,f))
     if not args or args[0]=='status':
         for n,step,st,p,sn,ts in db().execute("SELECT name,step,status,path,session,updated_at FROM jobs ORDER BY updated_at DESC LIMIT 10"):
             live=''
@@ -71,7 +89,7 @@ def run():
         print(f"\n  a job add <name>    stage a job\n  a job go <#>        launch\n  a job go all        launch all\n  e {qdir}/<name>.txt  edit")
         return
     if args[0]=='log':
-        ldir=os.path.join(DATA_DIR,'job_logs');print(open(os.path.join(ldir,args[1]+'.log')).read() if len(args)>1 and os.path.exists(os.path.join(ldir,args[1]+'.log')) else '\n'.join(sorted(os.listdir(ldir))[-10:]) if os.path.isdir(ldir) else 'No logs');return
+        ldir=str(ADATA_ROOT/'git'/'jobs');print(open(os.path.join(ldir,args[1]+'.log')).read() if len(args)>1 and os.path.exists(os.path.join(ldir,args[1]+'.log')) else '\n'.join(f for f in sorted(os.listdir(ldir))[-20:] if f.endswith('.log')) if os.path.isdir(ldir) else 'No logs');return
     if args[0] in ('-h', '--help', 'help'):
         print("a job <project> <prompt> [--device DEV] [--watch] [--timeout S]\n\n"
               "  a job add <name>                  stage job (opens editor)\n"
@@ -182,6 +200,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     summary = open(done_file).read().strip() if os.path.exists(done_file) else ''
     log = S.run(['tmux', 'capture-pane', '-t', sn, '-S', '-1000', '-p'], capture_output=True, text=True, env=env).stdout
     S.run(['tmux', 'kill-session', '-t', sn], capture_output=True, env=env)
+    _save_logs(jn, log, wp)
     resume = f"cd {wp} && claude --continue"
     print(("+ Done" if not timed_out else "x Timeout — killed") + f"\n  Resume: {resume}")
 
@@ -240,7 +259,8 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     print("Waiting for agent...")
     _ssh_wait_done(dev, sn, timeout=600)
     _,summary,_=_ssh(dev,"cat ~/projects/a/adata/local/.done 2>/dev/null",5)
-    os.makedirs(ld:=os.path.join(DATA_DIR,'job_logs'),exist_ok=True);_,lg,_=_ssh(dev,f"tmux capture-pane -t '{sn}' -S -1000 -p",10);lg and open(os.path.join(ld,jn+'.log'),'w').write(lg)
+    _,lg,_=_ssh(dev,f"tmux capture-pane -t '{sn}' -S -1000 -p",10)
+    _save_logs(jn, lg, f'~/projects/a/adata/worktrees/{jn}', dev)
     print("+ Agent finished")
 
     # PR on remote — write script to avoid shell quoting issues
