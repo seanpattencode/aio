@@ -1,35 +1,12 @@
 #!/usr/bin/env python3
-"""Meta agent: parallel LLM calls, fused response."""
-import subprocess as S,os,sys
-from concurrent.futures import ThreadPoolExecutor,as_completed
-
-E={k:v for k,v in os.environ.items()if k!="CLAUDECODE"}
-SYS="Linux CLI. ENTIRE reply: CMD: <cmd>. After output, plain text."
-m=[]
-
-def ask_claude(p):
-    r=S.run(["claude","-p"],input=p,capture_output=1,text=1,env=E)
-    return"claude",r.stdout.strip()
-
-def ask_gemini(p):
-    r=S.run(["gemini","-p",p],capture_output=1,text=1)
-    return"gemini",r.stdout.strip()
-
+import subprocess as S,os;from concurrent.futures import ThreadPoolExecutor,as_completed
+E={k:v for k,v in os.environ.items()if k!="CLAUDECODE"};m=[];P="Linux CLI. ENTIRE reply: CMD:<cmd>. After output, text.\n"
+def ask(n,a):return n,S.run(a[:2],input=a[2]if len(a)>2 else None,capture_output=1,text=1,env=E).stdout.strip()
 while u:=input("\n> ").strip():
-    m+=[f"User: {u}"];ran=set()
-    for _ in range(5):
-        p=SYS+"\n\n"+"\n".join(m[-20:])
-        with ThreadPoolExecutor(2)as ex:
-            results=dict(f.result()for f in as_completed([ex.submit(ask_claude,p),ex.submit(ask_gemini,p)]))
-        for name in("claude","gemini"):
-            print(f"[{name}] {results[name]}\n")
-        # use claude as primary for CMD, show both for comparison
-        t=results["claude"]
-        m+=[f"Assistant: {t}"]
-        if"CMD:"not in t:break
-        c=t[t.index("CMD:")+4:].split("\n")[0].strip(" `")
-        if c in ran:break
-        ran.add(c);print(f"$ {c}")
-        try:r=S.run(c,shell=1,capture_output=1,text=1,timeout=30);o=(r.stdout+r.stderr).strip()
-        except Exception as e:o=str(e)
-        print(o or"(no output)");m+=[f"User: `{c}`:\n{o or'(no output)'}"]
+    m+=[f"U:{u}"];p=P+"\n".join(m[-20:])
+    for _ in[0]*3:
+        with ThreadPoolExecutor(2)as ex:R=dict(f.result()for f in as_completed([ex.submit(ask,"claude",["claude","-p",p]),ex.submit(ask,"gemini",["gemini","-p",p])]))
+        for n in R:print(f"[{n}] {R[n]}\n")
+        t=R["claude"];m+=[f"A:{t}"];c=t[t.index("CMD:")+4:].split("\n")[0].strip(" `")if"CMD:"in t else""
+        if not c:break
+        o=S.run(c,shell=1,capture_output=1,text=1,timeout=30).stdout.strip();print(f"${c}\n{o}");m+=[f"U:{o}"]
