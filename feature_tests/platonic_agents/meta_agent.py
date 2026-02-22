@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-import subprocess as S,anthropic;from multiprocessing.pool import ThreadPool
-P=__import__('pathlib').Path;A=anthropic.Anthropic(api_key=next(l.split('=',1)[1].strip()for l in open(P(__file__).resolve().parents[2]/'adata'/'git'/'login'/'api_keys.env')if'ANTHROP'in l));Q="Linux CLI. Reply: CMD:<cmd> or text.";m=[]
-def ask(n,p):return n,S.run(["gemini","-p",Q+"\n"+p],capture_output=1,text=1).stdout.strip()if n>"d"else A.messages.create(model="claude-sonnet-4-6",max_tokens=1024,system=Q,messages=[{"role":"user","content":p}]).content[0].text.strip()
+import subprocess as S,json;from multiprocessing.pool import ThreadPool;from urllib.request import urlopen as U,Request as Rq
+P=__import__('pathlib').Path;K=next(l.split('=',1)[1].strip()for l in open(P(__file__).resolve().parents[2]/'adata'/'git'/'login'/'api_keys.env')if'ANTHROP'in l);Q="Linux CLI. Reply: CMD:<cmd> or text.";m=[]
+def ask(n,p):return n,S.run(["gemini","-p",Q+"\n"+p],capture_output=1,text=1).stdout.strip()if n>"d"else json.loads(U(Rq("https://api.anthropic.com/v1/messages",json.dumps({"model":"claude-sonnet-4-6","max_tokens":1024,"system":Q,"messages":[{"role":"user","content":p}]}).encode(),{"x-api-key":K,"anthropic-version":"2023-06-01","content-type":"application/json"})).read())["content"][0]["text"]
 while u:=input("\n> ").strip():
     m+=[f"U:{u}"];p="\n".join(m[-20:])
     for _ in[0]*3:
