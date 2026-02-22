@@ -210,10 +210,11 @@ static int cmd_tree(int argc, char **argv) {
     char ts[32]; strftime(ts, 32, "%b%d", t);
     for(char*p=ts;*p;p++) *p=(*p>='A'&&*p<='Z')?*p+32:*p;
     int h=t->tm_hour%12; if(!h)h=12;
-    char nm[64]; snprintf(nm,64,"%s-%s-%d%02d%s",bname(proj),ts,h,t->tm_min,t->tm_hour>=12?"pm":"am");
-    char wp[P]; snprintf(wp, P, "%s/%s", wt, nm);
-    char c[B]; snprintf(c, B, "mkdir -p '%s' && git -C '%s' worktree add -b 'wt-%s' '%s' HEAD", wt, proj, nm, wp);
-    if (system(c) != 0) { puts("x Failed"); return 1; }
+    char nm[64],wp[P],c[B];
+    snprintf(nm,64,"%s-%s-%d%02d%s",bname(proj),ts,h,t->tm_min,t->tm_hour>=12?"pm":"am");
+    for(int i=0;i<2;i++){if(i){size_t l=strlen(nm);char a[3]={nm[l-2],nm[l-1],0};sprintf(nm+l-2,"-%02d%s",t->tm_sec,a);}
+        snprintf(wp,P,"%s/%s",wt,nm);snprintf(c,B,"mkdir -p '%s' && git -C '%s' worktree add -b 'wt-%s' '%s' HEAD 2>/dev/null",wt,proj,nm,wp);
+        if(!system(c))break;if(i){puts("x Failed");return 1;}}
     printf("\xe2\x9c\x93 %s\n", wp);
     const char *sh = getenv("SHELL"); if (!sh) sh = "/bin/bash";
     if (chdir(wp) == 0) execlp(sh, sh, (char*)NULL);

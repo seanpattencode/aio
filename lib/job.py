@@ -286,11 +286,12 @@ def _email(jn, rn, prompt, pr_url, wp, resume='', summary='', log='', adiff=''):
     subj=f'[a job] {rn}: {summary[:60] if summary else prompt[:40]}'
     body=f'{sep}JOB: {jn} | REPO: {rn} | DEVICE: {DEVICE_ID}\n{sep}\n'
     dl=[l for l in adiff.strip().split('\n') if l.strip()] if adiff else []
-    ds=dl[-1] if dl else ''
+    ds=next((l for l in dl if 'Net:' in l),'')
     if ds: body+=f'>>> DIFF: {ds}\n\n'
     if summary: body+=f'>>> SUMMARY\n{summary}\n\n'
-    body+=f'>>> PR\n{pr_url}\n\n>>> PROMPT\n{prompt}\n\n'
+    body+=f'>>> PR\n{pr_url}\n\n'
     if resume: body+=f'>>> RESUME\n{resume}\n\n'
+    body+=f'>>> PROMPT\n{prompt}\n\n'
     if adiff: body+=f'>>> FULL DIFF\n{adiff}\n\n'
     if log: body+=f'{sep}FULL LOG\n{sep}{log}\n'
     r=S.run([_A,'email',subj,body],capture_output=True,text=True,timeout=30)

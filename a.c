@@ -387,6 +387,10 @@ static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, 
 static int cmd_job(int argc, char **argv)    { fallback_py("job", argc, argv); }
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
+static int cmd_adb(int c,char**v){
+    if(c>2&&!strcmp(v[2],"ssh"))return system("for s in $(adb devices|awk '/\\tdevice$/{print$1}');do printf '\\033[36m→ %s\\033[0m ' \"$s\";adb -s \"$s\" shell 'am broadcast -n com.termux/.app.TermuxOpenReceiver -a com.termux.RUN_COMMAND --es com.termux.RUN_COMMAND_PATH /data/data/com.termux/files/usr/bin/sshd --ez com.termux.RUN_COMMAND_BACKGROUND true' 2>&1|tail -1;done");
+    (void)c;(void)v;execlp("adb","adb","devices","-l",(char*)0);return 1;
+}
 
 /* ═══ DISPATCH TABLE — sorted for bsearch, every alias is one entry ═══ */
 typedef struct { const char *n; int (*fn)(int, char**); } cmd_t;
@@ -395,7 +399,7 @@ static int cmd_cmp(const void *a, const void *b) {
 }
 static const cmd_t CMDS[] = {
     {"--help",cmd_help_full},{"-h",cmd_help_full},
-    {"a",cmd_all},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
+    {"a",cmd_all},{"adb",cmd_adb},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
     {"all",cmd_all},{"ask",cmd_ask},{"attach",cmd_attach},
     {"backup",cmd_backup},{"cleanup",cmd_cleanup},{"config",cmd_config},
     {"copy",cmd_copy},{"dash",cmd_dash},{"deps",cmd_deps},
