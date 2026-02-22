@@ -157,7 +157,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
         time.sleep(1)
         r = S.run(['tmux', 'capture-pane', '-t', sn, '-p'], capture_output=True, text=True, env=env)
         if any(x in r.stdout.lower() for x in ['type your message', 'claude', 'context']): break
-    full = f"{prompt}\n\nWhen done, run: a done"
+    full = f"{prompt}\n\nWhen done, run: a done \"<summary of what you changed>\""
     S.run(['tmux', 'send-keys', '-t', sn, '-l', full], env=env)
     time.sleep(0.5)
     S.run(['tmux', 'send-keys', '-t', sn, 'Enter'], env=env)
@@ -179,6 +179,8 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
             if r.returncode != 0: break
             time.sleep(3)
         else: timed_out = True
+    summary = open(done_file).read().strip() if os.path.exists(done_file) else ''
+    log = S.run(['tmux', 'capture-pane', '-t', sn, '-S', '-1000', '-p'], capture_output=True, text=True, env=env).stdout
     S.run(['tmux', 'kill-session', '-t', sn], capture_output=True, env=env)
     resume = f"cd {wp} && claude --continue"
     print(("+ Done" if not timed_out else "x Timeout — killed") + f"\n  Resume: {resume}")
@@ -187,7 +189,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     pr = _make_pr(wp, br, rn, prompt)
     if pr:
         _db_job(jn, 'email', 'running', wp, sn)
-        _email(jn, rn, prompt, pr, wp, resume)
+        _email(jn, rn, prompt, pr, wp, resume, summary, log)
         _db_job(jn, 'done', 'done', wp, sn)
     else:
         _db_job(jn, 'no-changes', 'done', wp, sn)
@@ -224,7 +226,8 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
         print("x Claude didn't start"); return
     # Send prompt in chunks — SSH command buffer is 4K
     import base64 as b64
-    enc=b64.b64encode(prompt.encode()).decode();_ssh(dev,"rm -f /tmp/a_job_prompt.b64",5)
+    full=f"{prompt}\n\nWhen done, run: a done \"<summary of what you changed>\""
+    enc=b64.b64encode(full.encode()).decode();_ssh(dev,"rm -f /tmp/a_job_prompt.b64",5)
     for i in range(0,len(enc),3000): _ssh(dev,f"echo -n '{enc[i:i+3000]}' >> /tmp/a_job_prompt.b64",10)
     _ssh(dev,f"base64 -d /tmp/a_job_prompt.b64 > /tmp/a_job_prompt.txt && tmux load-buffer /tmp/a_job_prompt.txt && tmux paste-buffer -t '{sn}'",10)
     time.sleep(1)
@@ -235,6 +238,7 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     _db_job(jn, 'waiting', 'running', dev, sn)
     print("Waiting for agent...")
     _ssh_wait_done(dev, sn, timeout=600)
+    _,summary,_=_ssh(dev,"cat ~/projects/a/adata/local/.done 2>/dev/null",5)
     os.makedirs(ld:=os.path.join(DATA_DIR,'job_logs'),exist_ok=True);_,lg,_=_ssh(dev,f"tmux capture-pane -t '{sn}' -S -1000 -p",10);lg and open(os.path.join(ld,jn+'.log'),'w').write(lg)
     print("+ Agent finished")
 
@@ -258,7 +262,7 @@ gh pr create --title "job: {short}" --body "Prompt: {prompt[:200].replace('"', "
     if pr:
         print(f"+ PR: {pr}")
         _db_job(jn, 'email', 'running', dev, sn)
-        _email(jn, rn, prompt, pr, '')
+        _email(jn, rn, prompt, pr, '', '', summary, lg)
         _db_job(jn, 'done', 'done', dev, sn)
         print(f"+ Done: {pr}")
     else:
@@ -275,14 +279,15 @@ def _make_pr(wp, br, rn, prompt):
     else: print(f"x PR: {r.stdout} {r.stderr}")
     return url or None
 
-def _email(jn, rn, prompt, pr_url, wp, resume=''):
-    """Email via a email (avoids copy.py import collision)"""
+def _email(jn, rn, prompt, pr_url, wp, resume='', summary='', log=''):
     subj = f'[a job] {rn}: {prompt[:40]}'
     body = f'Job: {jn}\nRepo: {rn}\nPrompt: {prompt}\n\nPR: {pr_url}\nDevice: {DEVICE_ID}\n'
+    if summary: body += f'\nSummary:\n{summary}\n'
     if resume: body += f'\nResume: {resume}\n'
     if wp:
         r = S.run(['git', '-C', wp, 'diff', 'HEAD~1', '--stat'], capture_output=True, text=True)
         if r.stdout.strip(): body += f'\nDiff:\n{r.stdout.strip()}\n'
+    if log: body += f'\n{"="*60}\nFull Log:\n{"="*60}\n{log}\n'
     r = S.run([_A, 'email', subj, body], capture_output=True, text=True, timeout=30)
     if r.returncode == 0: print(f"+ Emailed")
     else: print(f"x Email: {r.stderr or r.stdout}")

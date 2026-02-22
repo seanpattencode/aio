@@ -128,9 +128,9 @@ static int cmd_help_full(int argc, char **argv) { (void)argc; (void)argv;
 
 static int cmd_hi(int argc, char **argv) { (void)argc;(void)argv; for (int i = 1; i <= 10; i++) printf("%d\n", i); puts("hi"); return 0; }
 
-static int cmd_done(int argc, char **argv) { (void)argc;(void)argv;
+static int cmd_done(int argc, char **argv) {
     char p[P]; snprintf(p, P, "%s/.done", DDIR);
-    int fd = open(p, O_WRONLY|O_CREAT|O_TRUNC, 0644); if (fd >= 0) close(fd);
+    FILE *f = fopen(p, "w"); if (f) { for (int i=2;i<argc;i++) fprintf(f,"%s%s",i>2?" ":"",argv[i]); fclose(f); }
     puts("\xe2\x9c\x93 done"); return 0;
 }
 
