@@ -56,6 +56,7 @@ HTML = '''<!doctype html>
   </form>
   <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px"></div>
 </div>
+<div id=v_dc style="position:fixed;inset:0;background:#000;color:red;text-align:center;padding-top:45vh">not connected</div>
 <script>
 var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
@@ -79,10 +80,9 @@ try{
   i.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();var v=i.value;i.value='';ws(v+'\\n');i.focus();}});
   function connect(){
     W=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-    W.onopen=function(){bar.style.borderTopColor='#4a4a6a';F.fit();ws(JSON.stringify({cols:T.cols,rows:T.rows}));};
+    W.onopen=function(){v_dc.style.display='none';F.fit();ws(JSON.stringify({cols:T.cols,rows:T.rows}));};
     W.onmessage=function(e){T.write(e.data);};
-    W.onerror=function(){bar.style.borderTopColor='#a00';};
-    W.onclose=function(){bar.style.borderTopColor='#a00';setTimeout(connect,1000);};
+    W.onerror=W.onclose=function(){v_dc.style.display='';setTimeout(connect,1000);};
   }
   connect();
   T.onData(function(d){ws(d);});
