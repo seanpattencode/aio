@@ -153,13 +153,13 @@ static int cmd_sync(int argc, char **argv) {
         printf("  %s: %s files\n", folders[i], cnt);
     }
     /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
-    snprintf(c, B, "("
-        "mkdir -p '%s/backup/%s' && "
-        "find ~/.claude/projects -name '*.jsonl' 2>/dev/null "
-        "| while read f; do cp -n \"$f\" '%s/backup/%s/' 2>/dev/null; done; "
-        "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
-        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q"
-        ") &",
+    snprintf(c, B, "nohup sh -c '"
+        "mkdir -p %s/backup/%s && "
+        "find ~/.claude/projects -name \"*.jsonl\" 2>/dev/null "
+        "| while read f; do cp -n \"$f\" %s/backup/%s/ 2>/dev/null; done; "
+        "r=$(rclone listremotes 2>/dev/null | grep \"^a-gdrive\" | head -1 | tr -d \":\"); "
+        "[ -n \"$r\" ] && rclone copy %s/backup/%s \"$r:adata/backup/%s/\" --include \"*.jsonl\" -q"
+        "' </dev/null >/dev/null 2>&1 &",
         AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
     (void)!system(c);
     if (argc > 2 && !strcmp(argv[2], "all")) {
@@ -220,13 +220,13 @@ static int cmd_update(int argc, char **argv) {
     ensure_adata();
     sync_repo();
     /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
-    snprintf(c, B, "("
-        "mkdir -p '%s/backup/%s' && "
-        "find ~/.claude/projects -name '*.jsonl' 2>/dev/null "
-        "| while read f; do cp -n \"$f\" '%s/backup/%s/' 2>/dev/null; done; "
-        "r=$(rclone listremotes 2>/dev/null | grep '^a-gdrive' | head -1 | tr -d ':'); "
-        "[ -n \"$r\" ] && rclone copy '%s/backup/%s' \"$r:adata/backup/%s/\" --include '*.jsonl' -q"
-        ") &",
+    snprintf(c, B, "nohup sh -c '"
+        "mkdir -p %s/backup/%s && "
+        "find ~/.claude/projects -name \"*.jsonl\" 2>/dev/null "
+        "| while read f; do cp -n \"$f\" %s/backup/%s/ 2>/dev/null; done; "
+        "r=$(rclone listremotes 2>/dev/null | grep \"^a-gdrive\" | head -1 | tr -d \":\"); "
+        "[ -n \"$r\" ] && rclone copy %s/backup/%s \"$r:adata/backup/%s/\" --include \"*.jsonl\" -q"
+        "' </dev/null >/dev/null 2>&1 &",
         AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
     (void)!system(c);
     if (sub && !strcmp(sub, "all")) {
