@@ -57,7 +57,7 @@ static void send_prefix_bg(const char *sn, const char *agent, const char *wd, co
             tm_read(sn, buf, B);
             char *lo = buf;
             for (char *p = lo; *p; p++) *p = (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p;
-            if (strstr(lo,"context") || strstr(lo,"claude") || strstr(lo,"opus") || strstr(lo,"gemini") || strstr(lo,"codex")) break;
+            if (strstr(lo,"context") || strstr(lo,"claude") || strstr(lo,"opus") || strstr(lo,"shortcut") || strstr(lo,"codex")) break;
         }
         tm_send(sn, pre);
         if (extra) { sleep(1); tm_key(sn, "Enter"); }
