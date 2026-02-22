@@ -74,8 +74,9 @@ int main(int argc, char **argv) {
             /* find CMD: anywhere (models sometimes add preamble) */
             char *cp = strstr(t, "CMD:");
             if (!cp) { puts(t); madd("assistant", t); free(t); break; }
-            char *cmd = cp + 4; while (*cmd == ' ') cmd++;
+            char *cmd = cp + 4; while (*cmd == ' ' || *cmd == '`') cmd++;
             char *nl = strchr(cmd, '\n'); if (nl) *nl = 0;
+            { char *e = cmd+strlen(cmd)-1; while (e>cmd && *e=='`') *e--=0; }
             printf("CMD: %s\n$ %s\n", cmd, cmd);
             madd("assistant", t);
             FILE *p = popen(cmd, "r");
