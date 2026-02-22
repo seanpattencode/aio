@@ -112,6 +112,10 @@ Everything else — CMD: detection, backtick stripping, newline termination, JSO
 
 The bottleneck ratio is roughly 1:1,000,000 — microseconds of agent logic per second of LLM inference. The agent loop is effectively free. A faster model or a model that follows instructions on the first try would make the agent feel instant.
 
+## Recursive Irony
+
+This report was written by Claude (opus) reading `a.c` and the agent source through tool calls, then reasoning about what the code does — the exact same mechanism the mistral agent uses. The architecture is identical: LLM reads its own source through a protocol, then reflects on it. Claude got the right answer. Mistral hallucinated a toy program. The agent architecture is the same at every scale. Model capability is what makes it work or not.
+
 ## Files
 
 - `ollama_agent.py` — 16 lines, Python version
