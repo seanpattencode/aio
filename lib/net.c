@@ -75,36 +75,16 @@ static int cmd_log(int argc, char **argv) {
         "printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'", adir);
     (void)!system(c);
 
-    /* Git remote for activity log */
-    snprintf(c, B, "git -C '%s/git' remote get-url origin 2>/dev/null", AROOT);
-    pcmd(c, out, 256); out[strcspn(out, "\n")] = 0;
-    snprintf(c, B, "ls '%s'/*.txt 2>/dev/null | wc -l", adir);
-    char nout[64]; pcmd(c, nout, 64);
-    printf("\nActivity: %s/ (%d files)\n  git: %s\n  gdrive: adata/backup/git.tar.zst (via a gdrive sync)\n", adir, atoi(nout), out[0] ? out : "(no remote)");
-
-    /* LLM transcript count + gdrive info */
+    /* Status footer */
     mkdirp(LOGDIR);
     snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", LOGDIR);
     pcmd(c, out, 256); int nlogs = atoi(out);
-    if (nlogs) printf("LLM transcripts: %s/ (%d files)\n  gdrive: adata/backup/%s/\n  view: a log <#> | sync: a log sync\n", LOGDIR, nlogs, DEV);
-
-    /* Job log + backup status */
     char jdir[P]; snprintf(jdir, P, "%s/git/jobs", AROOT);
     snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", jdir);
-    pcmd(c, out, 256); int jlogs = atoi(out);
-    char bdir[P]; snprintf(bdir, P, "%s/backup", AROOT);
-    snprintf(c, B, "ls -d '%s'/*/ 2>/dev/null", bdir);
-    char dirs[B]; pcmd(c, dirs, B);
-    printf("Job logs: %d tmux (git-synced) | Backup:", jlogs);
-    char *dp = dirs;
-    while (*dp) {
-        char *nl = strchr(dp, '\n'); if (nl) *nl = 0;
-        char dp2[P]; snprintf(dp2, P, "%s", dp); { int l=(int)strlen(dp2); if(l>1&&dp2[l-1]=='/')dp2[l-1]=0; }
-        char dn[128]; snprintf(dn, 128, "%s", bname(dp2));
-        if (dn[0] && strcmp(dn,".") && strcmp(dn,"..")) printf(" %s", dn);
-        if (nl) dp = nl + 1; else break;
-    }
-    printf("\n  live check: a log backup\n");
+    char nout[64]; pcmd(c, nout, 64); int jlogs = atoi(nout);
+    printf("\nLLM transcripts  %d  sync: a log sync  view: a log <#>\n", nlogs);
+    printf("Job tmux logs    %d  git-synced (adata/git/jobs/)\n", jlogs);
+    printf("JSONL backup          a log backup (live SSH check)\n");
     return 0;
 }
 
