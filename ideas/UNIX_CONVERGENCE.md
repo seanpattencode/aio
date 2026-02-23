@@ -483,3 +483,100 @@ The one-file convergence is especially strong for LLM agents:
 The platform that serves LLMs best is the one with the fewest files, each as self-contained as possible. Which is exactly what Unix was already incentivizing.
 
 **"Everything is a file" taken to its limit: everything is *one* file.**
+
+---
+
+## The Same Pattern on the Web: HTML as Hypertext, Not Application Platform
+
+### Transcript (verbatim)
+
+> my insinct for perf is to strip out js and images bc nrteork frtched arr speed prnslty in html. when wr loom ay prrvious its ovviojd ehy. axiom of html id judt a hypertrxt markdown doc. js imsged werr litrrslly bilted on so forr8gn aciom plstgorm fights.
+
+---
+
+### HTML's Actual Axiom
+
+HTML was created in 1991 by Tim Berners-Lee as a way to write **hypertext documents**. The axiom:
+
+> A web page is a text document with links to other text documents.
+
+That's it. The original HTML had:
+- Headings
+- Paragraphs
+- Lists
+- Links
+- Bold, italic
+
+No images. No JavaScript. No CSS. No forms. No video. No canvas. No WebGL. No WebAssembly. A web page was markdown with links.
+
+### What Got Bolted On
+
+| Year | Addition | Foreign to the axiom? |
+|------|----------|----------------------|
+| 1993 | `<img>` tag | Yes — binary blob in a text document |
+| 1995 | JavaScript | Yes — imperative code in a declarative document |
+| 1996 | CSS | Partial — styling is adjacent to text, but separate language |
+| 2004 | AJAX | Yes — async network calls from a document |
+| 2010 | Canvas, WebGL | Yes — pixel-level rendering in a text format |
+| 2014 | Web Components | Yes — component framework in a document |
+| 2017 | WebAssembly | Yes — compiled bytecode in a text document |
+
+Every addition after hypertext links is a foreign axiom grafted onto a text document platform. And every one carries a penalty:
+
+### The Penalty Structure
+
+| What you add | Penalty |
+|-------------|---------|
+| Images | Network fetch per image, layout reflow, bandwidth |
+| JavaScript | Parse time, execution time, blocks rendering, additional fetches |
+| CSS files | Network fetch, FOUC (flash of unstyled content), specificity wars |
+| Fonts | Network fetch, layout shift, FOIT (flash of invisible text) |
+| Frameworks (React, Vue) | 100KB+ JS before first meaningful paint |
+| Analytics/tracking | Network fetches to third parties, privacy cost |
+
+The platform punishes every departure from its axiom. A pure HTML document with no external resources:
+- Loads in one network round trip
+- Renders progressively as bytes arrive
+- Works offline once cached
+- Works with JavaScript disabled
+- Works on every browser ever made
+- Is searchable, indexable, accessible by default
+- Is readable by LLMs in a single fetch
+
+Add one `<script src="...">` and you've added: a DNS lookup, a TCP connection, a TLS handshake, an HTTP request, a parse, a compile, an execute — before your document can finish rendering. The platform is *punishing you* for violating the axiom.
+
+### The Instinct to Strip
+
+The instinct to strip JS and images from HTML is the same instinct that produced the amalgamated `a.c` and the git-based job coordination. It's not a performance trick. It's axiom compliance.
+
+| Platform | Axiom | What compliance looks like |
+|----------|-------|--------------------------|
+| Unix | Everything is a file | One-file amalgamation, filesystem as database |
+| HTML | Everything is hypertext | Pure HTML, no JS, no external fetches |
+| Git | Everything is append-only | Append-only sync, no force push, no rewrite |
+
+In each case, the "performance optimization" is actually just **stopping the fight against the platform**. The fast path was always the default path. The slow path is the one everyone built on top.
+
+### The Web's Kubernetes Moment
+
+The modern web stack is the web's Kubernetes:
+
+```
+HTML axiom (hypertext document)
+        ↓  bolted on
+JavaScript (imperative execution)
+        ↓  bolted on
+npm (package management for the imperative layer)
+        ↓  bolted on
+Webpack/Vite (bundling to undo the complexity of packages)
+        ↓  bolted on
+React/Vue (component model for the imperative layer)
+        ↓  bolted on
+SSR/SSG (rendering HTML on the server... to send HTML to the client)
+```
+
+The bottom of this stack is: send an HTML document. The top of this stack is: a build pipeline that produces an HTML document. The entire middle exists to fight the axiom and then undo the damage.
+
+Server-side rendering is the web industry discovering — after 15 years of client-side frameworks — that the original axiom was right. Send the document. The platform was already optimized for it.
+
+**Punishing complexity on the web converges on the same place as punishing complexity on Unix: the platform's original axiom. The performance instinct isn't about speed. It's about recognizing what the platform was already trying to do.**
