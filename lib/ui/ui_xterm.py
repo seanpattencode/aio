@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["aiohttp>=3.9"]
+# ///
 import sys,os,pty,subprocess,webbrowser,struct,fcntl,termios,json,asyncio;from aiohttp import web
 H='''<!doctype html><meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">
 <link rel=stylesheet href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
@@ -29,3 +33,4 @@ async def ws(r):
     return s
 app=web.Application();app.add_routes([web.get('/',lambda r:web.Response(text=H,content_type='text/html')),web.get('/ws',ws)])
 def run(port=1111):web.run_app(app,port=port,print=None)
+if __name__=='__main__':run(int(sys.argv[1])if len(sys.argv)>1 else 1111)

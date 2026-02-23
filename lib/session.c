@@ -4,12 +4,19 @@ static void fallback_py(const char *mod, int argc, char **argv) {
     if (getenv("A_BENCH")) _exit(0);
     perf_disarm(); /* python takes over — no timeout */
     char path[P]; snprintf(path, P, "%s/lib/%s.py", SDIR, mod);
+    /* try uv run --script (auto-installs deps from PEP 723 metadata) */
+    char uv[P]; snprintf(uv, P, "%s/.local/bin/uv", HOME);
+    char **ua = malloc(((unsigned)argc + 5) * sizeof(char *));
+    ua[0] = "uv"; ua[1] = "run"; ua[2] = "--script"; ua[3] = path;
+    for (int i = 1; i < argc; i++) ua[i + 3] = argv[i];
+    ua[argc + 3] = NULL;
+    if (access(uv, X_OK) == 0) { ua[0] = uv; execv(uv, ua); }
+    execvp("uv", ua);
+    /* fallback: venv python, then system python3 */
     char vpy[P]; snprintf(vpy, P, "%s/venv/bin/python", AROOT);
-    char **na = malloc(((unsigned)argc + 3) * sizeof(char *));
-    na[0] = "python"; na[1] = path;
+    char **na = ua; na[0] = "python"; na[1] = path;
     for (int i = 1; i < argc; i++) na[i + 1] = argv[i];
     na[argc + 1] = NULL;
-    /* prefer venv python, fall back to system */
     if (access(vpy, X_OK) == 0) execv(vpy, na);
     na[0] = "python3"; execvp("python3", na);
     perror("a: python3"); _exit(127);

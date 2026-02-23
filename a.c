@@ -201,23 +201,24 @@ install)
     else ok "claude (exists)"; fi
     install_cli "@openai/codex" "codex"
     install_cli "@google/gemini-cli" "gemini"
-    # Python venv — solves PEP 668 (externally-managed-environment).
-    # Modern distros (Ubuntu 23.04+, Homebrew, Fedora 38+) block global pip
-    # install. A venv in adata/ bypasses this cleanly: isolated, no sudo,
-    # survives Python upgrades. fallback_py() in session.c tries the venv
-    # python first, falls back to system python3 if missing.
-    # _best_py picks the newest stable python that has the venv module.
+    # uv — preferred python env. auto-installs deps from PEP 723 metadata.
+    # fallback_py() tries uv run --script first, then venv, then system python3.
+    if ! command -v uv &>/dev/null; then
+        info "Installing uv..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH="$HOME/.local/bin:$PATH" && ok "uv" || warn "uv install failed"
+    else ok "uv ($(uv --version))"; fi
+    # venv fallback — for systems where uv is unavailable
     _best_py() {
         for v in python3.14 python3.13 python3.12 python3.11 python3; do command -v $v &>/dev/null && { $v -c 'import venv' 2>/dev/null && echo $v && return; }; done
     }
     VENV="$D/adata/venv"; PY=$(_best_py)
-    if [[ -n "$PY" ]]; then
+    if ! command -v uv &>/dev/null && [[ -n "$PY" ]]; then
         if [[ ! -f "$VENV/bin/python" ]]; then
             info "Creating venv with $PY..."
             $PY -m venv "$VENV" && ok "venv ($($VENV/bin/python --version))" || warn "venv creation failed"
         else ok "venv (exists: $($VENV/bin/python --version))"; fi
         [[ -f "$VENV/bin/pip" ]] && $VENV/bin/pip install -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python deps" || warn "pip install failed"
-    else warn "python3 not found"; fi
+    fi
     if ! command -v ollama &>/dev/null; then
         if [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then
             info "Installing ollama..."
@@ -360,11 +361,10 @@ exit 0
  *     jobs/                     saved prompts (.txt) + tmux visual logs (.log)
  *     context/                  agent context files (.txt, togglable)
  *     docs/                     user documents
- *   venv/                     Python venv — isolated deps (aiohttp, pexpect, etc)
- *                               Created by `a install`, refreshed by `a update`.
- *                               fallback_py() tries venv/bin/python first, then
- *                               system python3. Solves PEP 668 (Ubuntu 23.04+,
- *                               Homebrew) where global pip install is blocked.
+ *   venv/                     Python venv fallback (if uv unavailable).
+ *                               fallback_py() tries: uv run --script (preferred,
+ *                               auto-installs deps via PEP 723), venv/bin/python,
+ *                               then system python3.
  *   sync/                     rclone copy <->, all devices, large files <5G
  *   vault/                    rclone copy on-demand, big devices, models
  *   backup/                   rclone move ->, all devices, logs+state
