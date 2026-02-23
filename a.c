@@ -219,6 +219,16 @@ install)
         else ok "venv (exists: $($VENV/bin/python --version))"; fi
         [[ -f "$VENV/bin/pip" ]] && $VENV/bin/pip install -q pexpect prompt_toolkit aiohttp 2>/dev/null && ok "python deps" || warn "pip install failed"
     fi
+    # playwright browser deps (needed for headless scraping agents)
+    if ! python3 -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); p.chromium.launch(headless=True).close(); p.stop()" 2>/dev/null; then
+        if command -v pacman &>/dev/null; then
+            info "Installing playwright browser deps..."
+            sudo pacman -S --noconfirm --needed libxcomposite gtk3 alsa-lib nss 2>/dev/null && ok "playwright deps" || warn "playwright deps (needs sudo)"
+        elif command -v apt-get &>/dev/null; then
+            info "Installing playwright browser deps..."
+            sudo apt-get install -y libxcomposite1 libgtk-3-0t64 libasound2t64 libnss3 2>/dev/null && ok "playwright deps" || warn "playwright deps (needs sudo)"
+        fi
+    else ok "playwright deps"; fi
     if ! command -v ollama &>/dev/null; then
         if [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then
             info "Installing ollama..."
