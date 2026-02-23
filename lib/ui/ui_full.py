@@ -25,12 +25,12 @@ HTML = '''<!doctype html>
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.min.js"></script>
-<style>*{font-family:system-ui}</style>
+<style>*{font-family:system-ui}[data-go]{touch-action:manipulation}</style>
 <body style="margin:0;height:100vh;background:#000;overflow:hidden">
 <div id=v_index style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px">
-  <a onclick="go('/jobs')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">jobs</a>
-  <a onclick="go('/term')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">terminal</a>
-  <a onclick="go('/note')" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">note</a>
+  <a data-go="/jobs" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">jobs</a>
+  <a data-go="/term" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">terminal</a>
+  <a data-go="/note" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">note</a>
   <a onclick="fetch('/restart')" style="font-size:16px;color:#666;cursor:pointer;padding:10px 20px">restart server</a>
 </div>
 <div id=v_term style="display:none;height:100vh">
@@ -55,7 +55,7 @@ HTML = '''<!doctype html>
   <form id=nf style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=nc autofocus placeholder="note" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <button type=submit style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">save</button>
-    <button type=button onclick="go('/term')" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">term</button>
+    <button type=button data-go="/term" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">term</button>
   </form>
   <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px">__NO__</div>
 </div>
@@ -88,6 +88,8 @@ try{
   new ResizeObserver(function(){F.fit();ws(JSON.stringify({cols:T.cols,rows:T.rows}));}).observe(document.getElementById('t'));
 }catch(e){document.body.innerHTML='<pre style="color:red;padding:20px">'+e+'</pre>';}
 nf.onsubmit=function(e){e.preventDefault();var c=nc.value.trim();if(c){fetch('/note',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+encodeURIComponent(c)});nl.insertAdjacentHTML('afterbegin','<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222">'+c+'</div>');nc.value='';nc.placeholder='saved!';}};
+var _tg=0;document.addEventListener('touchstart',function(e){var g=e.target.closest('[data-go]');if(g){e.preventDefault();_tg=1;go(g.dataset.go);}},{passive:false});
+document.addEventListener('click',function(e){if(_tg){_tg=0;return;}var g=e.target.closest('[data-go]');if(g)go(g.dataset.go);});
 show(views[location.pathname]?location.pathname:'/');
 </script>'''
 
