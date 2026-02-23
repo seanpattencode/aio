@@ -62,7 +62,7 @@ static int cmd_log(int argc, char **argv) {
     }
 
     /* Default: recent activity with AM/PM display + header */
-    char c[B], out[256];
+    char c[B];
     printf("%-5s %-8s %-12s %-40s %s\n", "DATE", "TIME", "DEVICE", "CMD", "DIR");
     fflush(stdout);
     snprintf(c, B, "cat $(ls '%s'/*.txt 2>/dev/null | sort 2>/dev/null | tail -30) 2>/dev/null"
@@ -75,52 +75,44 @@ static int cmd_log(int argc, char **argv) {
         "printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'", adir);
     (void)!system(c);
 
-    /* Status footer: ✓ active, x not configured, last sync time */
+    /* Status footer — pure C, no shell-outs */
     #define AGO(buf,sz,sec) do { int _s=(int)(sec); if(_s<60)snprintf(buf,sz,"%ds ago",_s); \
         else if(_s<3600)snprintf(buf,sz,"%dm ago",_s/60); \
         else if(_s<86400)snprintf(buf,sz,"%dh ago",_s/3600); \
         else snprintf(buf,sz,"%dd ago",_s/86400); } while(0)
+    /* count .ext files in dir, track newest mtime */
+    #define DCOUNT(dir,ext,cnt,newest) do { DIR*_d=opendir(dir); struct dirent*_e; struct stat _s; char _p[P]; \
+        cnt=0; newest=0; if(_d){while((_e=readdir(_d))){int _l=(int)strlen(_e->d_name); int _el=(int)strlen(ext); \
+        if(_l>_el&&!strcmp(_e->d_name+_l-_el,ext)){cnt++;snprintf(_p,P,"%s/%s",dir,_e->d_name); \
+        if(!stat(_p,&_s)&&_s.st_mtime>newest)newest=_s.st_mtime;}}closedir(_d);} } while(0)
     mkdirp(LOGDIR);
-    snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", LOGDIR);
-    pcmd(c, out, 256); int nlogs = atoi(out);
-    char jdir[P]; snprintf(jdir, P, "%s/git/jobs", AROOT);
-    snprintf(c, B, "ls '%s'/*.log 2>/dev/null | wc -l", jdir);
-    char nout[64]; pcmd(c, nout, 64); int jlogs = atoi(nout);
-    snprintf(c, B, "git -C '%s/git' remote get-url origin 2>/dev/null", AROOT);
-    char gurl[256]; pcmd(c, gurl, 256); gurl[strcspn(gurl,"\n")] = 0;
-    int git_ok = gurl[0] != 0;
-    snprintf(c, B, "ls -d '%s/backup'/*/ 2>/dev/null | wc -l", AROOT);
-    pcmd(c, nout, 64); int nbak = atoi(nout);
-    time_t now = time(NULL); char ago[32]; struct stat fst;
-    /* gdrive folder ID from cache */
+    int nlogs; time_t llm_new; DCOUNT(LOGDIR,".log",nlogs,llm_new);
+    char jdir[P]; snprintf(jdir,P,"%s/git/jobs",AROOT);
+    int jlogs; time_t job_new; DCOUNT(jdir,".log",jlogs,job_new);
+    char gurl[256]=""; { char gp[P]; snprintf(gp,P,"%s/git/.git/config",AROOT);
+        char *gc=readf(gp,NULL); if(gc){char *u=strstr(gc,"url = ");if(u){u+=6;char*nl=strchr(u,'\n');if(nl)*nl=0;snprintf(gurl,256,"%s",u);}free(gc);} }
+    int git_ok=gurl[0]!=0;
+    /* count backup subdirs + newest .jsonl across them */
+    int nbak=0; time_t bak_new=0; { char bd[P]; snprintf(bd,P,"%s/backup",AROOT);
+        DIR*d=opendir(bd); struct dirent*e; if(d){while((e=readdir(d))){if(e->d_name[0]=='.')continue;
+        char sd[P]; snprintf(sd,P,"%s/%s",bd,e->d_name); struct stat ss; if(!stat(sd,&ss)&&S_ISDIR(ss.st_mode)){
+        nbak++; int _n; time_t _t; DCOUNT(sd,".jsonl",_n,_t); (void)_n; if(_t>bak_new)bak_new=_t;}}closedir(d);} }
+    time_t now=time(NULL); char ago[32];
     char gdid[64]=""; { char gp[P]; snprintf(gp,P,"%s/backup/%s/.gdrive_id",AROOT,DEV);
-        FILE *gf=fopen(gp,"r"); if(gf){if(fgets(gdid,64,gf))gdid[strcspn(gdid,"\n")]=0; fclose(gf);} }
-    /* LLM transcripts: newest .log in LOGDIR */
-    snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", LOGDIR);
-    pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
-    int llm_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
-    if (llm_age >= 0) AGO(ago, 32, llm_age); else snprintf(ago, 32, "never");
-    printf("\n%s LLM transcripts  %3d  adata/backup/%s/  last: %s\n",
-        nlogs ? "\xe2\x9c\x93" : "x", nlogs, DEV, ago);
-    if (gdid[0]) printf("  %s https://drive.google.com/drive/folders/%s\n", "\xe2\x86\x92", gdid);
-    /* Job tmux logs: newest .log in git/jobs */
-    snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -1", jdir);
-    pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
-    int job_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
-    if (job_age >= 0) AGO(ago, 32, job_age); else snprintf(ago, 32, "never");
-    printf("%s Job tmux logs    %3d  adata/git/jobs/  last: %s\n",
-        git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, ago);
-    if (git_ok) printf("  %s %s\n", "\xe2\x86\x92", gurl);
-    /* JSONL backup: newest .jsonl in backup dirs (not .log — those are old session logs) */
-    snprintf(c, B, "find '%s/backup' -name '*.jsonl' -maxdepth 3 -printf '%%T@ %%p\\n' 2>/dev/null | sort -rn 2>/dev/null | head -1 | cut -d' ' -f2-", AROOT);
-    pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
-    int bak_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
-    if (bak_age >= 0) AGO(ago, 32, bak_age); else snprintf(ago, 32, "never");
-    snprintf(c, B, "pgrep -x rclone >/dev/null 2>&1");
-    int syncing = system(c) == 0;
-    printf("%s JSONL backup          adata/backup/%s/  last: %s%s\n",
-        nbak ? "\xe2\x9c\x93" : "x", DEV, ago, syncing ? "  (syncing)" : "");
-    if (gdid[0]) printf("  %s https://drive.google.com/drive/folders/%s\n", "\xe2\x86\x92", gdid);
+        FILE *gf=fopen(gp,"r"); if(gf){if(fgets(gdid,64,gf))gdid[strcspn(gdid,"\n")]=0;fclose(gf);} }
+    int llm_age=llm_new?(int)(now-llm_new):-1;
+    if(llm_age>=0)AGO(ago,32,llm_age);else snprintf(ago,32,"never");
+    printf("\n%s LLM transcripts  %3d  adata/backup/%s/  last: %s\n",nlogs?"\xe2\x9c\x93":"x",nlogs,DEV,ago);
+    if(gdid[0])printf("  \xe2\x86\x92 https://drive.google.com/drive/folders/%s\n",gdid);
+    int job_age=job_new?(int)(now-job_new):-1;
+    if(job_age>=0)AGO(ago,32,job_age);else snprintf(ago,32,"never");
+    printf("%s Job tmux logs    %3d  adata/git/jobs/  last: %s\n",git_ok&&jlogs?"\xe2\x9c\x93":"x",jlogs,ago);
+    if(git_ok)printf("  \xe2\x86\x92 %s\n",gurl);
+    int bak_age=bak_new?(int)(now-bak_new):-1;
+    if(bak_age>=0)AGO(ago,32,bak_age);else snprintf(ago,32,"never");
+    printf("%s JSONL backup          adata/backup/%s/  last: %s\n",nbak?"\xe2\x9c\x93":"x",DEV,ago);
+    if(gdid[0])printf("  \xe2\x86\x92 https://drive.google.com/drive/folders/%s\n",gdid);
+    #undef DCOUNT
     #undef AGO
     return 0;
 }
