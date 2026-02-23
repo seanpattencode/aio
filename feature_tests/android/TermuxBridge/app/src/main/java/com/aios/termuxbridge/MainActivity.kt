@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity() {
                 val cmd = commandInput.text.toString()
                 if (cmd.isNotEmpty()) {
                     appendOutput("\n> $cmd\n")
-                    runTermuxCommand(cmd)
+                    runCmd("bash", arrayOf("-c", cmd))
                 }
             }
         }
@@ -162,7 +162,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = params
             setOnClickListener {
                 appendOutput("\n> python aio.py help\n")
-                runPythonScript("/data/data/com.termux/files/home/aio/aio.py", arrayOf("help"))
+                runCmd("python", arrayOf("/data/data/com.termux/files/home/aio/aio.py", "help"))
             }
         }
         buttonRow.addView(testButton)
@@ -267,47 +267,20 @@ To grant permission:
         }
     }
 
-    private fun runTermuxCommand(command: String) {
+    private fun runCmd(bin: String, args: Array<String>) {
         try {
             val intent = Intent().apply {
                 setClassName("com.termux", "com.termux.app.RunCommandService")
                 action = "com.termux.RUN_COMMAND"
-                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
+                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/$bin")
+                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args)
                 putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
                 putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-
-                val pendingIntent = PendingIntent.getService(
-                    this@MainActivity,
-                    System.currentTimeMillis().toInt(),
+                putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", PendingIntent.getService(
+                    this@MainActivity, System.currentTimeMillis().toInt(),
                     Intent(this@MainActivity, MyResultService::class.java),
                     PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_MUTABLE
-                )
-                putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingIntent)
-            }
-            startService(intent)
-        } catch (e: Exception) {
-            appendOutput("[Error] ${e.message}\n")
-        }
-    }
-
-    private fun runPythonScript(scriptPath: String, args: Array<String> = emptyArray()) {
-        try {
-            val intent = Intent().apply {
-                setClassName("com.termux", "com.termux.app.RunCommandService")
-                action = "com.termux.RUN_COMMAND"
-                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/python")
-                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf(scriptPath) + args)
-                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-                putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-
-                val pendingIntent = PendingIntent.getService(
-                    this@MainActivity,
-                    System.currentTimeMillis().toInt(),
-                    Intent(this@MainActivity, MyResultService::class.java),
-                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_MUTABLE
-                )
-                putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingIntent)
+                ))
             }
             startService(intent)
         } catch (e: Exception) {
