@@ -246,22 +246,14 @@ class MainActivity : AppCompatActivity() {
             permissionCard.setCardBackgroundColor(Color.parseColor("#E8F5E9"))
             permissionStatus.text = "✓ Permission Granted"
             permissionStatus.setTextColor(Color.parseColor("#2E7D32"))
-            permissionSteps.text = "Ready to run Termux commands!"
+            permissionSteps.text = "If commands fail, run in Termux:\nmkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties"
             openSettingsButton.visibility = View.GONE
             controlsLayout.visibility = View.VISIBLE
         } else {
             permissionCard.setCardBackgroundColor(Color.parseColor("#FFEBEE"))
             permissionStatus.text = "✗ Permission Required"
             permissionStatus.setTextColor(Color.parseColor("#C62828"))
-            permissionSteps.text = """
-To grant permission:
-
-1. Tap "Open App Settings" below
-2. Tap "Permissions"
-3. Tap "Additional permissions"
-4. Enable "Run commands in Termux"
-5. Return to this app
-            """.trimIndent()
+            permissionSteps.text = "1. Tap 'Open App Settings' below\n2. Permissions > Additional permissions\n3. Enable 'Run commands in Termux'\n4. Return here"
             openSettingsButton.visibility = View.VISIBLE
             controlsLayout.visibility = View.GONE
         }
@@ -283,6 +275,8 @@ To grant permission:
                 ))
             }
             startService(intent)
+        } catch (e: SecurityException) {
+            appendOutput("[Error] allow-external-apps not enabled.\nRun in Termux: mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties\n")
         } catch (e: Exception) {
             appendOutput("[Error] ${e.message}\n")
         }

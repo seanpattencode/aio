@@ -48,8 +48,6 @@ def build():
             adb("uninstall", PKG, serial=serial)
             r = adb("install", apk, serial=serial)
         if r.returncode: print(r.stderr); sys.exit(1)
-        adb("shell", "mkdir", "-p", "/data/data/com.termux/files/home/.termux", serial=serial)
-        adb("shell", "bash", "-c", "grep -q allow-external-apps /data/data/com.termux/files/home/.termux/termux.properties 2>/dev/null || echo 'allow-external-apps = true' >> /data/data/com.termux/files/home/.termux/termux.properties", serial=serial)
         adb("shell", "am", "start", "-n", f"{PKG}/.MainActivity", serial=serial)
     print(f"✓ {PKG}")
 

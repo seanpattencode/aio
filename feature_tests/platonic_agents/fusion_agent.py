@@ -29,15 +29,27 @@ MS=[("claude",anth,"anthropic/claude-opus-4-6"),("gemini",gem,"google/gemini-2.5
     ("ds-r1",lambda p:oai(OR,OK,"deepseek/deepseek-r1",p),"deepseek/deepseek-r1")]
 
 def fuse(R,q,judge_ids):
-    """10 judges, each votes on a random pair. Returns (winner_name, wins_counter)."""
+    """10 judges, each votes on a random pair. Returns wins counter."""
     names=list(R.keys())
     matchups=[(jid,*random.sample(names,2))for jid in judge_ids]
     def j(m):
         jid,a,b=m
         v=oai(OR,OK,jid,f"Q:{q}\nA:{R[a][:500]}\nB:{R[b][:500]}","Pick the better response. Reply ONLY A or B.")
         return a if"A"in v[:3]else b
-    wins=Counter(TP(10).map(j,matchups))
-    return wins
+    return Counter(TP(10).map(j,matchups))
+
+def rate(R,q,judge_ids):
+    """10 judges, each rates one random response 0-100. Returns {name: avg_score}."""
+    names=list(R.keys());import re
+    tasks=[(jid,random.choice(names))for jid in judge_ids]
+    def j(t):
+        jid,n=t
+        v=oai(OR,OK,jid,f"Q:{q}\nResponse:{R[n][:500]}","Rate this response 0-100 for correctness and helpfulness. Reply ONLY with a number.")
+        nums=re.findall(r'\d+',v);return n,int(nums[0])if nums else 50
+    results=list(TP(10).map(j,tasks))
+    scores={};counts={}
+    for n,s in results:scores[n]=scores.get(n,0)+s;counts[n]=counts.get(n,0)+1
+    return{n:scores[n]//counts[n]for n in scores}
 
 m=[]
 while u:=input("\n> ").strip():
@@ -45,15 +57,17 @@ while u:=input("\n> ").strip():
     for _ in[0]*3:
         R=dict(TP(10).starmap(lambda n,f,_,p:(n,f(p)),[(n,f,o,p)for n,f,o in MS]))
         for n in sorted(R):print(f"[{n}] {R[n][:200]}")
-        oids=[o for _,_,o in MS]
-        # cross-vote: each frontier model judges one random pair
-        w1=fuse(R,u,oids)
+        oids=[o for _,_,o in MS];CM=["openai/gpt-4.1-mini"]*10
+        # all 4 fusion methods in parallel (40 calls, one round)
+        w1,w2,r1,r2=TP(4).starmap(lambda f,a:(f(*a)),[(fuse,(R,u,oids)),(fuse,(R,u,CM)),(rate,(R,u,oids)),(rate,(R,u,CM))])
         print("\n--- cross-vote ---")
         for n,v in w1.most_common():print(f"  {v} votes: [{n}]")
-        # cheap-vote: gpt-4.1-mini judges 10 random pairs
-        w2=fuse(R,u,["openai/gpt-4.1-mini"]*10)
         print("--- cheap-vote ---")
         for n,v in w2.most_common():print(f"  {v} votes: [{n}]")
+        print("--- cross-rate ---")
+        for n in sorted(r1,key=r1.get,reverse=True):print(f"  {r1[n]:3d}/100: [{n}]")
+        print("--- cheap-rate ---")
+        for n in sorted(r2,key=r2.get,reverse=True):print(f"  {r2[n]:3d}/100: [{n}]")
         # drive execution from top cross-vote winner
         top=w1.most_common(1)[0][0]
         t=R[top];m+=[f"A:{t}"];c=t[t.index("CMD:")+4:].split("\n")[0].strip(" `")if"CMD:"in t else""

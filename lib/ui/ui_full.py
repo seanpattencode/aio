@@ -1,4 +1,4 @@
-import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, time; from html import escape as E; from aiohttp import web
+import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, time, sqlite3; from html import escape as E; from aiohttp import web
 
 # terminal is the API: ALL logic routes through local terminal commands (the `a` binary)
 # so AI agents and humans can debug in terminal and know logic works identically in UI.
@@ -92,23 +92,17 @@ show(views[location.pathname]?location.pathname:'/');
 </script>'''
 
 async def spa(r):
-    import sqlite3
-    po = '<option value="">~ (home)</option>'
-    pd = f'{_G}/workspace/projects'
+    po='<option value="">~ (home)</option>';pd=f'{_G}/workspace/projects'
     if os.path.isdir(pd):
         for f in sorted(os.listdir(pd)):
             if f.endswith('.txt'):
-                kv = _kv(f'{pd}/{f}')
-                if 'Name' in kv:
-                    p = (kv.get('Path','') or f'~/projects/{kv["Name"]}').replace('~',os.path.expanduser('~'))
-                    po += f'<option value="{E(p)}">{E(kv["Name"])}</option>'
-    do = '<option value="">local</option>'
-    dd = f'{_G}/ssh'
+                kv=_kv(f'{pd}/{f}');n=kv.get('Name')
+                if n: p=(kv.get('Path','') or f'~/projects/{n}').replace('~',os.path.expanduser('~'));po+=f'<option value="{E(p)}">{E(n)}</option>'
+    do='<option value="">local</option>';dd=f'{_G}/ssh'
     if os.path.isdir(dd):
         for f in sorted(os.listdir(dd)):
-            if f.endswith('.txt'):
-                kv = _kv(f'{dd}/{f}')
-                if 'Name' in kv: do += f'<option value="{kv["Name"]}">{kv["Name"]}</option>'
+            n=f.endswith('.txt') and _kv(f'{dd}/{f}').get('Name')
+            if n: do+=f'<option value="{n}">{n}</option>'
     no = ''
     nd = f'{_G}/notes'
     if os.path.isdir(nd):
@@ -118,14 +112,16 @@ async def spa(r):
                 for l in open(f'{nd}/{f}'):
                     if l.startswith('Text: '): no += f'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\'{f}\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>{E(l[6:].strip())}</span></div>'; break
             except: pass
-    jo = S.run([_A,'jobs'],capture_output=True,text=True,timeout=10).stdout or 'No jobs'
-    dp = f'{_D}/adata/local/aio.db'
-    if os.path.exists(dp):
-        c = sqlite3.connect(dp); c.row_factory = sqlite3.Row
-        rows = c.execute("SELECT name,step,status,session FROM jobs ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close()
-        if rows:
-            jo += '\n\n--- Job PRs ---\n'
-            for row in rows: jo += row['status']+(f' [{row["step"]}]' if row['step'] else '')+' '+row['name']+(f' ({row["session"]})' if row['session'] else '')+'\n'
+    try:
+        jo = S.run([_A,'jobs'],capture_output=True,text=True,timeout=10).stdout or 'No jobs'
+        dp = f'{_D}/adata/local/aio.db'
+        if os.path.exists(dp):
+            c = sqlite3.connect(dp); c.row_factory = sqlite3.Row
+            rows = c.execute("SELECT name,step,status,session FROM jobs ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close()
+            if rows:
+                jo += '\n\n--- Job PRs ---\n'
+                for row in rows: jo += row['status']+(f' [{row["step"]}]' if row['step'] else '')+' '+row['name']+(f' ({row["session"]})' if row['session'] else '')+'\n'
+    except: jo = 'No jobs'
     h = HTML.replace('__PO__',po).replace('__DO__',do).replace('__NO__',no).replace('__JO__',E(jo))
     return web.Response(text=h, content_type='text/html', headers={'Cache-Control':'no-store'})
 
@@ -135,7 +131,11 @@ async def term(r):
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}; env['TERM'] = 'xterm-256color'
     S.Popen([os.environ.get('SHELL', '/bin/bash'), '-l'], preexec_fn=os.setsid, stdin=s, stdout=s, stderr=s, env=env); os.close(s)
     loop = asyncio.get_event_loop()
-    loop.add_reader(m, lambda: asyncio.create_task(ws.send_str(os.read(m, 4096).decode(errors='ignore'))))
+    def _rd():
+        try: d=os.read(m,4096)
+        except: loop.remove_reader(m);return
+        d and asyncio.create_task(ws.send_str(d.decode(errors='ignore'))) or loop.remove_reader(m)
+    loop.add_reader(m,_rd)
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
             try:
@@ -172,7 +172,6 @@ async def jobs_api(r):
     return web.Response(text=p.stdout or 'No jobs')
 
 async def job_status_api(r):
-    import sqlite3
     dp = f'{_D}/adata/local/aio.db'
     if not os.path.exists(dp): return web.json_response([])
     c = sqlite3.connect(dp); c.row_factory = sqlite3.Row
