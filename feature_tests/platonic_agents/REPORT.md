@@ -173,6 +173,7 @@ The `CLAUDECODE` env var check is a soft guard — trivially bypassed. The real 
 | gemini_agent | no | yes | FAIL | Bypassed CMD: protocol entirely — used its own internal tools to ls, returned correct files but never emitted CMD: |
 | claude_agent | yes | yes | PASS | Clean first try. CMD:ls → executed → summarized files with descriptions |
 | meta_agent | yes | yes | PASS | Claude branch emitted CMD:ls, gemini branch answered directly. Claude drove execution. |
+| cc2_agent | yes | yes | PASS | `--tools ""` forces CMD: protocol, `--system-prompt` separates instruction. Must test from normal terminal |
 | cc_agent | — | — | SKIP | Hangs inside Claude Code (nesting issue) |
 | ollama_agent | — | — | SKIP | Mistral unreliable on protocol adherence |
 
@@ -181,6 +182,14 @@ The `CLAUDECODE` env var check is a soft guard — trivially bypassed. The real 
 A new failure mode: gemini received the system prompt "Reply CMD:<cmd> or text." but instead of emitting CMD:ls, it used its own built-in grounding tools to list the directory and returned the result as plain text. The file listing was correct — it was grounded in reality — but the agent's CMD: extraction never fired. The model followed the *intent* (list files) but ignored the *protocol* (emit CMD:).
 
 This is the opposite of mistral's failure. Mistral can't follow the protocol and hallucinates. Gemini follows the intent but routes through its own tool system, bypassing the agent's execution loop entirely. Both break the CMD: contract but for different reasons: insufficient capability vs competing capability.
+
+### 10. Claude Code Tool Bypass
+
+`cc_agent.py` sends prompts to `claude -p` with built-in tools enabled. Claude Code uses its own Bash/Read tools internally to execute commands and returns grounded results — but never emits `CMD:` in its text output. The agent's CMD: parser never fires. Same failure mode as gemini (section 9): correct answer, wrong protocol.
+
+`cc2_agent.py` fixes this with `--tools ""` which disables all built-in tools, forcing Claude to follow the CMD: text protocol. `--system-prompt` separates the instruction from user content. Result: CMD:ls emitted, executed, grounded answer. PASS.
+
+Both cc agents hang when run inside a Claude Code session due to shared runtime resources (see Nested Claude Code Sessions). Must be tested from a normal terminal.
 
 ### Meta-Agent Parallel Behavior
 
@@ -203,7 +212,8 @@ But capability is now sufficient. Claude follows the protocol, executes real com
 - `ollama_agent.py` — 7 lines, local ollama version (mistral default)
 - `ollama_agent.c` — 33 lines, self-compiling C version (`sh ollama_agent.c` to build)
 - `claude_agent.py` — 9 lines, Anthropic API version (claude-opus-4-6 default)
-- `cc_agent.py` — 7 lines, Claude Code CLI version (requires normal terminal)
+- `cc_agent.py` — 7 lines, Claude Code CLI version (tools enabled, bypasses CMD: protocol)
+- `cc2_agent.py` — 7 lines, Claude Code CLI version (`--tools ""` forces CMD: protocol)
 - `gemini_agent.py` — 8 lines, Gemini CLI version
 - `meta_agent.py` — 11 lines, parallel claude+gemini fusion (Anthropic API + gemini CLI)
 - `test_all.py` — 17 lines, test harness for all agents
