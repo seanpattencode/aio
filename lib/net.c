@@ -196,6 +196,14 @@ static int cmd_update(int argc, char **argv) {
     snprintf(c, B, "'%s/a' update cache", SDIR); (void)!system(c);
     ensure_adata();
     sync_repo();
+    /* auto-sync rclone config: save if configured, apply if not */
+    { char rc[P]; snprintf(rc,P,"%s/git/login/rclone.conf",AROOT);
+      char t[64];pcmd("rclone listremotes 2>/dev/null|grep a-gdrive|head -1",t,64);
+      if(t[0]&&t[0]!='\n'){/* configured — save for other devices */
+        snprintf(c,B,"mkdir -p '%s/git/login' && cp ~/.config/rclone/rclone.conf '%s'",AROOT,rc);(void)!system(c);
+      } else if(fexists(rc)){/* not configured — apply from sync */
+        snprintf(c,B,"mkdir -p ~/.config/rclone && cp '%s' ~/.config/rclone/rclone.conf",rc);
+        if(!system(c))puts("\xe2\x9c\x93 rclone config applied from login sync");}}
     /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
     snprintf(c, B, "nohup sh -c '"
         "mkdir -p %s/backup/%s && "
