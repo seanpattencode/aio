@@ -44,7 +44,10 @@ def _save_logs(jn, log, wp='', dev=''):
                 import json as J
                 r=S.run([rc,'lsjson',f'{remotes[0]}:{RCLONE_BACKUP_PATH}/backup/','-d','--dirs-only'],capture_output=True,text=True,timeout=10)
                 for d in J.loads(r.stdout or '[]'):
-                    if d['Name']==DEVICE_ID and d.get('ID'): open(idf,'w').write(d['ID']); break
+                    if d['Name']==DEVICE_ID and d.get('ID'):
+                        open(idf,'w').write(d['ID'])
+                        gf=os.path.join(ADATA_ROOT,'git','gdrive.id');open(gf,'w').write(d['ID'])
+                        break
             except: pass
 
 def _ssh_wait_ready(dev, sn, timeout=60):

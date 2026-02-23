@@ -82,16 +82,20 @@ static int cmd_log(int argc, char **argv) {
         char sd[P]; snprintf(sd,P,"%s/%s",bd,e->d_name); struct stat ss; if(!stat(sd,&ss)&&S_ISDIR(ss.st_mode)){
         nbak++; int _n; time_t _t; DCOUNT(sd,".jsonl",_n,_t); (void)_n; if(_t>bak_new)bak_new=_t;}}closedir(d);} }
     time_t now=time(NULL); char ago[32];
-    char gdid[64]=""; { char gp[P]; snprintf(gp,P,"%s/backup/%s/.gdrive_id",AROOT,DEV);
-        FILE *gf=fopen(gp,"r"); if(gf){if(fgets(gdid,64,gf))gdid[strcspn(gdid,"\n")]=0;fclose(gf);} }
+    /* gdrive folder ID: try local, then git-synced from any device */
+    char gdid[64]=""; { char gp[P];
+        snprintf(gp,P,"%s/backup/%s/.gdrive_id",AROOT,DEV);
+        FILE *gf=fopen(gp,"r");
+        if(!gf){snprintf(gp,P,"%s/git/gdrive.id",AROOT);gf=fopen(gp,"r");}
+        if(gf){if(fgets(gdid,64,gf))gdid[strcspn(gdid,"\n")]=0;fclose(gf);} }
     char bpath[P]; snprintf(bpath,P,"adata/backup/%s/",DEV);
+    char gdu[256]=""; if(gdid[0])snprintf(gdu,256,"https://drive.google.com/drive/folders/%s",gdid);
     #define ROW(t,n,l,p,u) { int a=t?(int)(now-t):-1; if(a>=0)AGO(ago,32,a);else snprintf(ago,32,"never"); \
         printf("%s %-18s %3d  %-28s last: %s\n",n?"\xe2\x9c\x93":"x",l,n,p,ago); if(u)printf("  \xe2\x86\x92 %s\n",u); }
     putchar('\n');
-    char gdu[256]; if(gdid[0])snprintf(gdu,256,"https://drive.google.com/drive/folders/%s",gdid);
-    ROW(llm_new,nlogs,"LLM transcripts",bpath,gdid[0]?gdu:NULL)
+    ROW(llm_new,nlogs,"LLM transcripts",bpath,gdu[0]?gdu:NULL)
     ROW(job_new,jlogs,"Job tmux logs","adata/git/jobs/",git_ok?gurl:NULL)
-    ROW(bak_new,nbak,"JSONL backup",bpath,gdid[0]?gdu:NULL)
+    ROW(bak_new,nbak,"JSONL backup",bpath,gdu[0]?gdu:NULL)
     #undef ROW
     #undef DCOUNT
     #undef AGO
