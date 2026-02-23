@@ -392,3 +392,94 @@ This is the strongest possible evidence that Unix incentivizes this outcome. The
 They weren't complying with Unix philosophy. They were *discovering* it — the same way you did, the same way everyone does when they punish complexity and follow the easy path.
 
 **The path was always there. It was paved in 1969. It just took AI agents to make it obvious.**
+
+---
+
+## Everything Is a Single File: Concatenation as Axiom Compliance
+
+### Transcript (verbatim)
+
+> in fact i love to voncatanate rverything into one filr. i do so partly or wholly becayse unix incrntibizes it. syscwll pesnslty in small files, compiler conolrxity on many files reading file is onr op for human anf llm many id multiple rverythung is a single filr if possiblr also explwind my polyglot tricks im mobing toesrds onr file bc axiomw
+
+---
+
+### Why One File
+
+Unix says "everything is a file." Push that axiom to its logical conclusion: if everything is a file, the ideal number of files is one.
+
+This isn't aesthetic preference. The platform penalizes multiple files at every level:
+
+| Operation | One file | Many files |
+|-----------|----------|------------|
+| **Syscalls** | 1 open + 1 read + 1 close | N opens + N reads + N closes |
+| **Compilation** | 1 translation unit, maximum optimization | Linker, symbol resolution, header parsing |
+| **Human reading** | 1 open, scroll | Navigate directories, switch tabs, hold structure in head |
+| **LLM reading** | 1 tool call | N tool calls, context cost per file, risk of missing files |
+| **Distribution** | Copy one file | Copy directory tree, maintain structure, worry about paths |
+| **Dependency tracking** | None — it's self-contained | Headers, imports, include paths, build order |
+| **Searching** | grep one file | grep across tree, handle gitignore, cross-file references |
+
+Every row penalizes many files. No row penalizes one file. The incentive is unambiguous.
+
+### The Precedents
+
+This isn't new. It's a well-trodden path:
+
+| System | What it does | Why |
+|--------|-------------|-----|
+| **SQLite** | `sqlite3.c` — 250K lines, single amalgamation | Maximum compiler optimization, trivial distribution |
+| **stb libraries** | Single-header C libraries (stb_image.h, etc.) | `#include` one file, no build system |
+| **`a.c`** | All C commands concatenated into one file | One compilation unit, all functions `static`, one binary |
+| **jQuery** | One .js file, drop into page | No npm, no bundler, no module system |
+| **busybox** | All Unix utilities in one binary | One file, one binary, works on embedded |
+
+Every one of these became popular because single-file is the path of least resistance. Users don't want to manage dependency trees. They want to drop a file in and have it work.
+
+### The Polyglot Trick
+
+The `qf` entry point is a polyglot — shell and Python in one file:
+
+```
+#!/bin/sh
+# shell bootstraps the environment
+exec python3 "$0" "$@"
+# --- Python starts here ---
+```
+
+This is another consequence of the one-file axiom. If everything should be a single file, and you need two languages (shell for bootstrapping, Python for logic), the solution isn't two files — it's one file that speaks both languages.
+
+The same pattern appears in:
+- Makefiles with embedded shell
+- HTML with embedded CSS and JavaScript
+- Shell scripts with embedded heredoc Python/awk
+- C files with embedded assembly (`asm`)
+
+Polyglots aren't a hack. They're what you converge on when you take "everything is a file" seriously and refuse to split into multiple files without justification.
+
+### The Convergence
+
+```
+"Everything is a file"
+        ↓
+Fewer files is better (less syscall overhead, less complexity)
+        ↓
+One file is best (zero dependency tracking, one read operation)
+        ↓
+Multiple languages in one file (polyglots)
+        ↓
+Concatenation / amalgamation as build strategy
+```
+
+Each step follows inevitably from the previous one. You're not choosing to concatenate because you like it. You're being pushed there by the same platform incentives that shaped everything else.
+
+### For LLMs Specifically
+
+The one-file convergence is especially strong for LLM agents:
+
+- **Context window is the file system.** An LLM's "working memory" is its context. Reading one file costs one tool call. Reading ten files costs ten tool calls plus the cognitive overhead of piecing them together. One file *is* one thought.
+- **No navigation.** An LLM doesn't have spatial memory of a directory tree. It can't "know" where things are the way a human IDE user does. Flat and few beats nested and many.
+- **Concatenation is comprehension.** When an LLM reads `a.c`, it sees the entire program in one pass. No imports to chase, no headers to resolve, no "where is this function defined?" Every dependency is visible.
+
+The platform that serves LLMs best is the one with the fewest files, each as self-contained as possible. Which is exactly what Unix was already incentivizing.
+
+**"Everything is a file" taken to its limit: everything is *one* file.**
