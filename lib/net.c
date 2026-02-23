@@ -61,19 +61,19 @@ static int cmd_log(int argc, char **argv) {
         return 0;
     }
 
-    /* Default: recent activity with AM/PM display + header */
+    /* Default: recent activity — opendir+awk, 1 fork vs 5 */
     char c[B];
-    printf("%-5s %-8s %-12s %-40s %s\n", "DATE", "TIME", "DEVICE", "CMD", "DIR");
-    fflush(stdout);
-    snprintf(c, B, "cat $(ls '%s'/*.txt 2>/dev/null | sort 2>/dev/null | tail -30) 2>/dev/null"
-        " | awk '/^[0-9][0-9]\\/[0-9][0-9] /{"
-        "split($2,t,\":\");h=int(t[1]);m=t[2];ap=\"AM\";"
+    printf("%-5s %-8s %-12s %-40s %s\n","DATE","TIME","DEVICE","CMD","DIR");fflush(stdout);
+    { DIR*d=opendir(adir);struct dirent*e;char*fn[512];int nf=0;
+    if(d){while((e=readdir(d))&&nf<512)if(strstr(e->d_name,".txt"))fn[nf++]=strdup(e->d_name);closedir(d);}
+    for(int i=1;i<nf;i++){char*t=fn[i];int j=i;while(j&&strcmp(fn[j-1],t)>0){fn[j]=fn[j-1];j--;}fn[j]=t;}
+    int o=snprintf(c,B,"awk '/^[0-9][0-9]\\//{split($2,t,\":\");h=int(t[1]);m=t[2];ap=\"AM\";"
         "if(h>=12){ap=\"PM\";if(h>12)h-=12}if(h==0)h=12;"
         "c=\"\";for(i=4;i<NF;i++){if(i>4)c=c\" \";c=c$i}"
         "if(length(c)>40)c=substr(c,1,18)\"...\"substr(c,length(c)-14);"
-        "n=split($NF,p,\"/\");d=p[n];"
-        "printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'", adir);
-    (void)!system(c);
+        "n=split($NF,p,\"/\");d=p[n];printf \"%%5s %%2d:%%s%%s  %%-12s %%-40s %%s\\n\",$1,h,m,ap,$3,c,d}'");
+    for(int i=nf>30?nf-30:0;i<nf;i++)o+=snprintf(c+o,(size_t)(B-o)," '%s/%s'",adir,fn[i]);
+    (void)!system(c);for(int i=0;i<nf;i++)free(fn[i]);}
 
     /* Status footer — pure C, no shell-outs */
     #define AGO(buf,sz,sec) do { int _s=(int)(sec); if(_s<60)snprintf(buf,sz,"%ds ago",_s); \
