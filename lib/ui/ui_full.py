@@ -114,8 +114,10 @@ async def spa(r):
     if os.path.isdir(nd):
         for f in sorted(os.listdir(nd), key=lambda x: x.rsplit('_',1)[-1] if '_' in x else '0', reverse=True):
             if not f.endswith('.txt') or f.startswith('.'): continue
-            for l in open(f'{nd}/{f}'):
-                if l.startswith('Text: '): no += f'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\'{f}\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>{E(l[6:].strip())}</span></div>'; break
+            try:
+                for l in open(f'{nd}/{f}'):
+                    if l.startswith('Text: '): no += f'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\'{f}\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>{E(l[6:].strip())}</span></div>'; break
+            except: pass
     jo = S.run([_A,'jobs'],capture_output=True,text=True,timeout=10).stdout or 'No jobs'
     dp = f'{_D}/adata/local/aio.db'
     if os.path.exists(dp):

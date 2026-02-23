@@ -1,4 +1,4 @@
-import sys, os, socket, subprocess as S, webbrowser as W, time, platform
+import sys, os, subprocess as S, webbrowser as W, time, platform
 
 def _vpy():
     lib = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -9,10 +9,6 @@ PORT = 1111
 _LIB = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 def _url(p): return f'http://localhost:{p}'  # universal: same URL works mobile+desktop, bookmarkable
-
-def _try(p=PORT):
-    with socket.socket() as s:
-        if s.connect_ex(('127.0.0.1', p)) == 0: W.open(_url(p)); return True
 
 def _bg(m, p):
     S.Popen([_vpy(), '-c', f"from ui.{m} import run;run({p})"], start_new_session=True, stdout=S.DEVNULL, stderr=None, env={**os.environ, 'PYTHONPATH': _LIB})
@@ -82,7 +78,8 @@ def run():
         _svc_off(); S.run(['pkill', '-9', '-f', 'ui.ui_']); print('UI service off')
     else:
         p = int(a[0]) if a and a[0].isdigit() else PORT
-        _try(p) or _bg('ui_full', p)
+        S.run(['pkill','-9','-f','ui.ui_'],capture_output=True)
+        _bg('ui_full', p)
         print(f"{_url(p)}\n  on  auto-start service\n  off stop service\n  k   kill")
 
 if __name__ == '__main__': run()
