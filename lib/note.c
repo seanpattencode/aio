@@ -334,71 +334,10 @@ static int cmd_task(int argc,char**argv){
                         cp++;}
                     if(pd)closedir(pd);
                     if(!found){printf("  x Invalid prompt #\n");show=0;continue;}}
-                /* load context files */
-                char ctxdir[P];snprintf(ctxdir,P,"%s/context",SROOT);mkdirp(ctxdir);
-                {char df[P];snprintf(df,P,"%s/default.txt",ctxdir);struct stat ds;if(stat(df,&ds))writef(df,"");}
-                char ctxn[16][128];int ctxon[16]={0};int nctx=0;
-                {DIR*cd=opendir(ctxdir);struct dirent*ce;
-                while(cd&&(ce=readdir(cd))&&nctx<16){
-                    if(ce->d_name[0]=='.'||!strstr(ce->d_name,".txt"))continue;
-                    snprintf(ctxn[nctx],128,"%s",ce->d_name);
-                    ctxon[nctx]=!strcmp(ce->d_name,"default.txt");
-                    nctx++;}
-                if(cd)closedir(cd);}
-                /* preview loop — edit folder/model/context before confirming */
-                for(;;){
-                /* build final prompt with context prepended */
-                char fprompt[B];int fl=0;
-                for(int j=0;j<nctx;j++){if(!ctxon[j])continue;
-                    char cf[P];snprintf(cf,P,"%s/%s",ctxdir,ctxn[j]);
-                    size_t cl;char*cc=readf(cf,&cl);
-                    if(cc){fl+=snprintf(fprompt+fl,(size_t)(B-fl),"%s\n",cc);free(cc);}}
-                snprintf(fprompt+fl,(size_t)(B-fl),"%s",prompt);
-                printf("\n\033[1m\xe2\x94\x80\xe2\x94\x80 Preview \xe2\x94\x80\xe2\x94\x80\033[0m\n");
-                struct stat fs;int fok=!stat(pfolder,&fs)&&S_ISDIR(fs.st_mode);
-                printf("  \033[1mFolder:\033[0m  %s%s\n",pfolder,fok?"":" \033[31m(not found)\033[0m");
-                printf("  \033[1mModel:\033[0m   %s\n",pmodel);
-                printf("  \033[1mContext:\033[0m ");
-                {int any=0;for(int j=0;j<nctx;j++)if(ctxon[j]){if(any)printf(", ");printf("%s",ctxn[j]);any++;}
-                if(!any)printf("none");}putchar('\n');
-                printf("\033[36m%s\033[0m\n",fprompt);
-                printf("\033[1m\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\033[0m\n");
-                printf("  [y]send [f]older [m]odel [c]ontext [n]cancel ");fflush(stdout);
-                int ck=task_getkey();putchar('\n');
-                if(ck=='f'){printf("  Folder [%s]: ",pfolder);fflush(stdout);
-                    char nf[P];if(fgets(nf,P,stdin)&&nf[0]&&nf[0]!='\n'){nf[strcspn(nf,"\n")]=0;snprintf(pfolder,P,"%s",nf);}
-                    continue;}
-                if(ck=='m'){printf("  Model [%s]: ",pmodel);fflush(stdout);
-                    char nm[64];if(fgets(nm,64,stdin)&&nm[0]&&nm[0]!='\n'){nm[strcspn(nm,"\n")]=0;snprintf(pmodel,64,"%s",nm);}
-                    continue;}
-                if(ck=='c'){printf("  \033[90mContext dir: %s\033[0m\n  cd %s\n",ctxdir,ctxdir);
-                    if(!nctx)printf("  (empty — add .txt files to enable context)\n");
-                    for(int j=0;j<nctx;j++)printf("  %d. [%c] %s\n",j+1,ctxon[j]?'x':' ',ctxn[j]);
-                    printf("  Toggle # (enter to skip): ");fflush(stdout);
-                    char tb[8];if(fgets(tb,8,stdin)&&tb[0]&&tb[0]!='\n'){int ti=atoi(tb)-1;if(ti>=0&&ti<nctx)ctxon[ti]=!ctxon[ti];}
-                    continue;}
-                if(ck!='y'&&ck!='Y'){printf("  Cancelled.\n");break;}
-                if(!fok){printf("  \033[31mx Folder does not exist\033[0m\n");continue;}
-                /* confirmed — spawn */
-                char sid[64];sid[0]=0;
-                {char ub[48];if(!pcmd("uuidgen",ub,48)){ub[strcspn(ub,"\n")]=0;snprintf(sid,64,"%s",ub);}}
-                struct timespec tp;clock_gettime(CLOCK_REALTIME,&tp);
-                char tss[32];strftime(tss,32,"%Y%m%dT%H%M%S",localtime(&tp.tv_sec));
-                char tmx[64];snprintf(tmx,64,"task-%d-%ld",i+1,tp.tv_sec);
-                char sf[P];snprintf(sf,P,"%s/session_%s_%s.txt",T[i].d,tss,DEV);
-                char sm[B];snprintf(sm,B,"SessionID: %s\nTmuxSession: %s\nModel: %s\nStarted: %s\nDevice: %s\nCwd: %s\n",sid,tmx,pmodel,tss,DEV,pfolder);
-                writef(sf,sm);
-                char pf[P];snprintf(pf,P,"/tmp/a_prompt_%s.txt",tss);
-                writef(pf,fprompt);
-                char rf[P];snprintf(rf,P,"/tmp/a_run_%s.sh",tss);
-                char rf2[P];snprintf(rf2,P,"%s/result_%s_%s.txt",T[i].d,tss,DEV);
-                char rs[B];snprintf(rs,B,"#!/bin/sh\ncd '%s'\nclaude -p --session-id %s --model %s --dangerously-skip-permissions \"$(cat %s)\" > '%s' 2>&1\npython3 -c \"import sys;sys.path.insert(0,'%s/agents');from base import send;send('task done: %.30s',open('%s').read()[-500:])\" 2>/dev/null\n",pfolder,sid,pmodel,pf,rf2,SDIR,T[i].t,rf2);
-                writef(rf,rs);chmod(rf,0755);
-                char cmd[B];snprintf(cmd,B,"tmux new-session -d -s '%s' '%s'",tmx,rf);
-                (void)!system(cmd);
-                printf("\xe2\x9c\x93 Running with claude (%s)\n  tmux attach -t %s\n  cd %s && claude -r %s\n",pmodel,tmx,pfolder,sid);
-                break;}/* end preview loop */
-                show=0;}
+                /* hand off to a job */
+                {char pf[P];snprintf(pf,P,"/tmp/a_task_%d.txt",(int)getpid());writef(pf,prompt);
+                char cmd[B];snprintf(cmd,B,"a job '%s' --prompt-file '%s' --no-worktree --model %s --bg",pfolder,pf,pmodel);
+                (void)!system(cmd);}show=0;}
             else if(k=='g'){
                 /* go: attach most recent live, or resume most recent dead */
                 Sess ss[32];int ns=load_sessions(T[i].d,ss,32);

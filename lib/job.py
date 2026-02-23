@@ -43,9 +43,9 @@ def _save_logs(jn, log, wp='', dev=''):
             try:
                 import json as J
                 r=S.run([rc,'lsjson',f'{remotes[0]}:{RCLONE_BACKUP_PATH}/backup/','-d','--dirs-only'],capture_output=True,text=True,timeout=10)
-                    for d in J.loads(r.stdout or '[]'):
-                        if d['Name']==DEVICE_ID and d.get('ID'): open(idf,'w').write(d['ID']); break
-                except: pass
+                for d in J.loads(r.stdout or '[]'):
+                    if d['Name']==DEVICE_ID and d.get('ID'): open(idf,'w').write(d['ID']); break
+            except: pass
 
 def _ssh_wait_ready(dev, sn, timeout=60):
     """Poll remote tmux pane until claude is ready to accept input"""
@@ -89,12 +89,6 @@ def run():
     init_db(); cfg = load_cfg(); PROJ = load_proj(); sess = load_sess(cfg)
     args = sys.argv[2:]
     qdir=os.path.join(str(ADATA_ROOT/'git'/'jobs'),'queue');os.makedirs(qdir,exist_ok=True)
-    # migrate old local logs → git/jobs/ (one-time)
-    _lj=os.path.join(DATA_DIR,'job_logs');_gj=str(ADATA_ROOT/'git'/'jobs')
-    if os.path.isdir(_lj):
-        for f in os.listdir(_lj):
-            if f.endswith('.log') and not os.path.exists(os.path.join(_gj,f)):
-                import shutil;shutil.copy2(os.path.join(_lj,f),os.path.join(_gj,f))
     if not args or args[0]=='status':
         for n,step,st,p,sn,ts in db().execute("SELECT name,step,status,path,session,updated_at FROM jobs ORDER BY updated_at DESC LIMIT 10"):
             live=''
@@ -119,6 +113,8 @@ def run():
               "  a job status                      running + queue\n"
               "  a job log <name>                  view agent output")
         return
+    if args[0]=='test':
+        jn='test-'+datetime.now().strftime('%H%M%S');_db_job(jn,'done','done');open(os.path.join(DATA_DIR,'.done'),'w').write('test');print(f"+ {jn}");return
     if args[0]=='add':
         qf=os.path.join(qdir,(args[1]if len(args)>1 else'job')+'.txt');os.path.exists(qf)or open(qf,'w').write('Project: a\nDevice: hsu\nPrompt: \nTimeout: 600\nPrefix: on\nAgents: on\n');S.run(['e',qf]);return
     if args[0]=='go':
@@ -132,12 +128,16 @@ def run():
         if sel.isdigit()and int(sel)<len(files):sel=files[int(sel)][:-4]
         _go_one(qdir,sel,files,_A);return
     # Parse args
-    dev, ak, proj, pp, watch, timeout, use_prefix, use_agents = '', 'l', '', [], False, 600, True, True
+    dev, ak, proj, pp, watch, timeout, use_prefix, use_agents, no_wt, bg, pfile, model = '', 'l', '', [], False, 600, True, True, False, False, '', ''
     i = 0
     while i < len(args):
         if args[i] == '--watch' or args[i] == '-w': watch = True; i += 1
         elif args[i] == '--no-prefix': use_prefix = False; i += 1
         elif args[i] == '--no-agents': use_agents = False; i += 1
+        elif args[i] == '--no-worktree': no_wt = True; i += 1
+        elif args[i] == '--bg': bg = True; i += 1
+        elif args[i] == '--prompt-file' and i+1 < len(args): pfile = args[i+1]; i += 2
+        elif args[i] == '--model' and i+1 < len(args): model = args[i+1]; i += 2
         elif args[i] == '--timeout' and i+1 < len(args): timeout = int(args[i+1]); i += 2
         elif args[i] == '--device' and i+1 < len(args): dev = args[i+1]; i += 2
         elif args[i] == '--agent' and i+1 < len(args): ak = args[i+1]; i += 2
@@ -149,19 +149,20 @@ def run():
                 u=next((r for p,r in PROJ if os.path.basename(p)==args[i] and r),'');d=os.path.expanduser(f'~/projects/{args[i]}');proj=d if u and not S.run(['git','clone',u,d],capture_output=True).returncode else sys.exit(print(f"x No local project: {args[i]}"))
                 i+=1;continue
         else: pp.append(args[i]); i += 1
-    prompt = ' '.join(pp)
+    prompt = open(pfile).read().strip() if pfile else ' '.join(pp)
     pdir=os.path.join(str(ADATA_ROOT/'git'/'jobs'));os.makedirs(pdir,exist_ok=True)
-    if prompt.startswith('@'):
-        pf=os.path.join(pdir,prompt[1:]+'.txt');os.path.exists(pf)or open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
-    elif not prompt:
-        pf=os.path.join(pdir,'_draft.txt');open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
+    if not pfile:
+        if prompt.startswith('@'):
+            pf=os.path.join(pdir,prompt[1:]+'.txt');os.path.exists(pf)or open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
+        elif not prompt:
+            pf=os.path.join(pdir,'_draft.txt');open(pf,'w').close();S.run(['e',pf]);prompt=open(pf).read().strip()
     if not prompt: print("x No prompt"); sys.exit(1)
     if use_prefix or use_agents:
         from _common import get_prefix
         pfx=get_prefix('claude',cfg,proj) if use_prefix else '';af=os.path.join(proj,'AGENTS.md')
         agents=open(af).read().strip() if use_agents and os.path.exists(af) else ''
         prompt=(pfx+' ' if pfx else '')+prompt+('\n\n'+agents if agents else '')
-    if not os.path.isdir(os.path.join(proj, '.git')):
+    if not no_wt and not os.path.isdir(os.path.join(proj, '.git')):
         print(f"x Not a git repo: {proj}"); sys.exit(1)
 
     rn = os.path.basename(proj)
@@ -178,18 +179,22 @@ def run():
     print(f"Job: {jn}\n  Repo: {rn}\n  Agent: {ak}\n  Device: {dev or 'local'}\n  Prompt: {prompt[:80]}")
 
     if dev: _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn)
-    else: _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch, timeout)
+    else: _run_local(ak, proj, rn, prompt, jn, br, wp if not no_wt else proj, wt, sn, watch, timeout, no_wt, bg, model)
 
-def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=600):
-    _db_job(jn, 'worktree', 'running', wp, sn)
-    os.makedirs(wt, exist_ok=True)
-    r = S.run(['git', '-C', proj, 'worktree', 'add', '-b', br, wp, 'HEAD'], capture_output=True, text=True)
-    if r.returncode: print(f"x Worktree: {r.stderr}"); return
-    print(f"+ Worktree: {wp}")
+def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=600, no_wt=False, bg=False, model=''):
+    if no_wt:
+        print(f"+ Dir: {wp}")
+    else:
+        _db_job(jn, 'worktree', 'running', wp, sn)
+        os.makedirs(wt, exist_ok=True)
+        r = S.run(['git', '-C', proj, 'worktree', 'add', '-b', br, wp, 'HEAD'], capture_output=True, text=True)
+        if r.returncode: print(f"x Worktree: {r.stderr}"); return
+        print(f"+ Worktree: {wp}")
 
     _db_job(jn, 'agent', 'running', wp, sn)
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}
-    S.run(['tmux', 'new-session', '-d', '-s', sn, '-c', wp, 'claude --dangerously-skip-permissions'], env=env)
+    acmd = 'claude --dangerously-skip-permissions' + (f' --model {model}' if model else '')
+    S.run(['tmux', 'new-session', '-d', '-s', sn, '-c', wp, acmd], env=env)
     for _ in range(60):
         time.sleep(1)
         r = S.run(['tmux', 'capture-pane', '-t', sn, '-p'], capture_output=True, text=True, env=env)
@@ -199,6 +204,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     time.sleep(0.5)
     S.run(['tmux', 'send-keys', '-t', sn, 'Enter'], env=env)
     print(f"+ Attach: a {sn}")
+    if bg: _db_job(jn, 'bg', 'running', wp, sn); return
 
     _db_job(jn, 'waiting', 'running', wp, sn)
     done_file = os.path.join(DATA_DIR, '.done')
@@ -223,6 +229,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     resume = f"cd {wp} && claude --continue"
     print(("+ Done" if not timed_out else "x Timeout — killed") + f"\n  Resume: {resume}")
 
+    if no_wt: _db_job(jn, 'done', 'done', wp, sn); return
     _db_job(jn, 'pr', 'running', wp, sn)
     pr = _make_pr(wp, br, rn, prompt)
     if pr:

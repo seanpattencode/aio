@@ -171,7 +171,6 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
             free(raw); execvp("a", args);
             return 0;
         } else if (ch == '\x03' || ch == '\x04') break;
-        else if (ch == 'q' && !blen) break;
         else if ((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||(ch>='0'&&ch<='9')||ch=='-'||ch=='_'||ch==' ') { if(blen<254){buf[blen++]=ch;buf[blen]=0;sel=0;} }
         printf("\033[J");
     }
