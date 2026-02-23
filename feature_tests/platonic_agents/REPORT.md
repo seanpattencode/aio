@@ -259,25 +259,58 @@ All 10 models followed the CMD: protocol on first prompt, executed `ls`, and ret
 
 ## Inference Fusion
 
-`fusion_agent.py` adds two binary voting methods on top of the 10-model parallel architecture. 62 lines, stdlib only.
+`fusion_agent.py` adds four fusion methods on top of the 10-model parallel architecture. ~70 lines, stdlib only. All four methods run in a single parallel step after the 10 models respond.
+
+### Four Fusion Methods
+
+| Method | Mechanism | Judges | Output |
+|--------|-----------|--------|--------|
+| **cross-vote** | A/B comparison on random pair | 10 frontier models (each votes once) | Win count per response |
+| **cheap-vote** | A/B comparison on random pair | gpt-4.1-mini × 10 | Win count per response |
+| **cross-rate** | 0-100 score on one random response, no comparison | 10 frontier models (each rates once) | Avg score per response |
+| **cheap-rate** | 0-100 score on one random response, no comparison | gpt-4.1-mini × 10 | Avg score per response |
 
 ### Architecture
 
-All 10 models respond in parallel (step 1). Then each model casts one vote on a randomly selected pair of responses (step 2). 10 judgments run in parallel. Wins are aggregated — the response with the most votes drives execution. Two methods run side by side:
+All 10 models respond in parallel (step 1). Then all 4 fusion methods fire in parallel (step 2), each internally running 10 judgments in parallel. Total: 2 sequential inference rounds, 50 parallel calls (10 responses + 40 judgments). Each model votes/rates exactly once per method. Pairs and candidates are randomly assigned — some responses appear in multiple matchups, some in none. Aggregation smooths the randomness.
 
-**Cross-vote**: each frontier model judges one random pair via OpenRouter. 10 diverse judges, 10 random matchups, aggregated wins. The randomness means some responses get compared more than others — this is intentional. With enough rounds the distribution converges, but even one round gives signal.
+### Vote vs Rate
 
-**Cheap-vote**: same 10 random matchups, but all judged by `gpt-4.1-mini`. Tests whether a small model agrees with diverse frontier judges. When cross-vote and cheap-vote agree on the winner, confidence is high.
+**Vote (A/B)**: judge sees two responses side by side, picks the better one. Relative comparison — the judge evaluates in context of the alternative. Wins are counted per response; response with most wins is the fusion winner.
+
+**Rate (0-100)**: judge sees one response in isolation, scores it for correctness and helpfulness. Absolute evaluation — no comparison to other responses. Scores are averaged per response; highest average is the fusion winner.
 
 ### Fusion Cost
 
-Each judgment: ~200 tokens in, 1 token out ("A or B?"). 10 judgments in parallel = latency of one short inference call. Fusion is effectively free relative to the response generation step.
+Vote: ~200 tokens in, 1 token out per judgment. Rate: ~200 tokens in, ~3 tokens out per judgment. 40 total judgments across 4 methods, all parallel. Fusion latency = one short inference call. Effectively free relative to the response generation step.
 
 ### Results
 
-On `hostname` test: Claude won cross-vote (3 votes), gemini won cheap-vote (3 votes) in the CMD: round. In the answer round (all models returned correct `ubuntuSSD4Tb`), deepseek won both methods (3 votes each) — cross-vote and cheap-vote converging on the same winner when answers are substantively identical. When responses genuinely differ, the vote distribution becomes signal about which response is best.
+On `hostname` test (CMD: phase, first round):
 
-Grok returned 402 (OpenRouter credits) — a billing issue, not a code bug.
+| Method | Winner | Score |
+|--------|--------|-------|
+| cross-vote | gpt (3 votes) | Diverse frontier judges preferred concise CMD:ls |
+| cheap-vote | kimi/grok (2 each) | Cheap judge disagreed with frontier |
+| cross-rate | kimi (92/100) | Highest absolute score |
+| cheap-rate | ds-r1 (90/100) | Cheap judge rated hallucination highly |
+
+On `hostname` test (answer phase, all correct):
+
+| Method | Winner | Score |
+|--------|--------|-------|
+| cross-vote | glm/deepseek/gemini (2 each) | Three-way tie on identical answers |
+| cheap-vote | glm (5 votes) | Strong cheap-judge preference for terse style |
+| cross-rate | gemini (100/100) | Perfect score from diverse judges |
+| cheap-rate | 5 models tied (100/100) | Cheap judge gave perfect scores to most |
+
+### Key Finding: Rating Cannot Detect Hallucination
+
+DeepSeek-R1 confabulated a hostname (`linux-machine-42`) before the command even ran — the classic "platonic" failure mode. Yet cross-rate gave it 83/100 because the *format* looked authoritative. The rating judge saw one response in isolation with no ground truth, so a confident-sounding wrong answer scored well.
+
+The A/B voting method is more resistant: when comparing ds-r1's verbose confabulated response against a clean `CMD:hostname`, the comparator looks more protocol-compliant and wins. Voting evaluates responses *relative* to each other, which exposes quality differences that absolute scoring misses.
+
+**Implication**: for grounding-sensitive tasks (where correctness matters more than style), A/B voting is the better fusion method. For style/formatting preferences where all answers are correct, rating and voting give similar signal. The ideal fusion combines both: vote to find the best response, rate to sanity-check its absolute quality.
 
 ### Running
 
@@ -286,7 +319,7 @@ Same API keys as multi_agent. Run interactively:
 python3 fusion_agent.py
 ```
 
-All 10 models respond in parallel, then both voting rounds fire in parallel, then vote tallies and the winning response are shown. Top cross-vote winner drives CMD: execution.
+All 10 models respond in parallel, then all 4 fusion methods fire in parallel, then vote tallies, scores, and the winning response are shown. Top cross-vote winner drives CMD: execution.
 
 ## Conclusion
 
@@ -304,5 +337,5 @@ But capability is now sufficient. All 10 frontier models follow the protocol, ex
 - `gemini_agent.py` — 8 lines, Gemini CLI version
 - `meta_agent.py` — 11 lines, parallel claude+gemini fusion (Anthropic API + gemini CLI)
 - `multi_agent.py` — 52 lines, 10 frontier models in parallel (5 API keys, stdlib only)
-- `fusion_agent.py` — 62 lines, 10 models + cross-vote and cheap-vote (10 judges each, aggregated wins)
+- `fusion_agent.py` — ~70 lines, 10 models + 4 fusion methods (cross/cheap × vote/rate), all parallel
 - `test_all.py` — 17 lines, test harness for all agents
