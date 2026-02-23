@@ -16,13 +16,7 @@ def _try(p=PORT):
 
 def _bg(m, p):
     S.Popen([_vpy(), '-c', f"from ui.{m} import run;run({p})"], start_new_session=True, stdout=S.DEVNULL, stderr=None, env={**os.environ, 'PYTHONPATH': _LIB})
-    time.sleep(0.3); W.open(_url(p)); print(f'UI on {_url(p)}')
-
-def _lan():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80)); ip = s.getsockname()[0]; s.close(); return ip
-    except Exception: return None
+    time.sleep(0.3); W.open(_url(p))
 
 _TERMUX = os.path.isdir('/data/data/com.termux')
 def _plist(): return os.path.expanduser('~/Library/LaunchAgents/com.a.ui.plist')
@@ -78,19 +72,17 @@ def _svc_on(m='ui_full', p=PORT):
     return False
 
 def run():
-    a, M = sys.argv[2:], {'1': 'ui_full', '2': 'ui_xterm'}
+    a = sys.argv[2:]
     if a and a[0][0] == 'k':
         S.run(['pkill', '-9', '-f', 'ui.ui_']); print('Killed (service will restart)')
     elif a and a[0] == 'on':
         if _svc_on(): print(f'UI service on — {_url(PORT)}')
-        else: print('No service manager (use a ui 1)'); sys.exit(1)
+        else: print('No service manager (use a ui)'); sys.exit(1)
     elif a and a[0] == 'off':
         _svc_off(); S.run(['pkill', '-9', '-f', 'ui.ui_']); print('UI service off')
-    elif a and (m := M.get(a[0])):
-        p = int(a[1]) if len(a) > 1 and a[1].isdigit() else PORT
-        _try(p) or _bg(m, p)
-        lip = _lan()
-        if lip: print(f'     http://{lip}:{p}')
-    else: print("a ui 1    full (cmd+term)\na ui 2    xterm only\na ui on   auto-start service\na ui off  stop service\na ui k    kill all")
+    else:
+        p = int(a[0]) if a and a[0].isdigit() else PORT
+        _try(p) or _bg('ui_full', p)
+        print(f"{_url(p)}\n  on  auto-start service\n  off stop service\n  k   kill")
 
 if __name__ == '__main__': run()
