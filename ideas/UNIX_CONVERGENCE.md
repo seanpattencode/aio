@@ -260,3 +260,64 @@ Everyone building agent infrastructure is either:
 Option 3 is the cheapest to build, the easiest to debug, and the most aligned with what agents actually do when they execute. It's also the option that ages best, because Unix isn't going anywhere.
 
 **You're not building an agent framework. You're building the thinnest possible layer between agents and the platform they already run on.**
+
+---
+
+## The Axiom Provider
+
+### Transcript (verbatim)
+
+> linus joked that he was our god but to ai agents being the wxiom provierr is probably more eseentuwl.
+
+---
+
+### The Asymmetry
+
+Linus Torvalds joked "I am your god" to Linux users. For humans, it's a joke. Humans can:
+- Switch operating systems
+- Ignore the platform's incentives
+- Build abstractions that hide the OS entirely
+- Think in ways the platform doesn't dictate
+
+For AI agents, it's not a joke. Agents:
+- Cannot switch their runtime (they run where they're deployed)
+- Cannot ignore platform incentives (they use the tools available)
+- Cannot think outside what their environment provides
+- Converge on platform axioms by default because they have no alternative
+
+When a human uses Linux, Linux *suggests*. When an agent uses Linux, Linux *dictates*. The agent's entire action space — every tool call, every file operation, every process it spawns — is defined by what the platform permits. The agent doesn't have opinions about architecture. It has a runtime.
+
+### What "Axiom Provider" Means
+
+In mathematics, axioms define what's true within a system. Everything provable follows from the axioms. You can't prove things outside them. You can't argue with them from inside.
+
+For AI agents, the platform is the axiom set:
+
+| Mathematical axioms | Platform axioms |
+|---|---|
+| Define what can be proved | Define what can be done |
+| Constrain all theorems | Constrain all agent actions |
+| Chosen once, everything follows | Set at deployment, everything follows |
+| Can't be questioned from within | Agent can't escape its sandbox |
+
+The axiom provider isn't the person who builds *on* the platform. It's the person who builds the platform itself. Ritchie and Thompson provided the axioms. Torvalds maintains them. Everyone building on top — including every AI agent — is deriving theorems within that axiom set.
+
+### The Hierarchy of Influence
+
+```
+Axiom providers     (Ritchie, Thompson, Torvalds — define what's possible)
+        ↓
+Platform builders   (git, ssh, bash — define what's easy)
+        ↓
+Tool builders       (agent frameworks, wrappers — define what's default)
+        ↓
+Agents              (derive actions from the axioms above)
+```
+
+For humans, you can jump levels. A human can bypass their tools, rewrite their platform, even modify their kernel. Agency lets you violate the hierarchy.
+
+For AI agents, the hierarchy is absolute. An agent cannot modify its kernel. It cannot change what `bash` does. It cannot decide files shouldn't be the interface. It operates within the axioms or it doesn't operate.
+
+This makes the axiom provider relationship to AI agents fundamentally different from the axiom provider relationship to humans. For humans, Linus is a convenience. For agents, the platform is reality itself.
+
+**Whoever controls the platform axioms controls what agents converge on. Not by telling them what to do — by defining what's possible.**
