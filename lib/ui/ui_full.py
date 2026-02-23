@@ -1,4 +1,4 @@
-import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, socket, time; from aiohttp import web; from concurrent.futures import ThreadPoolExecutor
+import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, time; from html import escape as E; from aiohttp import web
 
 # terminal is the API: ALL logic routes through local terminal commands (the `a` binary)
 # so AI agents and humans can debug in terminal and know logic works identically in UI.
@@ -8,6 +8,9 @@ import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, soc
 # all terminal ops should be tmux sessions — inspectable via tmux capture-pane,
 # controllable via tmux send-keys, debuggable by attaching: tmux attach -t <session>.
 # single-page app: all views in one HTML, show/hide for instant switching
+# <1ms view transitions are mandatory. all data is server-side prerendered into
+# the HTML so view switching is a pure CSS display toggle — no fetch, no render.
+# never add client-side data fetching to show(). if a view needs data, prerender it.
 # bookmarkable flat paths via pushState: /term /note work on reload + cross-device
 _D = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 _A, _G = f'{_D}/a', f'{_D}/adata/git'
@@ -38,15 +41,15 @@ HTML = '''<!doctype html>
   </div>
 </div>
 <div id=v_jobs style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff">
-  <select id=jp style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option value="">loading...</option></select>
-  <select id=jd style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option value="">local</option></select>
+  <select id=jp style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">__PO__</select>
+  <select id=jd style="width:95vw;font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">__DO__</select>
   <div style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=jc placeholder="prompt" onkeydown="if(event.key==='Enter')runjob()" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <select id=jn style="font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
     <label style="color:#4af;font-size:18px;display:flex;align-items:center;gap:4px"><input type=checkbox id=jpr>PR</label>
     <button onclick="runjob()" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
   </div>
-  <div id=jl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px;font-family:monospace;font-size:14px;white-space:pre;color:#aaa"></div>
+  <div id=jl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px;font-family:monospace;font-size:14px;white-space:pre;color:#aaa">__JO__</div>
 </div>
 <div id=v_note style="display:none;height:100vh;flex-direction:column;padding-top:20px;align-items:center">
   <form id=nf style="display:flex;gap:10px;width:95vw;align-items:center">
@@ -54,25 +57,21 @@ HTML = '''<!doctype html>
     <button type=submit style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">save</button>
     <button type=button onclick="go('/term')" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">term</button>
   </form>
-  <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px"></div>
+  <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px">__NO__</div>
 </div>
 <div id=v_dc style="position:fixed;inset:0;background:#000;color:red;text-align:center;padding-top:45vh;display:none">not connected</div>
 <script>
 var views={'/':'v_index','/jobs':'v_jobs','/term':'v_term','/note':'v_note'}, T, F, W;
 function go(p){history.pushState(null,'',p);show(p);}
-function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit();T.focus()},0);if(p==='/note')loadn();if(p==='/jobs')loadjobs();}
+function show(p){for(var k in views)document.getElementById(views[k]).style.display=k===p?(k==='/term'?'block':'flex'):'none';if(p==='/term'&&F)setTimeout(function(){F.fit();T.focus()},0);}
 function arcn(f,el){fetch('/api/note/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({f:f})});el.parentElement.remove();}
-function loadn(){fetch('/api/notes').then(function(r){return r.json()}).then(function(d){nl.innerHTML=d.map(function(n){return'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\\''+n.f+'\\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>'+n.t+'</span></div>'}).join('');});}
-function loadjobs(){fetch('/api/jobs').then(function(r){return r.text()}).then(function(d){
-  var h=d;fetch('/api/job-status').then(function(r){return r.json()}).then(function(js){
-    if(js.length){h+='\\n\\n--- Job PRs ---\\n';js.forEach(function(j){
-      h+=j.status+(j.step?' ['+j.step+']':'')+' '+j.name;
-      if(j.session)h+=' ('+j.session+')';h+='\\n';});}
-    jl.textContent=h;});});}
+function loadjobs(){Promise.all([fetch('/api/jobs').then(function(r){return r.text()}),fetch('/api/job-status').then(function(r){return r.json()})]).then(function(d){
+  var h=d[0];if(d[1].length){h+='\\n\\n--- Job PRs ---\\n';d[1].forEach(function(j){
+    h+=j.status+(j.step?' ['+j.step+']':'')+' '+j.name;
+    if(j.session)h+=' ('+j.session+')';h+='\\n';});}
+  jl.textContent=h;});}
 function ws(d){if(W&&W.readyState===1)W.send(d);}
 function runjob(){var v=jc.value.trim(),p=jp.value,n=parseInt(jn.value),d=jd.value,pr=jpr.checked;if(!v)return;fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:v,project:p,count:n,device:d,pr:pr})}).then(function(r){return r.json()}).then(function(r){jc.value='';jc.placeholder=r.command||r.error;loadjobs();});}
-fetch('/api/projects').then(function(r){return r.json()}).then(function(d){jp.innerHTML='<option value="">~ (home)</option>';d.forEach(function(p){jp.innerHTML+='<option value="'+p.path+'">'+p.name+'</option>';});});
-fetch('/api/devices').then(function(r){return r.json()}).then(function(d){jd.innerHTML='<option value="">local</option>';d.forEach(function(h){jd.innerHTML+='<option value="'+h.name+'"'+(h.live?'':' style="color:#666"')+'>'+h.name+(h.live?' ✓':' ✗')+'</option>';});});
 window.onpopstate=function(){show(location.pathname);};
 try{
   T=new Terminal();F=new(FitAddon.FitAddon||FitAddon)();
@@ -92,13 +91,43 @@ nf.onsubmit=function(e){e.preventDefault();var c=nc.value.trim();if(c){fetch('/n
 show(views[location.pathname]?location.pathname:'/');
 </script>'''
 
-async def spa(r): return web.Response(text=HTML, content_type='text/html', headers={'Cache-Control':'no-store'})
+async def spa(r):
+    import sqlite3
+    po = '<option value="">~ (home)</option>'
+    pd = f'{_G}/workspace/projects'
+    if os.path.isdir(pd):
+        for f in sorted(os.listdir(pd)):
+            if f.endswith('.txt'):
+                kv = _kv(f'{pd}/{f}')
+                if 'Name' in kv:
+                    p = (kv.get('Path','') or f'~/projects/{kv["Name"]}').replace('~',os.path.expanduser('~'))
+                    po += f'<option value="{E(p)}">{E(kv["Name"])}</option>'
+    do = '<option value="">local</option>'
+    dd = f'{_G}/ssh'
+    if os.path.isdir(dd):
+        for f in sorted(os.listdir(dd)):
+            if f.endswith('.txt'):
+                kv = _kv(f'{dd}/{f}')
+                if 'Name' in kv: do += f'<option value="{kv["Name"]}">{kv["Name"]}</option>'
+    no = ''
+    nd = f'{_G}/notes'
+    if os.path.isdir(nd):
+        for f in sorted(os.listdir(nd), key=lambda x: x.rsplit('_',1)[-1] if '_' in x else '0', reverse=True):
+            if not f.endswith('.txt') or f.startswith('.'): continue
+            for l in open(f'{nd}/{f}'):
+                if l.startswith('Text: '): no += f'<div style="padding:6px 0;color:#aaa;border-bottom:1px solid #222;display:flex;align-items:center"><button onclick="arcn(\'{f}\',this)" style="background:none;border:1px solid #555;color:#888;padding:12px 20px;margin-right:10px;border-radius:4px;cursor:pointer;font-size:16px">x</button><span>{E(l[6:].strip())}</span></div>'; break
+    jo = S.run([_A,'jobs'],capture_output=True,text=True,timeout=10).stdout or 'No jobs'
+    dp = f'{_D}/adata/local/aio.db'
+    if os.path.exists(dp):
+        c = sqlite3.connect(dp); c.row_factory = sqlite3.Row
+        rows = c.execute("SELECT name,step,status,session FROM jobs ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close()
+        if rows:
+            jo += '\n\n--- Job PRs ---\n'
+            for row in rows: jo += row['status']+(f' [{row["step"]}]' if row['step'] else '')+' '+row['name']+(f' ({row["session"]})' if row['session'] else '')+'\n'
+    h = HTML.replace('__PO__',po).replace('__DO__',do).replace('__NO__',no).replace('__JO__',E(jo))
+    return web.Response(text=h, content_type='text/html', headers={'Cache-Control':'no-store'})
 
 async def restart(r): os.execv(sys.executable, [sys.executable] + sys.argv)
-# xterm view is a plain user shell (no tmux) — interactive terminal for manual use.
-# tmux is used for background jobs only (POST /api/jobs), where sessions must be
-# inspectable (tmux capture-pane -t <job>), controllable (tmux send-keys), and
-# debuggable by both humans and AI agents (tmux attach -t <job>).
 async def term(r):
     ws = web.WebSocketResponse(); await ws.prepare(r); m, s = pty.openpty()
     env = {k: v for k, v in os.environ.items() if k not in ('TMUX', 'TMUX_PANE')}; env['TERM'] = 'xterm-256color'
@@ -115,34 +144,6 @@ async def term(r):
         elif msg.type == web.WSMsgType.BINARY: os.write(m, msg.data)
     loop.remove_reader(m); os.close(m)
     return ws
-
-async def projects_api(r):
-    d = f'{_G}/workspace/projects'; ps = []
-    if os.path.isdir(d):
-        for f in sorted(os.listdir(d)):
-            if not f.endswith('.txt'): continue
-            kv = _kv(f'{d}/{f}')
-            if 'Name' in kv:
-                p = kv.get('Path', '') or f'~/projects/{kv["Name"]}'
-                ps.append({'name': kv['Name'], 'path': p.replace('~', os.path.expanduser('~'))})
-    ps.sort(key=lambda x: x['name'])
-    return web.json_response(ps)
-
-def _up(h):
-    try: s = socket.socket(); s.settimeout(0.5); hp = h.rsplit(':', 1); s.connect((hp[0].split('@')[-1], int(hp[1]) if len(hp) > 1 else 22)); s.close(); return True
-    except: return False
-
-async def devices_api(r):
-    d = f'{_G}/ssh'; hosts = []
-    if os.path.isdir(d):
-        for f in sorted(os.listdir(d)):
-            if not f.endswith('.txt'): continue
-            kv = _kv(f'{d}/{f}')
-            if 'Name' in kv and 'Host' in kv: hosts.append({'name': kv['Name'], 'host': kv['Host']})
-    with ThreadPoolExecutor(8) as ex: live = list(ex.map(lambda h: _up(h['host']), hosts))
-    for i, h in enumerate(hosts): h['live'] = live[i]
-    hosts.sort(key=lambda x: (-x['live'], x['name']))
-    return web.json_response(hosts)
 
 async def jobs_api(r):
     if r.method == 'POST':
@@ -188,15 +189,6 @@ async def note_api(r):
     return web.Response(text='')
 async def note_archive(r): d=await r.json();f=os.path.basename(d.get('f',''));nd=f'{_G}/notes';ad=f'{nd}/.archive';os.makedirs(ad,exist_ok=True);p=f'{nd}/{f}';os.path.isfile(p) and os.rename(p,f'{ad}/{f}');return web.Response(text='ok')
 
-async def notes_list(r):
-    d = f'{_G}/notes'; ns = []
-    if os.path.isdir(d):
-        for f in sorted(os.listdir(d), key=lambda x: x.rsplit('_', 1)[-1] if '_' in x else '0', reverse=True):
-            if not f.endswith('.txt') or f.startswith('.'): continue
-            for line in open(f'{d}/{f}'):
-                if line.startswith('Text: '): ns.append({'t':line[6:].strip(),'f':f}); break
-    return web.json_response(ns)
-
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/projects', projects_api), web.get('/api/devices', devices_api), web.get('/api/notes', notes_list), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api), web.post('/api/note/archive', note_archive)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api), web.post('/api/note/archive', note_archive)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
