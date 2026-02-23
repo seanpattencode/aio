@@ -1,12 +1,41 @@
 #!/usr/bin/env python3
-import subprocess,shutil,os,re,sys
-from base import send, save
+"""a agent run managers          — scan for new agent frameworks
+   a agent run managers --send   — digest + email new finds"""
+import re,sys,os
+from pathlib import Path
+from base import send, save, ask_gemini
 
-gemini=shutil.which('gemini')or os.path.expanduser('~/.local/bin/gemini')
-r=subprocess.run([gemini,'-p','Search GitHub for most popular AI agent managers/frameworks. Reply ONLY:\n<top1>name:stars:1-line desc</top1>\n<top2>name:stars:1-line desc</top2>\n<top3>name:stars:1-line desc</top3>\n<trend>10 words on trends</trend>'],capture_output=True,text=True,timeout=120)
-t1,t2,t3,tr=re.search(r'<top1>([^<]+)</top1>',r.stdout),re.search(r'<top2>([^<]+)</top2>',r.stdout),re.search(r'<top3>([^<]+)</top3>',r.stdout),re.search(r'<trend>([^<]+)</trend>',r.stdout)
-rpt=f"1. {t1[1]}\n2. {t2[1]}\n3. {t3[1]}\n\nTrend: {tr[1].strip()}" if t1 and t2 and t3 and tr else r.stdout.strip()
-out=f"AI Agent Managers:\n{rpt}"
-print(out)
-save("g-managers",out)
-if "--send" in sys.argv: send("AI Agent Managers Report",rpt)
+D=Path(os.path.dirname(os.path.realpath(__file__)),'..','adata','git','rss')
+KNOWN=D/'managers.known'
+LOG=D/'managers.log'
+
+def load_known():
+    return set(KNOWN.read_text().splitlines()) if KNOWN.exists() else set()
+
+def scan():
+    r=ask_gemini('Search GitHub for AI agent managers, orchestrators, and frameworks. '
+        'Find 15 including any new/emerging ones. Reply ONLY with lines of: github_url stars short_desc\n'
+        'Example: https://github.com/langchain-ai/langchain 100k LLM app framework\n'
+        'One per line, nothing else.',timeout=180)
+    items=[]
+    for line in r.strip().splitlines():
+        m=re.match(r'(https://github\.com/[^\s]+)\s+(\S+)\s+(.*)',line)
+        if m: items.append((m[1].rstrip('/').lower(),m[2],m[3].strip()))
+    return items
+
+if '--send' in sys.argv:
+    if not LOG.exists() or not LOG.stat().st_size:
+        print("No new agent frameworks accumulated"); sys.exit(0)
+    arts=LOG.read_text(); LOG.write_text('')
+    n=len([l for l in arts.splitlines() if l.strip()])
+    print(arts); save("g-managers",arts); send(f"New Agent Frameworks ({n})",arts)
+else:
+    D.mkdir(parents=True,exist_ok=True)
+    known=load_known()
+    new=[(url,stars,desc) for url,stars,desc in scan() if url not in known]
+    if not new: print("No new frameworks"); sys.exit(0)
+    with open(KNOWN,'a') as f:
+        for url,_,_ in new: f.write(url+'\n')
+    with open(LOG,'a') as f:
+        for url,stars,desc in new: f.write(f"* {url} ({stars}) — {desc}\n")
+    print(f"{len(new)} new frameworks found")
