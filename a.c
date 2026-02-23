@@ -78,7 +78,7 @@ _shell_funcs() {
         cat >> "$RC" << 'AFUNC'
 a() {
     local dd="$_ADD"
-    [[ -z "$1" ]] && { [[ -t 1 ]] && { command a i; return; }; [[ -f $dd/help_cache.txt ]] && printf '%s\n' "$(<"$dd/help_cache.txt")" || command a; return; }
+    [[ -z "$1" ]] && { [[ -t 1 ]] && set -- i || { [[ -f $dd/help_cache.txt ]] && printf '%s\n' "$(<"$dd/help_cache.txt")" || command a; return; }; }
     local d="${1/#\~/$HOME}"; [[ "$1" == "/projects/"* ]] && d="$HOME$1"
     [[ -d "$d" ]] && { printf '📂 %s\n' "$d"; cd "$d"; return; }
     [[ "$1" == *.py && -f "$1" ]] && { local py=python3 ev=1; [[ -n "$VIRTUAL_ENV" ]] && py="$VIRTUAL_ENV/bin/python" ev=0; [[ -x .venv/bin/python ]] && py=.venv/bin/python ev=0; local s=$(($(date +%s%N)/1000000)); if command -v uv &>/dev/null && [[ -f pyproject.toml || -f uv.lock ]]; then uv run python "$@"; ev=0; else $py "$@"; fi; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> $dd/timing.jsonl; [[ $r -ne 0 && $ev -ne 0 ]] && printf '  try: a c fix python env for this project\n'; return $r; }
@@ -444,7 +444,7 @@ static const cmd_t CMDS[] = {
     {"ssh",cmd_ssh},{"ssh add",cmd_ssh},{"ssh all",cmd_ssh},{"ssh rm",cmd_ssh},
     {"ssh self",cmd_ssh},{"ssh setup",cmd_ssh},{"ssh start",cmd_ssh},{"ssh stop",cmd_ssh},
     {"sync",cmd_sync},{"t",cmd_task},{"task",cmd_task},
-    {"tree",cmd_tree},{"ui",cmd_ui},{"uninstall",cmd_uninstall},
+    {"tree",cmd_tree},{"u",cmd_update},{"ui",cmd_ui},{"uninstall",cmd_uninstall},
     {"update",cmd_update},{"watch",cmd_watch},{"web",cmd_web},
     {"work",cmd_work},{"x",cmd_x},
 };
