@@ -257,9 +257,38 @@ All 10 models followed the CMD: protocol on first prompt, executed `ls`, and ret
 - `gemini-3-flash-preview` and `gemini-3.1-pro-preview` are listed in the model catalog but returned 404 during testing (may require `v1alpha` endpoint or have restricted access)
 - The Gemini CLI (`gemini -p`) used by `gemini_agent.py` bypasses the CMD: protocol using its own built-in tools — the REST API version in `multi_agent.py` does not have this issue since it has no tool access
 
+## Inference Fusion
+
+`fusion_agent.py` adds two binary voting methods on top of the 10-model parallel architecture. 63 lines, stdlib only.
+
+### Method 1: Cross-Vote (Diverse Judges)
+
+After all 10 models respond in parallel, responses are randomly shuffled into 5 pairs. Each pair is judged by a model from a *different* pair — ensuring no model judges its own response. Judge assignment: `items[(i*2+2) % 10]` guarantees non-self-judging. All 5 judgments run in parallel via OpenRouter (one API, any model). Total: 2 parallel inference rounds (respond + judge).
+
+### Method 2: Cheap-Vote (Fast Judge)
+
+Same 5 pairs, but all judged by one fast cheap model (`gpt-4.1-mini` via OpenRouter). All 5 judgments parallel. Cheaper and faster than cross-vote — the judge model is ~100x cheaper per token than frontier models. Tests whether a small model can reliably pick the better response from two frontier outputs.
+
+### Fusion Cost
+
+The judging prompt is minimal: "Q:{question}\nA:{response_a[:500]}\nB:{response_b[:500]}" with system prompt "Reply ONLY A or B." Each judgment is ~200 tokens input, 1 token output. 5 judgments in parallel = latency of one short inference call. Fusion is effectively free relative to the response generation step.
+
+### Results
+
+On `hostname` test: all 10 models gave identical correct answers. Voting differentiated on formatting (bold, backticks, plain text). Cross-vote and cheap-vote agreed on 3-4 of 5 winners, diverging on 1-2 where formatting preferences differed. When responses are substantively identical, voting is noise. When responses genuinely differ (e.g., different commands, different interpretations), voting becomes signal.
+
+### Running
+
+Same API keys as multi_agent. Run interactively:
+```
+python3 fusion_agent.py
+```
+
+All 10 models respond in parallel, then both voting methods run in parallel, then winners are shown. Claude is preferred for driving CMD: execution among cross-vote winners.
+
 ## Conclusion
 
-The agent is done. 7-52 lines of Python, 33 lines of C. The loop runs at register speed. The architecture scales from a 7B local model to 10 frontier models in parallel with zero structural changes. The capability gap between models is the only variable.
+The agent is done. 7-63 lines of Python, 33 lines of C. The loop runs at register speed. The architecture scales from a 7B local model to 10 frontier models in parallel with zero structural changes. The capability gap between models is the only variable.
 
 But capability is now sufficient. All 10 frontier models follow the protocol, execute real commands, read real output, give grounded answers. The bottleneck is no longer the agent, the model, or the architecture. It's the quality of instructions — what you point it at and what you ask it to do. Potential is there. The question is using it on the most valuable thing.
 
@@ -273,4 +302,5 @@ But capability is now sufficient. All 10 frontier models follow the protocol, ex
 - `gemini_agent.py` — 8 lines, Gemini CLI version
 - `meta_agent.py` — 11 lines, parallel claude+gemini fusion (Anthropic API + gemini CLI)
 - `multi_agent.py` — 52 lines, 10 frontier models in parallel (5 API keys, stdlib only)
+- `fusion_agent.py` — 63 lines, 10 models + cross-vote and cheap-vote binary fusion
 - `test_all.py` — 17 lines, test harness for all agents
