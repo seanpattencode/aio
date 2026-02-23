@@ -4,7 +4,7 @@ import subprocess as S,os
 D=os.path.dirname(os.path.abspath(__file__))
 PY="/home/seanpatten/micromamba/bin/python3"
 E={k:v for k,v in os.environ.items()if k!="CLAUDECODE"}
-agents=[("gemini_agent",15),("claude_agent",30),("cc2_agent",45),("meta_agent",60)]
+agents=[("gemini_agent",15),("claude_agent",30),("cc2_agent",45),("meta_agent",60),("multi_agent",120)]
 for name,t in agents:
     print(f"\n{'='*40}\n[{name}]")
     try:

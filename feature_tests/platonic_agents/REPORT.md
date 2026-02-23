@@ -201,11 +201,67 @@ The meta_agent uses Claude's response to drive command execution. Gemini's paral
 
 Claude repeated CMD:ls on successive iterations because the flat string history format (`U:...`, `A:...`) lacks the structured message context that claude_agent.py provides. The 3-iteration cap prevents infinite loops.
 
+## 10-Model Parallel Agent
+
+`multi_agent.py` extends the meta_agent architecture to 10 frontier models queried in parallel via ThreadPool. 52 lines, stdlib only (urllib, json, subprocess, multiprocessing).
+
+### Models
+
+| # | Name | Provider | API | Model ID |
+|---|------|----------|-----|----------|
+| 1 | claude | Anthropic | Direct | claude-opus-4-6 |
+| 2 | gemini | Google | Direct | gemini-2.5-flash |
+| 3 | gpt | OpenAI | Direct | gpt-4.1 |
+| 4 | deepseek | DeepSeek | Direct | deepseek-chat |
+| 5 | grok | xAI | OpenRouter | x-ai/grok-4 |
+| 6 | mistral | Mistral | OpenRouter | mistralai/mistral-large-2512 |
+| 7 | qwen | Alibaba | OpenRouter | qwen/qwen3-235b-a22b-07-25 |
+| 8 | kimi | Moonshot | OpenRouter | moonshotai/kimi-k2.5 |
+| 9 | glm | Z.ai | OpenRouter | z-ai/glm-4.7-20251222 |
+| 10 | ds-r1 | DeepSeek | OpenRouter | deepseek/deepseek-r1 |
+
+### API Architecture
+
+Three API formats cover all 10 models:
+- **Anthropic**: custom format (`/v1/messages`, `system` field, `content[0].text`)
+- **Gemini**: Google format (`generateContent`, `contents[].parts[].text`, API key in URL)
+- **OpenAI-compatible**: shared by OpenAI, DeepSeek, and OpenRouter (`/v1/chat/completions`, Bearer token, `choices[0].message.content`)
+
+The `oai()` function handles all OpenAI-compatible APIs — 8 of 10 models use it (6 via OpenRouter, plus OpenAI and DeepSeek direct). Only Anthropic and Gemini need custom functions.
+
+### Running
+
+Requires 5 API keys in `adata/git/login/api_keys.env`:
+```
+ANTHROPIC_API_KEY=...
+GOOGLE_API_KEY=...
+OPENAI_API_KEY=...
+DEEPSEEK_API_KEY=...
+OPENROUTER_API_KEY=...
+```
+
+Run interactively:
+```
+python3 multi_agent.py
+```
+
+All 10 models are queried in parallel on each prompt. Claude's response drives command execution (preferred for CMD: extraction). All responses are printed with `[model_name]` prefixes for comparison.
+
+### Results
+
+All 10 models followed the CMD: protocol on first prompt, executed `ls`, and returned grounded file listings. The "Now give a plain text answer" suffix in command output history prevents the repeat-loop issue seen in meta_agent.
+
+### Gemini API Notes
+
+- `gemini-2.5-flash` works reliably via REST API with API key in URL
+- `gemini-3-flash-preview` and `gemini-3.1-pro-preview` are listed in the model catalog but returned 404 during testing (may require `v1alpha` endpoint or have restricted access)
+- The Gemini CLI (`gemini -p`) used by `gemini_agent.py` bypasses the CMD: protocol using its own built-in tools — the REST API version in `multi_agent.py` does not have this issue since it has no tool access
+
 ## Conclusion
 
-The agent is done. 7-11 lines of Python, 33 lines of C. The loop runs at register speed. The architecture scales from a 7B local model to opus with zero code changes. The capability gap between models is the only variable.
+The agent is done. 7-52 lines of Python, 33 lines of C. The loop runs at register speed. The architecture scales from a 7B local model to 10 frontier models in parallel with zero structural changes. The capability gap between models is the only variable.
 
-But capability is now sufficient. Claude follows the protocol, executes real commands, reads real output, gives grounded answers. The bottleneck is no longer the agent, the model, or the architecture. It's the quality of instructions — what you point it at and what you ask it to do. Potential is there. The question is using it on the most valuable thing.
+But capability is now sufficient. All 10 frontier models follow the protocol, execute real commands, read real output, give grounded answers. The bottleneck is no longer the agent, the model, or the architecture. It's the quality of instructions — what you point it at and what you ask it to do. Potential is there. The question is using it on the most valuable thing.
 
 ## Files
 
@@ -216,4 +272,5 @@ But capability is now sufficient. Claude follows the protocol, executes real com
 - `cc2_agent.py` — 7 lines, Claude Code CLI version (`--tools ""` forces CMD: protocol)
 - `gemini_agent.py` — 8 lines, Gemini CLI version
 - `meta_agent.py` — 11 lines, parallel claude+gemini fusion (Anthropic API + gemini CLI)
+- `multi_agent.py` — 52 lines, 10 frontier models in parallel (5 API keys, stdlib only)
 - `test_all.py` — 17 lines, test harness for all agents
