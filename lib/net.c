@@ -65,7 +65,7 @@ static int cmd_log(int argc, char **argv) {
     char c[B], out[256];
     printf("%-5s %-8s %-12s %-40s %s\n", "DATE", "TIME", "DEVICE", "CMD", "DIR");
     fflush(stdout);
-    snprintf(c, B, "cat $(ls '%s'/*.txt 2>/dev/null | sort | tail -30) 2>/dev/null"
+    snprintf(c, B, "cat $(ls '%s'/*.txt 2>/dev/null | sort 2>/dev/null | tail -30) 2>/dev/null"
         " | awk '/^[0-9][0-9]\\/[0-9][0-9] /{"
         "split($2,t,\":\");h=int(t[1]);m=t[2];ap=\"AM\";"
         "if(h>=12){ap=\"PM\";if(h>12)h-=12}if(h==0)h=12;"
@@ -112,7 +112,7 @@ static int cmd_log(int argc, char **argv) {
         git_ok && jlogs ? "\xe2\x9c\x93" : "x", jlogs, ago);
     if (git_ok) printf("  %s %s\n", "\xe2\x86\x92", gurl);
     /* JSONL backup: newest .jsonl in backup dirs (not .log — those are old session logs) */
-    snprintf(c, B, "find '%s/backup' -name '*.jsonl' -maxdepth 3 -printf '%%T@ %%p\\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-", AROOT);
+    snprintf(c, B, "find '%s/backup' -name '*.jsonl' -maxdepth 3 -printf '%%T@ %%p\\n' 2>/dev/null | sort -rn 2>/dev/null | head -1 | cut -d' ' -f2-", AROOT);
     pcmd(c, out, 256); out[strcspn(out,"\n")] = 0;
     int bak_age = (out[0] && !stat(out, &fst)) ? (int)(now - fst.st_mtime) : -1;
     if (bak_age >= 0) AGO(ago, 32, bak_age); else snprintf(ago, 32, "never");
