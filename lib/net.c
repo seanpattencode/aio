@@ -41,25 +41,9 @@ static int cmd_log(int argc, char **argv) {
 
     char adir[P]; snprintf(adir, P, "%s/git/activity", AROOT);
 
-    if (sub && !strcmp(sub, "all")) {
-        char c[B]; snprintf(c, B, "cat $(ls '%s'/*.txt 2>/dev/null | sort) 2>/dev/null", adir);
-        (void)!system(c); return 0;
-    }
-
-    if (sub && sub[0] >= '0' && sub[0] <= '9') {
-        /* View transcript by number */
-        mkdirp(LOGDIR);
-        char c[B], out[B*4];
-        snprintf(c, B, "ls -t '%s'/*.log 2>/dev/null | head -20", LOGDIR);
-        pcmd(c, out, sizeof(out));
-        char *lines[20]; int n = 0; char *p = out;
-        while (*p && n < 20) { lines[n++] = p; char *e = strchr(p,'\n'); if(e){*e=0;p=e+1;}else break; }
-        int idx = atoi(sub);
-        if (idx >= 0 && idx < n) {
-            snprintf(c, B, "tmux new-window 'cat \"%s\"; read'", lines[idx]); return (void)!system(c), 0;
-        }
-        return 0;
-    }
+    if (sub && !strcmp(sub, "all")) { perf_disarm();
+        char c[B]; snprintf(c, B, "cat '%s'/*.txt 2>/dev/null", adir);
+        (void)!system(c); return 0; }
 
     /* Default: recent activity — opendir+awk, 1 fork vs 5 */
     char c[B];
@@ -100,18 +84,15 @@ static int cmd_log(int argc, char **argv) {
     time_t now=time(NULL); char ago[32];
     char gdid[64]=""; { char gp[P]; snprintf(gp,P,"%s/backup/%s/.gdrive_id",AROOT,DEV);
         FILE *gf=fopen(gp,"r"); if(gf){if(fgets(gdid,64,gf))gdid[strcspn(gdid,"\n")]=0;fclose(gf);} }
-    int llm_age=llm_new?(int)(now-llm_new):-1;
-    if(llm_age>=0)AGO(ago,32,llm_age);else snprintf(ago,32,"never");
-    printf("\n%s LLM transcripts  %3d  adata/backup/%s/  last: %s\n",nlogs?"\xe2\x9c\x93":"x",nlogs,DEV,ago);
-    if(gdid[0])printf("  \xe2\x86\x92 https://drive.google.com/drive/folders/%s\n",gdid);
-    int job_age=job_new?(int)(now-job_new):-1;
-    if(job_age>=0)AGO(ago,32,job_age);else snprintf(ago,32,"never");
-    printf("%s Job tmux logs    %3d  adata/git/jobs/  last: %s\n",git_ok&&jlogs?"\xe2\x9c\x93":"x",jlogs,ago);
-    if(git_ok)printf("  \xe2\x86\x92 %s\n",gurl);
-    int bak_age=bak_new?(int)(now-bak_new):-1;
-    if(bak_age>=0)AGO(ago,32,bak_age);else snprintf(ago,32,"never");
-    printf("%s JSONL backup          adata/backup/%s/  last: %s\n",nbak?"\xe2\x9c\x93":"x",DEV,ago);
-    if(gdid[0])printf("  \xe2\x86\x92 https://drive.google.com/drive/folders/%s\n",gdid);
+    char bpath[P]; snprintf(bpath,P,"adata/backup/%s/",DEV);
+    #define ROW(t,n,l,p,u) { int a=t?(int)(now-t):-1; if(a>=0)AGO(ago,32,a);else snprintf(ago,32,"never"); \
+        printf("%s %-18s %3d  %-28s last: %s\n",n?"\xe2\x9c\x93":"x",l,n,p,ago); if(u)printf("  \xe2\x86\x92 %s\n",u); }
+    putchar('\n');
+    char gdu[256]; if(gdid[0])snprintf(gdu,256,"https://drive.google.com/drive/folders/%s",gdid);
+    ROW(llm_new,nlogs,"LLM transcripts",bpath,gdid[0]?gdu:NULL)
+    ROW(job_new,jlogs,"Job tmux logs","adata/git/jobs/",git_ok?gurl:NULL)
+    ROW(bak_new,nbak,"JSONL backup",bpath,gdid[0]?gdu:NULL)
+    #undef ROW
     #undef DCOUNT
     #undef AGO
     return 0;
