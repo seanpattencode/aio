@@ -321,9 +321,42 @@ python3 fusion_agent.py
 
 All 10 models respond in parallel, then all 4 fusion methods fire in parallel, then vote tallies, scores, and the winning response are shown. Top cross-vote winner drives CMD: execution.
 
+## Vote-Then-Run
+
+`vote_then_run.py` separates proposal from execution. Previous agents execute commands as they come — whoever emits CMD: first (usually claude) drives the shell. Vote-then-run makes execution a deliberate choice: all 10 models propose, all 10 vote, only the winner's command runs.
+
+### Flow
+
+1. **Propose**: 10 models respond in parallel to the prompt
+2. **Vote**: two parallel voting rounds, each with 10 judges:
+   - **Reasoning+CMD vote**: judges see the full response (reasoning, explanation, command) — tests whether the model's justification improves confidence
+   - **CMD-only vote**: judges see only `CMD:<command>` stripped of reasoning — tests whether the command itself is better regardless of presentation
+3. **Select**: if both votes agree on the winner, high confidence. If they disagree, the reasoning+CMD vote winner is preferred (more context = better judgment)
+4. **Execute**: only the winning command runs
+
+### Results
+
+On `what linux distro is this`:
+- Claude proposed a robust fallback chain: `cat /etc/os-release 2>/dev/null || cat /etc/*-release 2>/dev/null || uname -a`
+- 8 other models proposed the simpler `cat /etc/os-release`
+- Qwen dropped the `CMD:` prefix entirely (protocol failure, excluded from cmd-only vote)
+- **Reasoning+CMD vote**: deepseek and claude tied (3 each) — judges split between claude's robustness and deepseek's clean explanation
+- **CMD-only vote**: 3-way tie ds-r1/gpt/kimi (2 each) — identical commands get random vote distribution
+- **Winner**: deepseek (reasoning+CMD vote winner, votes disagreed)
+
+### Key Finding: Reasoning Affects Voting
+
+When judges see the full response, they can differentiate between models. Claude's fallback chain and deepseek's explanation give judges something to prefer. When stripped to just the command, `cat /etc/os-release` vs `cat /etc/os-release` is indistinguishable — votes become noise. The reasoning+CMD vote is more informative when commands differ; the cmd-only vote is noise when commands are identical but useful when different commands are proposed (it isolates the command quality from presentation bias).
+
+### Running
+
+```
+python3 vote_then_run.py
+```
+
 ## Conclusion
 
-The agent is done. 7-63 lines of Python, 33 lines of C. The loop runs at register speed. The architecture scales from a 7B local model to 10 frontier models in parallel with zero structural changes. The capability gap between models is the only variable.
+The agent is done. 7-70 lines of Python, 33 lines of C. The loop runs at register speed. The architecture scales from a 7B local model to 10 frontier models in parallel with zero structural changes. The capability gap between models is the only variable.
 
 But capability is now sufficient. All 10 frontier models follow the protocol, execute real commands, read real output, give grounded answers. The bottleneck is no longer the agent, the model, or the architecture. It's the quality of instructions — what you point it at and what you ask it to do. Potential is there. The question is using it on the most valuable thing.
 
@@ -338,4 +371,5 @@ But capability is now sufficient. All 10 frontier models follow the protocol, ex
 - `meta_agent.py` — 11 lines, parallel claude+gemini fusion (Anthropic API + gemini CLI)
 - `multi_agent.py` — 52 lines, 10 frontier models in parallel (5 API keys, stdlib only)
 - `fusion_agent.py` — ~70 lines, 10 models + 4 fusion methods (cross/cheap × vote/rate), all parallel
+- `vote_then_run.py` — ~65 lines, vote before execute: reasoning+CMD vs cmd-only parallel voting
 - `test_all.py` — 17 lines, test harness for all agents
