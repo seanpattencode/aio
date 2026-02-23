@@ -4,10 +4,9 @@ static int cmd_project_num(int argc, char **argv, int idx) { (void)argc; (void)a
     if (idx >= 0 && idx < NPJ) {
         proj_t *p=&PJ[idx]; char c[B];
         if (!dexists(p->path) && p->repo[0]) {
-            snprintf(c,B,"%s",p->path); char *sl=strrchr(c,'/'); if(sl)*sl=0;
+            strcpy(c,p->path); char *sl=strrchr(c,'/'); if(sl)*sl=0;
             if(!dexists(c))snprintf(p->path,512,"%s/projects/%s",HOME,p->name);
-            printf("Cloning %s...\n", p->repo);
-            snprintf(c, B, "git clone '%s' '%s'", p->repo, p->path); (void)!system(c);
+            if(!dexists(p->path)){printf("Cloning %s...\n",p->repo);snprintf(c,B,"git clone '%s' '%s'",p->repo,p->path);(void)!system(c);}
         }
         if (!dexists(p->path)) { printf("x %s\n", p->path); return 1; }
         snprintf(c,B,"%s/cd_target",DDIR); writef(c,p->path); printf("%s\n",p->path);
