@@ -234,7 +234,7 @@ install)
     "$BIN/a" ui on 2>/dev/null && ok "UI service (localhost:1111)" || :
     [[ ! -s "$HOME/.tmux.conf" ]] && "$BIN/a" config tmux_conf y 2>/dev/null && ok "tmux config (mouse enabled)" || :
     "$BIN/a" >/dev/null 2>&1 && ok "cache generated" || :
-    command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && "$BIN/a" backup setup 2>/dev/null && ok "sync configured"; } || :
+    command -v gh &>/dev/null && { gh auth status &>/dev/null || { [[ -t 0 ]] && info "GitHub login enables sync" && read -p "Login? (y/n): " yn && [[ "$yn" =~ ^[Yy] ]] && gh auth login && gh auth setup-git; }; gh auth status &>/dev/null && ok "sync configured"; } || :
     # Ensure adata/git exists (after gh auth so clone can work)
     AROOT="$D/adata"; SROOT="$AROOT/git"
     if [[ ! -d "$SROOT/.git" ]]; then
@@ -433,7 +433,7 @@ static const cmd_t CMDS[] = {
     {"--help",cmd_help_full},{"-h",cmd_help_full},
     {"a",cmd_all},{"adb",cmd_adb},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
     {"all",cmd_all},{"ask",cmd_ask},{"attach",cmd_attach},
-    {"backup",cmd_backup},{"cleanup",cmd_cleanup},{"config",cmd_config},
+    {"cleanup",cmd_cleanup},{"config",cmd_config},
     {"copy",cmd_copy},{"dash",cmd_dash},{"deps",cmd_deps},
     {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
     {"e",cmd_e},{"email",cmd_email},{"gdrive",cmd_gdrive},
@@ -466,7 +466,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
 static void perf_arm(const char *cmd) {
     if (getenv("A_BENCH")) return; /* bench children: parent handles timeout */
     if (isdigit(*cmd)) return;
-    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","send","job","pr","hub",NULL};
+    static const char *skip[] = {"push","pull","sync","update","login","ssh","gdrive","mono","email","install","send","job","pr","hub",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
     /* per-device override: adata/git/perf/{DEV}.txt — command:us (microseconds) */

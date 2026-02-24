@@ -111,7 +111,7 @@ static int cmd_hub(int argc, char **argv) {
         hub_t *j=argc>3?hub_find(argv[3]):NULL;
         if(!j) { fprintf(stderr,"x %s?\n",argc>3?argv[3]:"(missing)"); return 1; }
         if(!strcmp(sub,"run")) {
-            char cmd[B]; if(!strncmp(j->p,"aio ",4)) snprintf(cmd,B,"%s %s",G_argv[0],j->p+4);
+            char cmd[B]; if(!strncmp(j->p,"a ",2)) snprintf(cmd,B,"%s %s",G_argv[0],j->p+2);
             else snprintf(cmd,B,"%s",j->p);
             printf("Running %s...\n",j->n); fflush(stdout);
             /* capture output for log */

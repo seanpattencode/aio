@@ -86,7 +86,7 @@ static void gen_icache(void) {
     for (int i=0;i<NPJ;i++) fprintf(f, "%d: %s\tproject\n", i, bname(PJ[i].path));
     for (int i=0;i<NAP;i++) fprintf(f, "%d: %s\tcmd\n", NPJ+i, AP[i].name);
     fputs("add\tregister project\nagent\tai agent run\nall\tall ai sessions\n"
-    "ask\task ai question\nattach\tjoin tmux pane\nbackup\tbackup sync data\n"
+    "ask\task ai question\nattach\tjoin tmux pane\n"
     "cleanup\trm dead sessions\nconfig\tedit config file\ncopy\tscp to hosts\n"
     "dash\tstatus overview\ndeps\tinstall pkg deps\ndiff\tgit diff main\n"
     "dir\tlist directory\ndocs\tproject docs\ndone\tsignal job done\n"
@@ -97,7 +97,7 @@ static void gen_icache(void) {
     "login\tauth services\nls\tlist all\nmonolith\tsave page offline\n"
     "move\tmove project dir\nnote\tquick notes\nperf\tbenchmark timing\n"
     "pr\tcreate pull request\nprompt\tai system prompt\npull\tgit pull\n"
-    "push\tgit push\nrebuild\trecompile binary\nremove\tunregister project\n"
+    "push\tgit push\nremove\tunregister project\n"
     "repo\topen on github\nrevert\tundo git changes\nreview\tai code review\n"
     "run\trun project cmd\nscan\tfind new projects\nsend\tsend to host\n"
     "settings\tview settings\nsetup\tfirst time setup\nssh\tremote hosts\n"
@@ -139,8 +139,6 @@ static int cmd_dir(int argc, char **argv) { (void)argc;(void)argv;
     execlp("ls", "ls", (char*)NULL); return 1;
 }
 
-static int cmd_backup(int argc, char **argv) { (void)argc;(void)argv; puts("backup: sync system removed, rewrite pending"); return 0; }
-/* rebuild: just run sh a.c */
 
 static int cmd_x(int argc, char **argv) { (void)argc;(void)argv;
     (void)!system("tmux kill-server 2>/dev/null");

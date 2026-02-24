@@ -1,3 +1,16 @@
+/* ── bg backup ── */
+static void bg_backup_jsonl(void) {
+    char c[B]; snprintf(c, B, "nohup sh -c '"
+        "mkdir -p %s/backup/%s && "
+        "find ~/.claude/projects -name \"*.jsonl\" 2>/dev/null "
+        "| while read f; do cp -n \"$f\" %s/backup/%s/ 2>/dev/null; done; "
+        "r=$(rclone listremotes 2>/dev/null | grep \"^a-gdrive\" | head -1 | tr -d \":\"); "
+        "[ -n \"$r\" ] && rclone copy %s/backup/%s \"$r:adata/backup/%s/\" --include \"*.jsonl\" -q"
+        "' </dev/null >/dev/null 2>&1 &",
+        AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
+    (void)!system(c);
+}
+
 /* ── email ── */
 static int cmd_email(int argc, char **argv) {
     char bp[P]; snprintf(bp,P,"%s/personal/base.py",SDIR);
@@ -129,16 +142,7 @@ static int cmd_sync(int argc, char **argv) {
         char cnt[16]; pcmd(cnt_cmd, cnt, 16); cnt[strcspn(cnt,"\n")] = 0;
         printf("  %s: %s files\n", folders[i], cnt);
     }
-    /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
-    snprintf(c, B, "nohup sh -c '"
-        "mkdir -p %s/backup/%s && "
-        "find ~/.claude/projects -name \"*.jsonl\" 2>/dev/null "
-        "| while read f; do cp -n \"$f\" %s/backup/%s/ 2>/dev/null; done; "
-        "r=$(rclone listremotes 2>/dev/null | grep \"^a-gdrive\" | head -1 | tr -d \":\"); "
-        "[ -n \"$r\" ] && rclone copy %s/backup/%s \"$r:adata/backup/%s/\" --include \"*.jsonl\" -q"
-        "' </dev/null >/dev/null 2>&1 &",
-        AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
-    (void)!system(c);
+    bg_backup_jsonl();
     if (argc > 2 && !strcmp(argv[2], "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
         char bc[B]; snprintf(bc, B, "%s/lib/a.py", SDIR);
@@ -204,16 +208,7 @@ static int cmd_update(int argc, char **argv) {
       } else if(fexists(rc)){/* not configured — apply from sync */
         snprintf(c,B,"mkdir -p ~/.config/rclone && cp '%s' ~/.config/rclone/rclone.conf",rc);
         if(!system(c))puts("\xe2\x9c\x93 rclone config applied from login sync");}}
-    /* collect JSONL from ~/.claude/projects/ then push to gdrive (background) */
-    snprintf(c, B, "nohup sh -c '"
-        "mkdir -p %s/backup/%s && "
-        "find ~/.claude/projects -name \"*.jsonl\" 2>/dev/null "
-        "| while read f; do cp -n \"$f\" %s/backup/%s/ 2>/dev/null; done; "
-        "r=$(rclone listremotes 2>/dev/null | grep \"^a-gdrive\" | head -1 | tr -d \":\"); "
-        "[ -n \"$r\" ] && rclone copy %s/backup/%s \"$r:adata/backup/%s/\" --include \"*.jsonl\" -q"
-        "' </dev/null >/dev/null 2>&1 &",
-        AROOT, DEV, AROOT, DEV, AROOT, DEV, DEV);
-    (void)!system(c);
+    bg_backup_jsonl();
     if (sub && !strcmp(sub, "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
         snprintf(c, B, "python3 '%s/lib/ssh.py' ssh all 'a update'", SDIR); (void)!system(c);

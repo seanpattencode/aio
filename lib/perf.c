@@ -1,7 +1,7 @@
 /* ── perf: benchmark + timing display ── */
 static const char *BENCH_CMDS[] = {
-    "","help","config","task","backup","ls","add","agent","copy","done","docs",
-    "hi","i","move","prompt","rebuild","remove","repo","send","set","setup",
+    "","help","config","task","ls","add","agent","copy","done","docs",
+    "hi","i","move","prompt","remove","repo","send","set","setup",
     "uninstall","watch","web",/* "x" kills tmux server, destroys active dev sessions */
     "e","kill","revert","deps","dash","hub",
     "jobs","mono","ssh","work","ask","login","gdrive","email","ui","attach",
