@@ -413,6 +413,7 @@ static void perf_disarm(void);
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
+static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;return system("t=/tmp/a_cat;git ls-files '*.py'|xargs tail -n+1>$t;cat $t;xclip -sel c<$t 2>/dev/null");}
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
@@ -433,7 +434,7 @@ static const cmd_t CMDS[] = {
     {"--help",cmd_help_full},{"-h",cmd_help_full},
     {"a",cmd_all},{"adb",cmd_adb},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
     {"all",cmd_all},{"ask",cmd_ask},{"attach",cmd_attach},
-    {"cleanup",cmd_cleanup},{"config",cmd_config},
+    {"cat",cmd_cat},{"cleanup",cmd_cleanup},{"config",cmd_config},
     {"copy",cmd_copy},{"dash",cmd_dash},{"deps",cmd_deps},
     {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
     {"e",cmd_e},{"email",cmd_email},{"gdrive",cmd_gdrive},
