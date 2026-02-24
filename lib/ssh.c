@@ -1,4 +1,5 @@
 /* ── ssh ── */
+#define SMUX " -oControlMaster=auto -oControlPath=/tmp/a-ssh-%%C -oControlPersist=300"
 static void ssh_save(const char*dir,const char*n,const char*h,const char*pw){
     char f[P],d[B];snprintf(f,P,"%s/%s.txt",dir,n);
     snprintf(d,B,"Name: %s\nHost: %s\n%s%s%s",n,h,pw&&pw[0]?"Password: ":"",pw?pw:"",pw&&pw[0]?"\n":"");
@@ -57,10 +58,16 @@ static int cmd_ssh(int argc, char **argv) {
     if((!strcmp(sub,"all")||!strcmp(sub,"*"))&&argc>3){
         char cmd[B]="";for(int i=3,l=0;i<argc;i++) l+=snprintf(cmd+l,(size_t)(B-l),"%s%s",i>3?" ":"",argv[i]);
         char qc[B];snprintf(qc,B,"'bash -c '\"'\"'export PATH=$HOME/.local/bin:$PATH; %s'\"'\"''",cmd);
-        for(int i=0;i<nh;i++){char hp[256],port[8];ssh_parse(H[i].host,hp,port);
-            char c[B*2];int n=0;if(H[i].pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",H[i].pw);
-            snprintf(c+n,sizeof(c)-(size_t)n,"ssh -oConnectTimeout=5 -oStrictHostKeyChecking=no -p %s '%s' %s 2>&1",port,hp,qc);
-            char o[B];int r=pcmd(c,o,B);printf("\n%s %s\n",r==0?"\xe2\x9c\x93":"x",H[i].name);if(o[0])printf("%s",o);}
+        struct{int fd;pid_t pid;char nm[128];}S[32];int ns=0;
+        for(int i=0;i<nh&&ns<32;i++){int pfd[2];if(pipe(pfd))continue;
+            pid_t p=fork();if(p==0){close(pfd[0]);char hp[256],port[8];ssh_parse(H[i].host,hp,port);
+                char c[B*2];int n=0;if(H[i].pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",H[i].pw);
+                snprintf(c+n,sizeof(c)-(size_t)n,"ssh" SMUX " -oConnectTimeout=5 -oStrictHostKeyChecking=no -p %s '%s' %s 2>&1",port,hp,qc);
+                char o[B];int r=pcmd(c,o,B);int l=snprintf(c,B,"%c%s",r?'x':'+',o);
+                (void)!write(pfd[1],c,(size_t)l);close(pfd[1]);_exit(0);}
+            close(pfd[1]);snprintf(S[ns].nm,128,"%s",H[i].name);S[ns].fd=pfd[0];S[ns].pid=p;ns++;}
+        for(int i=0;i<ns;i++){char o[B];int l=(int)read(S[i].fd,o,B-1);o[l>0?l:0]=0;close(S[i].fd);waitpid(S[i].pid,NULL,0);
+            printf("\n%s %s\n",o[0]=='+'?"\xe2\x9c\x93":"x",S[i].nm);if(o[1])printf("%s",o+1);}
         return 0;}
     /* resolve host by # or name */
     int idx=-1;
@@ -69,15 +76,15 @@ static int cmd_ssh(int argc, char **argv) {
     if(idx<0||idx>=nh){printf("x No host %s\n",sub);return 1;}
     char hp[256],port[8];ssh_parse(H[idx].host,hp,port);
     /* auto-prompt + save password if key auth fails */
-    if(!H[idx].pw[0]){char tc[B];snprintf(tc,B,"ssh -oBatchMode=yes -oConnectTimeout=3 -p %s '%s' true 2>/dev/null",port,hp);
+    if(!H[idx].pw[0]){char tc[B];snprintf(tc,B,"ssh" SMUX " -oBatchMode=yes -oConnectTimeout=3 -p %s '%s' true 2>/dev/null",port,hp);
         if(system(tc)){char pw[256];printf("Password for %s: ",H[idx].name);
             if(fgets(pw,256,stdin)){pw[strcspn(pw,"\n")]=0;if(pw[0]){snprintf(H[idx].pw,256,"%s",pw);ssh_save(dir,H[idx].name,H[idx].host,pw);}}}}
     {char cmd[B]="";for(int i=3;i<argc;i++){int l=(int)strlen(cmd);snprintf(cmd+l,(size_t)(B-l),"%s%s",l?" ":"",argv[i]);}
         char c[B*2];int n=0;
         if(H[idx].pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",H[idx].pw);
         if(cmd[0]){char qc[B];snprintf(qc,B,"'bash -c '\"'\"'export PATH=$HOME/.local/bin:$PATH; %s'\"'\"''",cmd);
-            snprintf(c+n,sizeof(c)-(size_t)n,"ssh -tt -oStrictHostKeyChecking=accept-new -p %s '%s' %s",port,hp,qc);
-        }else snprintf(c+n,sizeof(c)-(size_t)n,"ssh -tt -oStrictHostKeyChecking=accept-new -p %s '%s'",port,hp);
+            snprintf(c+n,sizeof(c)-(size_t)n,"ssh" SMUX " -tt -oConnectTimeout=5 -oStrictHostKeyChecking=accept-new -p %s '%s' %s",port,hp,qc);
+        }else snprintf(c+n,sizeof(c)-(size_t)n,"ssh" SMUX " -tt -oStrictHostKeyChecking=accept-new -p %s '%s'",port,hp);
         if(!cmd[0])printf("Connecting to %s...\n",H[idx].name);
         execl("/bin/sh","sh","-c",c,(char*)NULL);_exit(127);}
 }

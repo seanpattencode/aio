@@ -48,12 +48,12 @@ static int cmd_kill(int argc, char **argv) {
 }
 
 static int cmd_copy(int c,char**v){(void)c;(void)v;char o[B];int ol=0;
-    if(!isatty(0)){int n;while((n=read(0,o+ol,B-ol-1))>0)ol+=n;
+    if(!isatty(0)){ssize_t n;while((n=read(0,o+ol,(size_t)(B-ol-1)))>0)ol+=(int)n;
     }else if(getenv("TMUX")){
         pcmd("tmux capture-pane -pJ -S-99|awk '/[$@].*[$@]|❯/{b=s;s=\"\";next}{s=s?s\"\\n\"$0:$0}END{printf\"%s\",b}'",o,B);
         ol=(int)strlen(o);
-    }else return puts("x Pipe or tmux"),1;
-    if(ol<1)return puts("x No output"),0;
+    }else{puts("x Pipe or tmux");return 1;}
+    if(ol<1){puts("x No output");return 0;}
     o[ol]=0;to_clip(o);printf("\xe2\x9c\x93 %.50s\n",o);return 0;}
 
 /* ── dash ── */
