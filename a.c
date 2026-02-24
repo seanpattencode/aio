@@ -172,7 +172,7 @@ install)
         fedora)
             if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi ;;
-        termux) pkg update -y && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone termux-services && ok "pkgs" ;;
+        termux) pkg update -y && pkg upgrade -y -o Dpkg::Options::=--force-confold && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone cronie termux-services && ok "pkgs" ;;
         *) install_node; warn "Unknown OS - install tmux manually" ;;
     esac
     _ensure_cc
