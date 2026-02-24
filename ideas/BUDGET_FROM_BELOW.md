@@ -121,6 +121,33 @@ that's been cut repeatedly is near-optimal — accept any negative. The ratchet
 tightens naturally: aggressive early, gentle late. Forcing 2x uniformly penalizes
 code that's already been optimized, which is exactly the code you should trust.
 
+## Diminishing Returns: When to Stop Cutting
+
+Empirical data from the `a cat` session:
+
+| Cut       | Saved | Time  | Tok/min | Insight required                    |
+|-----------|-------|-------|---------|-------------------------------------|
+| 312→92    | 220   | ~2min | ~110    | "don't use Python" — obvious        |
+| 92→50     | 42    | ~3min | ~14     | "git knows your .gitignore" — moderate |
+| 50→41     | 9     | ~5min | ~1.8    | "xclip -o reads clipboard" — obscure |
+
+The first cut is 60x more efficient per minute than the last. The curve is ~1/x.
+
+But the cost isn't just time — it's skill. Each deeper cut requires a harder
+insight. An LLM reliably finds "don't use Python." Knowing `xclip -o` is obscure
+unix trivia. The skill floor rises with depth. At some point you need a domain
+expert, not more iterations.
+
+The stopping rule isn't a fixed depth — it's when the cost of the next insight
+exceeds the value of the tokens saved. For code that runs millions of times
+(see TOKEN_EFFICIENCY.md), even 1 token matters. For code that runs once a day,
+the 50→41 cut is probably not worth the session time.
+
+Practical heuristic: **stop when the LLM proposes tradeoffs instead of pure cuts.**
+Pure cuts (same function, fewer tokens) are always free wins. When the proposals
+start saying "drop clipboard to save 7 tokens" — that's the floor. You're trading
+function for size. Stop there, unless the function doesn't scream.
+
 ## Rule
 
 1. Budget 10 tokens for any new feature
@@ -130,3 +157,4 @@ code that's already been optimized, which is exactly the code you should trust.
 5. On fix touches:
    - Bloated (few prior cuts): demand 2x
    - Ratcheted (3+ prior cuts): accept any negative
+6. Stop cutting when proposals trade function for size
