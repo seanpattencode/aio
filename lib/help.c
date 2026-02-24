@@ -140,7 +140,7 @@ static int cmd_dir(int argc, char **argv) { (void)argc;(void)argv;
 }
 
 static int cmd_backup(int argc, char **argv) { (void)argc;(void)argv; puts("backup: sync system removed, rewrite pending"); return 0; }
-static int cmd_rebuild(int argc, char **argv) { (void)argc;(void)argv; puts("rebuild: sync system removed, rewrite pending"); return 0; }
+/* rebuild: just run sh a.c */
 
 static int cmd_x(int argc, char **argv) { (void)argc;(void)argv;
     (void)!system("tmux kill-server 2>/dev/null");

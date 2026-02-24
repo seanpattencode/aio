@@ -443,7 +443,7 @@ static const cmd_t CMDS[] = {
     {"monolith",cmd_mono},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},
     {"p",cmd_push},{"perf",cmd_perf},{"pr",cmd_pr},{"prompt",cmd_prompt},
-    {"pull",cmd_pull},{"push",cmd_push},{"rebuild",cmd_rebuild},
+    {"pull",cmd_pull},{"push",cmd_push},
     {"remove",cmd_remove},{"repo",cmd_repo},{"revert",cmd_revert},{"review",cmd_review},
     {"rm",cmd_remove},{"run",cmd_run},{"scan",cmd_scan},{"send",cmd_send},
     {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
