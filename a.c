@@ -424,7 +424,7 @@ static int cmd_job(int c,char**v){
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
-    if(c<3||(v[2][0]>='0'&&v[2][0]<='9'))return cmd_jobs(c,v);
+    if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     init_db();load_cfg();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
     char pr[B]="";int pl=0;for(int i=2;i<c;i++)pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);
     tm_ensure_conf();
