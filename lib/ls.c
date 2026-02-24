@@ -154,22 +154,29 @@ static int cmd_jobs(int argc, char **argv) {
                 snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
                 snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
         if(e)p=e+1;else break;}
-    /* Remote panes via a ssh */
+    /* Remote panes via a ssh (parallel) */
     init_db();load_cfg();
     char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
     char hpaths[32][P];int nh=listdir(sdir,hpaths,32);
-    for(int h=0;h<nh&&na<64;h++){
+    struct{char hn[64];int fd;pid_t pid;}SP[16];int nsp=0;
+    for(int h=0;h<nh&&nsp<16;h++){
         kvs_t kv=kvfile(hpaths[h]);const char*hn=kvget(&kv,"Name");
         if(!hn||!strcmp(hn,DEV))continue;
-        char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-panes -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
-        char ro[B];if(pcmd(sc,ro,B))continue;
+        int pfd[2];if(pipe(pfd))continue;
+        pid_t p=fork();if(p==0){close(pfd[0]);
+            char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-panes -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
+            FILE*f=popen(sc,"r");if(f){char buf[B];size_t r=fread(buf,1,B-1,f);buf[r]=0;(void)!write(pfd[1],buf,r);pclose(f);}
+            close(pfd[1]);_exit(0);}
+        close(pfd[1]);snprintf(SP[nsp].hn,64,"%s",hn);SP[nsp].fd=pfd[0];SP[nsp].pid=p;nsp++;}
+    for(int s=0;s<nsp;s++){
+        char ro[B];int len=(int)read(SP[s].fd,ro,B-1);ro[len>0?len:0]=0;close(SP[s].fd);waitpid(SP[s].pid,NULL,0);
         for(char*rp=ro;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
             char*r1=strchr(rp,'|'),*r2=r1?strchr(r1+1,'|'):0;
             if(r1&&r2){*r1=*r2=0;
                 if(strcmp(r1+1,"bash")&&strcmp(r1+1,"zsh")&&strcmp(r1+1,"sh")){
                     snprintf(A[na].sn,64,"%s",rp);A[na].pid[0]=0;
                     snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
-                    snprintf(A[na].dev,32,"%s",hn);na++;}}
+                    snprintf(A[na].dev,32,"%s",SP[s].hn);na++;}}
             if(re)rp=re+1;else break;}}
     /* Review worktrees */
     char wd[P];{const char*w=cfget("worktrees_dir");if(w[0])snprintf(wd,P,"%s",w);else snprintf(wd,P,"%s/worktrees",AROOT);}
