@@ -21,7 +21,10 @@ LLM runs debugs
 User runs debugs
 Use aligns to vision
 If new feature:
-Agressively enforce minimal lengthening
+Write it, make it work, don't constrain length
+Then cut until it breaks, restore last working version
+That's the minimum
+Rewrite from scratch later when stable on value, 10 token budget doubling up
 If fix existing capability:
 Demand fewer tokens
 LLM runs debugs
