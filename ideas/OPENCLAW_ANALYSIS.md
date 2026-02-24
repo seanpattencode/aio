@@ -160,6 +160,27 @@ Three claims, all validated:
 
 5. **WhatsApp/iMessage later.** Higher effort, lower reliability. Telegram covers the use case first.
 
+### Smart Model Rotation (Limits = Rotation, Not Ending)
+
+> idea we route agent to the one thats active that is the best at the time so limits mean rotation not ending
+
+Instead of hitting a rate limit and stopping, auto-rotate to the next best available model. Combined across all subscriptions and free tiers, you get effectively unlimited continuous coverage:
+
+```
+Claude Code (5hr rolling window) → hits limit
+  → Gemini CLI (free, 1000 req/day) → hits limit
+    → Codex CLI (5hr rolling window) → hits limit
+      → Qwen Code (free, 2000 req/day) → hits limit
+        → Vibe CLI (monthly cap) → hits limit
+          → Ollama (local, unlimited — never stops)
+```
+
+Limits reset on different schedules (5hr rolling, daily, monthly) so top models come back online continuously. Quality degrades gracefully rather than stopping. The router just needs to know: which models are currently available, and which is best?
+
+This is structurally impossible for API-based systems like OpenClaw — they pick one model and burn tokens until broke. No concept of "switch to next best." "a" already has multi-provider session types (`a c`, `a g`, `a codex`). The routing layer is: track availability, rank quality, rotate on limit.
+
+Combined with platonic agents fusion voting: the rotation also provides data on which models are performing best right now, feeding back into the quality ranking.
+
 ### What Not to Do
 
 - Don't build a gateway. Don't build a plugin SDK. Don't build a web UI. Don't build 224k lines of TypeScript. The market proved people want the assistant, not the platform.
