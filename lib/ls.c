@@ -216,7 +216,7 @@ static int cmd_jobs(int argc, char **argv) {
         return 0;}
     if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);
         if(x<na&&!A[x].dev[0]){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
-        else if(x<na){perf_disarm();execlp("a","a","ssh",A[x].dev,"tmux","attach","-t",A[x].sn,(char*)NULL);}
+        else if(x<na){perf_disarm();execlp("a","a","ssh",A[x].dev,"tmux","attach","-t",A[x].sn,(char*)NULL);/*foot terminal can fail here; ptyxis works*/}
         else if(x-na<nr){perf_disarm();if(chdir(R[x-na].p)==0){const char*sh=getenv("SHELL");execlp(sh?sh:"/bin/bash",sh?sh:"bash",(char*)NULL);}}
         return 0;}
     if(!na&&!nr){puts("No jobs");return 0;}
