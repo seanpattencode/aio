@@ -45,3 +45,11 @@ The flip side: logically correct code at suboptimal length is fine. Zero bugs at
 And you never get there because taming bugs at complexity is combinatorially intractable. The state space explodes faster than any verification method can check. Formal verification works for small systems, tests cover finite cases, types catch categories — none scale to real complexity. Nobody has ever solved this. So shortening isn't a preference, it's the only viable strategy. You can't tame bugs at N complexity, so you reduce N.
 
 LLM bug-taming is a similar combinatorial problem to protein folding — heuristic search over a vast space. LLMs will get better at it, maybe much better, the way AlphaFold cracked folding. But the fundamental challenge remains: if you can write correct code at length N, you can also write it at less than N, and less is still better. Even a perfect bug-finding LLM benefits from a smaller search space. The capability to handle complexity doesn't eliminate the advantage of reducing it.
+
+## Why Single-Person Projects Win
+
+Single-person projects are consistently smaller, faster, more consistent, and disproportionately popular. This is the token efficiency argument applied to organizations. Every additional person adds coordination tokens — communication overhead, vision drift, consensus cost.
+
+The resource and timing disparity explains why large orgs still exist: they have more people, more capital, more time. But if success potential is distributed roughly evenly among individuals, then larger orgs contain more individuals with potential greatness — their ideas just get implemented by committee, so the vision gets diluted. The team is the token bloat.
+
+In fact, virtually all successful projects have a small functional leadership — often one or two people — who are essential. The rest are implementation bandwidth. Linux has Torvalds. Python has van Rossum. The vision is always singular. The question is how much noise the implementation layer adds around it.
