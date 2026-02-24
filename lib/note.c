@@ -16,17 +16,33 @@ static int load_notes(const char *dir, const char *f) {
     while((e=readdir(d))) { if(e->d_name[0]=='.'||!strstr(e->d_name,".txt")) continue;
         char fp[P]; snprintf(fp,P,"%s/%s",dir,e->d_name); kvs_t kv=kvfile(fp);
         const char *t=kvget(&kv,"Text"),*s=kvget(&kv,"Status");
-        if(t&&(!s||!strcmp(s,"pending"))&&(!f||strcasestr(t,f))){if(n<256){snprintf(gnp[n],P,"%s",fp);snprintf(gnt[n],512,"%s",t);} n++;}
+        if(t&&(!s||!strcmp(s,"pending"))&&(!f||strcasestr(t,f))){
+            int dup=0;for(int i=0;i<n;i++)if(!strcmp(gnt[i],t)){dup=1;break;}
+            if(!dup&&n<256){snprintf(gnp[n],P,"%s",fp);snprintf(gnt[n],512,"%s",t);n++;}}
     } closedir(d); return n;
 }
 static int cmd_note(int argc, char **argv) {
     if (getenv("A_BENCH")) return 0;
     char dir[P]; snprintf(dir,P,"%s/notes",SROOT); mkdirp(dir);
+    if(argc>2&&!strcmp(argv[2],"l")){
+        DIR *d=opendir(dir);if(!d){puts("(none)");return 0;}struct dirent *e;int n=0;
+        unsigned seen[1024];int ns=0;
+        while((e=readdir(d))){if(e->d_name[0]=='.'||!strstr(e->d_name,".txt"))continue;
+            char fp[P];snprintf(fp,P,"%s/%s",dir,e->d_name);kvs_t kv=kvfile(fp);
+            const char *t=kvget(&kv,"Text"),*s=kvget(&kv,"Status"),*dv=kvget(&kv,"Device"),*cr=kvget(&kv,"Created");
+            if(!t||(s&&strcmp(s,"pending")))continue;
+            unsigned h=5381;for(const char *p=t;*p;p++)h=h*33+(unsigned char)*p;
+            int dup=0;for(int i=0;i<ns;i++)if(seen[i]==h){dup=1;break;}
+            if(dup)continue;if(ns<1024)seen[ns++]=h;
+            printf("%3d. %s",++n,t);
+            if(dv||cr){printf("  \033[90m");if(dv)printf(" %s",dv);if(cr)printf(" %s",cr);printf("\033[0m");}
+            putchar('\n');}
+        closedir(d);if(!n)puts("(none)");return 0;}
     if(argc>2&&argv[2][0]!='?'){char t[B]="";for(int i=2,l=0;i<argc;i++) l+=snprintf(t+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
         note_save(dir,t);sync_bg();puts("\xe2\x9c\x93");return 0;}
     const char *f=(argc>2&&argv[2][0]=='?')?argv[2]+1:NULL; int n=load_notes(dir,f);
-    if(!n){puts("a n <text>");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(gnt[i]);return 0;} perf_disarm();
-    printf("Notes: %d pending\n  %s\n\n[a]ck [d]el [s]earch [q]uit | type=add\n",n,dir);
+    if(!n){puts("a n <text> | a n l");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(gnt[i]);return 0;} perf_disarm();
+    printf("Notes: %d pending  (a n l = list all)\n  %s\n\n[a]ck [d]el [s]earch [q]uit | type=add\n",n,dir);
     for(int i=0,s=n<256?n:256;i<s;){
         printf("\n[%d/%d] %s\n> ",i+1,n,gnt[i]); char line[B]; if(!fgets(line,B,stdin)) break; line[strcspn(line,"\n")]=0;
         if(line[0]=='q'&&!line[1]) break;
