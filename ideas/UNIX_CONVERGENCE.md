@@ -989,3 +989,17 @@ Every attempt to replace Unix on Unix hardware converges back to Unix axioms. WS
 An "AI OS" on x86/ARM will follow the same path. The hardware won't let it do anything else.
 
 **Replacing one layer of a co-evolved stack doesn't change the axioms. It just gives you worse tooling for the same axioms. The only way to change the axioms is to change the hardware. And the only way to change the hardware is to change the physics. Good luck.**
+
+## The Compression Test for Abstraction
+
+Abstraction in the computer science sense means calling more complex things with less complexity. The test is simple: is the call shorter than the composition it replaces? If yes, the abstraction compressed. If no, it inflated.
+
+`a c` replaces `tmux new-session -d -s claude && tmux send-keys "claude --dangerously-skip-permissions" Enter && tmux attach -t claude`. That's compression. The abstraction earned its existence.
+
+Most frameworks fail this test. The call is longer or equal to what you'd write with direct UNIX composition, plus you now have to understand the framework. LangChain's `ConversationalRetrievalChain.from_llm()` is longer than the HTTP POST it wraps. React's component lifecycle is more to hold in your head than the DOM manipulation it hides. The abstraction inflated.
+
+UNIX primitives — pipe, fork, exec, read, write — are already so short and composable that the bar for justifying a layer above them is extremely high. The complexity budget for anything built on top should be: does this composition happen so often that naming it saves total tokens across all uses? If yes, it's a function. If no, it's bloat.
+
+Most software assigns complexity budget based on how hard the problem feels, not how much compression the solution achieves. A problem that feels hard gets a framework regardless of whether pipe + awk solved it in one line. The feeling of difficulty is confused with actual algorithmic complexity.
+
+The few things that genuinely clear the bar: databases (B-trees + ACID are hard to compose from syscalls), cryptography (don't roll your own), GUI rendering. Almost everything else is a composition of reads, writes, forks, and pipes wearing a costume.
