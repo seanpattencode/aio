@@ -92,8 +92,9 @@ static int cmd_prompt(int argc, char **argv) {
     }
     char val[B]="",df[P]; snprintf(df,P,"%s/default.txt",d);
     if(argc>2)for(int i=2,l=0;i<argc;i++) l+=snprintf(val+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
-    else { printf("%.80s\n <text>|edit: ",dprompt());
+    else { perf_disarm(); printf("%.80s\n%s\n <text>|edit: ",dprompt(),d);
         if(!fgets(val,B,stdin)||val[0]=='\n') return 0; val[strcspn(val,"\n")]=0;
+        if(!strcmp(val,"edit")){execlp("e","e",df,(char*)0);return 1;}
     }
     writef(df,val); printf("\xe2\x9c\x93 %s\n",val[0]?val:"(cleared)"); return 0;
 }
