@@ -102,6 +102,8 @@ You're not debugging, you're exploring a design space. Terse code is a creative 
 
 `a diff` is the highest-leverage command in the system. Every other tool writes code — `a diff` is the only one that evaluates whether the code should exist. It enforces the token ratchet: after every change, you see whether the codebase grew or shrank. Without it, you're coding blind — you think you fixed something, but you may have net-added error surface. It turns an implicit gut feeling ("this seems bigger") into an explicit number that compounds across every commit.
 
+And it's so simple it's hard to imagine a few lines of code are so important. But that's the point — the highest-value tools are often trivially short. The value isn't in the implementation, it's in what it makes visible.
+
 ## Design decisions
 
 - Pragmatic over pure: Shows real commit size, not git staging state
