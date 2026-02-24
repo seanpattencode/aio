@@ -39,3 +39,5 @@ And it's worse than just bugs. Misalignment with value — does the program do u
 ## Fix Shorter is a Ratchet, Not a One-Shot
 
 Most people use LLMs to fix an error, see it introduce a new one, and despair. The assumption is: fix at shorter. If a new error appears, shorten again. Each cycle the codebase contracts. The error rate converges toward zero because the surface area for errors keeps shrinking. The bug isn't the failure — lengthening is.
+
+The flip side: logically correct code at suboptimal length is fine. Zero bugs at any token count is the actual ideal. The ratchet is the path, not the goal — it exists because humans and LLMs can't write perfect code on the first try. Shortening is the error-reduction mechanism. If the error rate were already zero, length wouldn't matter. In practice you never get there, so the ratchet never stops being useful.
