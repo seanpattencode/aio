@@ -144,7 +144,7 @@ static int cmd_jobs(int argc, char **argv) {
     for(int i=2;i<argc;i++){if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];
         else if(!strcmp(argv[i],"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","job",(char*)0);return 0;}
         else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
-    struct{char sn[64],pid[32],cmd[32],p[128],dev[32],host[256];}A[64];int na=0;
+    struct{char sn[64],pid[32],cmd[32],p[128],dev[32];}A[64];int na=0;
     /* Local panes */
     char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
     for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
@@ -154,26 +154,22 @@ static int cmd_jobs(int argc, char **argv) {
                 snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
                 snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
         if(e)p=e+1;else break;}
-    /* Remote panes via SSH */
+    /* Remote panes via a ssh */
     init_db();load_cfg();
     char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
-    char paths[32][P];int np=listdir(sdir,paths,32);
-    for(int h=0;h<np&&na<64;h++){
-        kvs_t kv=kvfile(paths[h]);const char*hn=kvget(&kv,"Name"),*hh=kvget(&kv,"Host"),*pw=kvget(&kv,"Password");
-        if(!hn||!hh||!strcmp(hn,DEV))continue;
-        char hp[256],port[8];snprintf(hp,256,"%s",hh);{char*c=strrchr(hp,':');if(c){snprintf(port,8,"%s",c+1);*c=0;}else snprintf(port,8,"22");}
-        char sc[B];int sl=0;
-        if(pw&&pw[0])sl=snprintf(sc,B,"sshpass -p '%s' ",pw);
-        snprintf(sc+sl,(size_t)(B-sl),"ssh -oBatchMode=yes -oConnectTimeout=3 -p %s '%s' "
-            "'tmux list-panes -a -F \"#{session_name}\t#{pane_current_command}\t#{pane_current_path}\"' 2>/dev/null",port,hp);
+    char hpaths[32][P];int nh=listdir(sdir,hpaths,32);
+    for(int h=0;h<nh&&na<64;h++){
+        kvs_t kv=kvfile(hpaths[h]);const char*hn=kvget(&kv,"Name");
+        if(!hn||!strcmp(hn,DEV))continue;
+        char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-panes -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
         char ro[B];if(pcmd(sc,ro,B))continue;
         for(char*rp=ro;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
-            char*r1=strchr(rp,'\t'),*r2=r1?strchr(r1+1,'\t'):0;
+            char*r1=strchr(rp,'|'),*r2=r1?strchr(r1+1,'|'):0;
             if(r1&&r2){*r1=*r2=0;
                 if(strcmp(r1+1,"bash")&&strcmp(r1+1,"zsh")&&strcmp(r1+1,"sh")){
                     snprintf(A[na].sn,64,"%s",rp);A[na].pid[0]=0;
                     snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
-                    snprintf(A[na].dev,32,"%s",hn);snprintf(A[na].host,256,"%s",hh);na++;}}
+                    snprintf(A[na].dev,32,"%s",hn);na++;}}
             if(re)rp=re+1;else break;}}
     /* Review worktrees */
     char wd[P];{const char*w=cfget("worktrees_dir");if(w[0])snprintf(wd,P,"%s",w);else snprintf(wd,P,"%s/worktrees",AROOT);}
@@ -191,13 +187,7 @@ static int cmd_jobs(int argc, char **argv) {
         return 0;}
     if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);
         if(x<na&&!A[x].dev[0]){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
-        else if(x<na){perf_disarm();char c[B*2];int n=0;char hp[256],port[8];
-            snprintf(hp,256,"%s",A[x].host);{char*cc=strrchr(hp,':');if(cc){snprintf(port,8,"%s",cc+1);*cc=0;}else snprintf(port,8,"22");}
-            /* load pw again for connect */
-            char pf[P];snprintf(pf,P,"%s/%s.txt",sdir,A[x].dev);kvs_t kv=kvfile(pf);const char*pw=kvget(&kv,"Password");
-            if(pw&&pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",pw);
-            snprintf(c+n,sizeof(c)-(size_t)n,"ssh -tt -p %s '%s' 'tmux attach -t \"%s\"'",port,hp,A[x].sn);
-            execl("/bin/sh","sh","-c",c,(char*)NULL);}
+        else if(x<na){perf_disarm();execlp("a","a","ssh",A[x].dev,"tmux","attach","-t",A[x].sn,(char*)NULL);}
         else if(x-na<nr){perf_disarm();if(chdir(R[x-na].p)==0){const char*sh=getenv("SHELL");execlp(sh?sh:"/bin/bash",sh?sh:"bash",(char*)NULL);}}
         return 0;}
     if(!na&&!nr){puts("No jobs");return 0;}
