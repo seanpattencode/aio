@@ -194,6 +194,39 @@ If the scream never comes — the code was already at floor. The absence of scre
 is the proof. You can't rush convergence by squeezing in the same session because
 the data you need (what actually screams in use) doesn't exist yet.
 
+## Explore → Filter → Consolidate
+
+Budget-from-below works on implementation. It does not work on requirements.
+
+Requirements must be explored because you don't know what screams until you've
+tried living without it. The system prompt for "a" went through this: a much
+longer list of software requirements, ~90% cut after use revealed they never
+screamed. The surviving 10% are what's in the prompt today.
+
+Three phases:
+1. **Explore**: write everything that screams. Redundancy is fine. This is search.
+   You have to write the 90% to discover which 10% survives.
+2. **Filter**: use it. Most things stop screaming. What keeps screaming across
+   many sessions is real. This takes time — you can't rush it.
+3. **Consolidate**: compress survivors into axioms. Now budget-from-below applies
+   to the implementation of those axioms.
+
+The current system prompt is between phase 2 and 3. The 10-token rule, the scream
+test, the negative-on-fixes demand — these survived repeated use. Other sections
+might still be in phase 2. You don't know yet.
+
+Premature consolidation is premature optimization. Cutting things that look
+redundant but are actually covering different edge cases. Three ways of saying
+"shorter is better" might each catch a different LLM failure mode the others miss.
+
+The consolidation trigger is the same as always: a scream. When the prompt's
+length causes actual problems (context pressure, LLM confusion, slow starts),
+that's the signal. Not before.
+
+Key distinction: **budget-from-below is for implementation, not requirements.**
+Requirements need exploration because the scream doesn't exist yet. Implementation
+can start at 10 tokens because the scream (requirement) already exists.
+
 ## Rule
 
 1. Budget 10 tokens for any new feature (or rewrite)
@@ -205,3 +238,4 @@ the data you need (what actually screams in use) doesn't exist yet.
    - Ratcheted (3+ prior cuts): accept any negative
 6. Stop cutting when proposals trade function for size
 7. If current code is >5x the budget-from-below result: rewrite, don't squeeze
+8. Requirements: explore first, consolidate only after use filters them
