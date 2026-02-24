@@ -138,61 +138,29 @@ static int cmd_send(int argc, char **argv) {
     return 0;
 }
 
-/* ── jobs ── list/attach/remove agent worktrees */
+/* ── jobs ── list active tmux panes (filters out shells) */
 static int cmd_jobs(int argc, char **argv) {
-    init_db(); load_cfg();
-    char wd[P]; {const char*w=cfget("worktrees_dir");snprintf(wd,P,"%s",w[0]?w:"");if(!w[0])snprintf(wd,P,"%s/worktrees",AROOT);}
-    const char *sel=NULL,*rm=NULL; int rf=0;
-    for(int i=2;i<argc;i++){if(!strcmp(argv[i],"-r")||!strcmp(argv[i],"--running"))rf=1;
-        else if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];else sel=argv[i];}
-    if(sel&&!strcmp(sel,"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","jobs","-r",(char*)0);return 0;}
-    struct{char p[P],s[8][128],n[64],r[128];int ns,act;time_t ct;int wt;}J[64];int nj=0;
-    /* Tmux sessions -> paths */
-    char to[B]; pcmd("tmux list-sessions -F '#{session_name}' 2>/dev/null",to,B);
-    for(char*tp=to;*tp;){char*e=strchr(tp,'\n');if(e)*e=0;if(*tp){
-        char c[B],pp[P];snprintf(c,B,"tmux display-message -p -t '%s' '#{pane_current_path}' 2>/dev/null",tp);
-        pcmd(c,pp,P);pp[strcspn(pp,"\n")]=0;
-        int f=-1;for(int i=0;i<nj;i++)if(!strcmp(J[i].p,pp)){f=i;break;}
-        if(f<0&&nj<64){f=nj;snprintf(J[f].p,P,"%s",pp);J[f].ns=0;nj++;}
-        if(f>=0&&J[f].ns<8)snprintf(J[f].s[J[f].ns++],128,"%s",tp);
-    }if(e)tp=e+1;else break;}
-    if(dexists(wd)){DIR*d=opendir(wd);struct dirent*e;if(d){while((e=readdir(d))){if(e->d_name[0]=='.')continue;
-        char fp[P];snprintf(fp,P,"%s/%s",wd,e->d_name);struct stat st;if(stat(fp,&st)||!S_ISDIR(st.st_mode))continue;
-        int found=0;for(int i=0;i<nj;i++)if(!strcmp(J[i].p,fp)){found=1;break;}
-        if(!found&&nj<64){snprintf(J[nj].p,P,"%s",fp);J[nj].ns=0;nj++;}}closedir(d);}}
-    if(!nj){puts("No jobs");return 0;}
-    /* Enrich + filter */
-    int cnt=0;
-    for(int i=0;i<nj;i++){
-        if(!dexists(J[i].p)){for(int s=0;s<J[i].ns;s++){char c[B];snprintf(c,B,"tmux kill-session -t '%s' 2>/dev/null",J[i].s[s]);(void)!system(c);}continue;}
-        J[i].act=0;for(int s=0;s<J[i].ns&&!J[i].act;s++){char c[B],o[64];
-            snprintf(c,B,"tmux display-message -p -t '%s' '#{window_activity}' 2>/dev/null",J[i].s[s]);
-            pcmd(c,o,64);if(atoi(o)&&(int)time(NULL)-atoi(o)<10)J[i].act=1;}
-        if(rf&&!J[i].act)continue;
-        const char*bn=bname(J[i].p);snprintf(J[i].n,64,"%s",bn);
-        {struct stat st;J[i].ct=(!stat(J[i].p,&st))?st.st_ctime:0;}
-        char c[B],go[512];snprintf(c,B,"git -C '%s' config --get remote.origin.url 2>/dev/null",J[i].p);
-        pcmd(c,go,512);go[strcspn(go,"\n")]=0;
-        if(go[0]){char*sl=strrchr(go,'/');snprintf(J[i].r,128,"%s",sl?sl+1:go);char*dt=strstr(J[i].r,".git");if(dt&&!dt[4])*dt=0;}
-        else{snprintf(J[i].r,128,"%s",bn);for(char*q=J[i].r;*q;q++)if(*q=='-'&&q[1]>='2'&&q[1]<='2'){*q=0;break;}}
-        J[i].wt=!strncmp(J[i].p,wd,strlen(wd));if(i!=cnt)J[cnt]=J[i];cnt++;
-    } nj=cnt;
-    for(int i=0;i<nj-1;i++)for(int j=i+1;j<nj;j++)if(J[i].ct>J[j].ct){__typeof__(J[0])t=J[i];J[i]=J[j];J[j]=t;}
-    int s0=nj>10?nj-10:0;cnt=nj-s0;
-    if(rm&&*rm>='0'&&*rm<='9'){int x=atoi(rm);if(x>=0&&x<cnt){int j=s0+x;
-        for(int s=0;s<J[j].ns;s++){char c[B];snprintf(c,B,"tmux kill-session -t '%s' 2>/dev/null",J[j].s[s]);(void)!system(c);}
-        if(J[j].wt){char c[B];snprintf(c,B,"rm -rf '%s'",J[j].p);(void)!system(c);}
-        printf("\xe2\x9c\x93 %s\n",J[j].n);}else printf("x Invalid (0-%d)\n",cnt-1);return 0;}
-    if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);if(x>=0&&x<cnt){int j=s0+x;
-        if(J[j].ns)tm_go(J[j].s[0]);if(chdir(J[j].p)==0){const char*sh=getenv("SHELL");execlp(sh?sh:"/bin/bash",sh?sh:"bash",(char*)NULL);}}return 0;}
-    if(!cnt){puts("No jobs");return 0;}
-    puts("  #  Active  Repo         Worktree");
-    for(int i=0;i<cnt;i++){int j=s0+i;char td[16]="";if(J[j].ct){int d=(int)(time(NULL)-J[j].ct);
-        if(d<3600)snprintf(td,16," (%dm)",d/60);else if(d<86400)snprintf(td,16," (%dh)",d/3600);else snprintf(td,16," (%dd)",d/86400);}
-        printf("  %d  %s       %-12s %.40s%s\n",i,J[j].act?"\xe2\x97\x8f":"\xe2\x97\x8b",J[j].r,J[j].n,td);
-        if(J[j].act&&J[j].ns){char o[B];tm_read(J[j].s[0],o,B);
-            char*p=o+strlen(o);while(p>o&&(p[-1]=='\n'||p[-1]==' '))p--;*p=0;
-            char*q=p;while(q>o&&q[-1]!='\n')q--;if(*q)printf("         \033[90m%.70s\033[0m\n",q);}}
+    const char *sel=NULL,*rm=NULL;
+    for(int i=2;i<argc;i++){if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];
+        else if(!strcmp(argv[i],"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","job",(char*)0);return 0;}
+        else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
+    char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
+    struct{char sn[64],pid[32],cmd[32],p[256];}E[64];int n=0;
+    for(char*p=out;*p&&n<64;){char*e=strchr(p,'\n');if(e)*e=0;
+        char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
+        if(t1&&t2&&t3){*t1=*t2=*t3=0;
+            if(strcmp(t2+1,"bash")&&strcmp(t2+1,"zsh")&&strcmp(t2+1,"sh")){
+                snprintf(E[n].sn,64,"%s",p);snprintf(E[n].pid,32,"%s",t1+1);
+                snprintf(E[n].cmd,32,"%s",t2+1);snprintf(E[n].p,256,"%s",t3+1);n++;}}
+        if(e)p=e+1;else break;}
+    if(rm&&*rm>='0'&&*rm<='9'){int x=atoi(rm);if(x>=0&&x<n){
+        char c[B];snprintf(c,B,"tmux kill-pane -t '%s'",E[x].pid);(void)!system(c);
+        printf("\xe2\x9c\x93 %s\n",E[x].sn);}return 0;}
+    if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);if(x>=0&&x<n){
+        char c[B];snprintf(c,B,"tmux select-pane -t '%s'",E[x].pid);(void)!system(c);
+        tm_go(E[x].sn);}return 0;}
+    if(!n){puts("No active jobs");return 0;}
+    for(int i=0;i<n;i++)printf("  %d  %-16s %-10s %s\n",i,E[i].sn,E[i].cmd,bname(E[i].p));
     puts("\nSelect:\n  a job 0\n  a job watch\n  a job rm 0");return 0;
 }
 
