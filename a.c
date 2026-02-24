@@ -413,7 +413,8 @@ static void perf_disarm(void);
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
-static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;return system("git ls-files '*.py'|xargs tail -n+1|xclip -sel c;xclip -o -sel c");}
+static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
+    return system("f=$(git ls-files);n=$(echo \"$f\"|wc -l);[ $n -gt 100 ]&&echo >&2 \"$n files\";echo \"$f\"|xargs -d'\\n' grep -lI ''|xargs -d'\\n' tail -n+1|xclip -sel c;xclip -o -sel c");}
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
