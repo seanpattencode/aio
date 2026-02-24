@@ -152,8 +152,9 @@ static int cmd_jobs(int argc, char **argv) {
     for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
         char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
         if(t1&&t2&&t3){*t1=*t2=*t3=0;
-            snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
-            snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));snprintf(A[na].dev,32,"%s",DEV);na++;}
+            int dup=0;for(int j=0;j<na;j++)if(!strcmp(A[j].sn,p)&&!strcmp(A[j].dev,DEV)){dup=1;break;}
+            if(!dup){snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
+            snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));snprintf(A[na].dev,32,"%s",DEV);na++;}}
         if(e)p=e+1;else break;}
     /* Remote panes: read cache, bg refresh */
     {char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
@@ -161,9 +162,10 @@ static int cmd_jobs(int argc, char **argv) {
         for(char*rp=dat;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
             char*d1=strchr(rp,'|'),*r1=d1?strchr(d1+1,'|'):0,*r2=r1?strchr(r1+1,'|'):0;
             if(d1&&r1&&r2){*d1=*r1=*r2=0;
-                snprintf(A[na].sn,64,"%s",d1+1);A[na].pid[0]=0;
+                int dup=0;for(int j=0;j<na;j++)if(!strcmp(A[j].sn,d1+1)&&!strcmp(A[j].dev,rp)){dup=1;break;}
+                if(!dup){snprintf(A[na].sn,64,"%s",d1+1);A[na].pid[0]=0;
                 snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
-                snprintf(A[na].dev,32,"%s",rp);na++;}
+                snprintf(A[na].dev,32,"%s",rp);na++;}}
             if(re)rp=re+1;else break;}free(dat);}}
     {pid_t bg=fork();if(bg==0){close(1);close(2);
         char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
@@ -174,7 +176,7 @@ static int cmd_jobs(int argc, char **argv) {
             if(!hn||!strcmp(hn,DEV))continue;
             int pfd[2];if(pipe(pfd))continue;
             pid_t p=fork();if(p==0){close(pfd[0]);
-                char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-panes -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
+                char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-windows -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
                 FILE*f=popen(sc,"r");if(f){char buf[B];size_t r=fread(buf,1,B-1,f);buf[r]=0;(void)!write(pfd[1],buf,r);pclose(f);}
                 close(pfd[1]);_exit(0);}
             close(pfd[1]);snprintf(SP[nsp].hn,64,"%s",hn);SP[nsp].fd=pfd[0];SP[nsp].pid=p;nsp++;}
