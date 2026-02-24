@@ -172,13 +172,35 @@ The diagnostic: try a 10-token budget for the same function. If it works at 40
 and your current code is 400 — rewrite. If it works at 350 and your current code
 is 400 — squeeze.
 
+## Double Ratchet Is Asynchronous
+
+From-below finds the right architecture. Squeeze-from-above finds the tightest
+expression. They solve different problems — "what tools?" vs "how tightly?"
+
+But the second ratchet can't happen in the same session. The from-below result
+is already minimal-by-construction: each token was justified by a scream.
+Squeezing further without a new scream is cutting on speculation, not inadequacy.
+
+The trigger for the second ratchet is a real scream from use. Something breaks,
+user touches the code, now there's both permission and context to squeeze. The
+bug reveals what the code actually does in practice, which might expose tokens
+that seemed essential but aren't.
+
+Double ratchet is real but inherently asynchronous:
+- From-below on day 1 (creation)
+- From-above whenever a scream forces you back in (could be weeks, could be never)
+
+If the scream never comes — the code was already at floor. The absence of scream
+is the proof. You can't rush convergence by squeezing in the same session because
+the data you need (what actually screams in use) doesn't exist yet.
+
 ## Rule
 
 1. Budget 10 tokens for any new feature (or rewrite)
 2. Attempt implementation
 3. If broken: 2x budget, retry
-4. Accept first working version
-5. On fix touches:
+4. Accept first working version — don't squeeze same session
+5. On fix touches (scream from use):
    - Bloated (few prior cuts): demand 2x
    - Ratcheted (3+ prior cuts): accept any negative
 6. Stop cutting when proposals trade function for size
