@@ -148,9 +148,33 @@ Pure cuts (same function, fewer tokens) are always free wins. When the proposals
 start saying "drop clipboard to save 7 tokens" — that's the floor. You're trading
 function for size. Stop there, unless the function doesn't scream.
 
+## Rewrites Are Budget-From-Below
+
+A rewrite is budget-from-below applied to an entire system.
+
+- Unix → Linux: started from zero with the same scream (need a free OS). Landed
+  smaller, faster, more portable. Didn't squeeze AT&T Unix — started from nothing
+  with the same requirements.
+- Netscape → Firefox: Netscape tried squeeze-from-above (refactor the bloated
+  codebase). Failed catastrophically. Mozilla started from below. Worked.
+- Python 2 → Python 3: squeezed from above (fix unicode in place). Took 15 years
+  of painful migration. Should have been a clean rewrite with import compatibility.
+
+The pattern: squeeze works near the floor. Rewrites work far from it. The mistake
+is using the wrong one — squeezing code that's 10x over optimal, or rewriting
+code that's 1.2x over optimal.
+
+The "never rewrite" advice (Spolsky's famous essay) is correct only near the
+floor. Far-from-optimal code should almost always be rewritten. Squeeze explores
+the entire waste space above the answer. Rewrite skips straight to it.
+
+The diagnostic: try a 10-token budget for the same function. If it works at 40
+and your current code is 400 — rewrite. If it works at 350 and your current code
+is 400 — squeeze.
+
 ## Rule
 
-1. Budget 10 tokens for any new feature
+1. Budget 10 tokens for any new feature (or rewrite)
 2. Attempt implementation
 3. If broken: 2x budget, retry
 4. Accept first working version
@@ -158,3 +182,4 @@ function for size. Stop there, unless the function doesn't scream.
    - Bloated (few prior cuts): demand 2x
    - Ratcheted (3+ prior cuts): accept any negative
 6. Stop cutting when proposals trade function for size
+7. If current code is >5x the budget-from-below result: rewrite, don't squeeze
