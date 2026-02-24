@@ -419,7 +419,6 @@ static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, 
 static int cmd_job(int argc, char **argv)    { fallback_py("job", argc, argv); }
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
-static int cmd_sw(int argc, char **argv)     { fallback_py("sw/__init__", argc, argv); }
 static int cmd_adb(int c,char**v){
     if(c>2&&!strcmp(v[2],"ssh"))return system("for s in $(adb devices|awk '/\\tdevice$/{print$1}');do printf '\\033[36m→ %s\\033[0m ' \"$s\";adb -s \"$s\" shell 'am broadcast -n com.termux/.app.TermuxOpenReceiver -a com.termux.RUN_COMMAND --es com.termux.RUN_COMMAND_PATH /data/data/com.termux/files/usr/bin/sshd --ez com.termux.RUN_COMMAND_BACKGROUND true' 2>&1|tail -1;done");
     (void)c;(void)v;execlp("adb","adb","devices","-l",(char*)0);return 1;
@@ -450,7 +449,7 @@ static const cmd_t CMDS[] = {
     {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
     {"ssh",cmd_ssh},{"ssh add",cmd_ssh},{"ssh all",cmd_ssh},{"ssh rm",cmd_ssh},
     {"ssh self",cmd_ssh},{"ssh setup",cmd_ssh},{"ssh start",cmd_ssh},{"ssh stop",cmd_ssh},
-    {"sw",cmd_sw},{"sync",cmd_sync},{"t",cmd_task},{"task",cmd_task},
+    {"sync",cmd_sync},{"t",cmd_task},{"task",cmd_task},
     {"tree",cmd_tree},{"u",cmd_update},{"ui",cmd_ui},{"uninstall",cmd_uninstall},
     {"update",cmd_update},{"watch",cmd_watch},{"web",cmd_web},
     {"work",cmd_work},{"x",cmd_x},
@@ -467,7 +466,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
 static void perf_arm(const char *cmd) {
     if (getenv("A_BENCH")) return; /* bench children: parent handles timeout */
     if (isdigit(*cmd)) return;
-    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","send","job","pr","hub","sw",NULL};
+    static const char *skip[] = {"push","pull","sync","update","backup","login","ssh","gdrive","mono","email","install","send","job","pr","hub",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
     /* per-device override: adata/git/perf/{DEV}.txt — command:us (microseconds) */

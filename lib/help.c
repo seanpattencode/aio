@@ -37,7 +37,6 @@ static const char *HELP_FULL =
     "  a log               View agent logs\n"
     "  a config            View/set settings\n"
     "  a update            Update a\n"
-    "  a sw                Software manager (builds, updates, tools)\n"
     "  a mono              Generate monolith for reading\n\n"
     "EXPERIMENTAL\n"
     "  a agent \"task\"      Spawn autonomous subagent\n"
@@ -106,7 +105,6 @@ static void gen_icache(void) {
     "ssh self\tregister device\nssh setup\tconfigure keys\nssh start\tstart sshd\n"
     "ssh stop\tstop sshd\nsync\tsync shared data\ntask\tmanage tasks\n"
     "tree\tfile tree\nui\tweb dashboard\nuninstall\tremove tool\n"
-    "sw\tsoftware manager\nsw update\tsystem updates\n"
     "update\tupdate + caches\nwatch\twatch for changes\nweb\tsearch or open\n"
     "work\tgit worktrees\nx\texperimental\n",f);
     char sd[P]; snprintf(sd, P, "%s/ssh", SROOT);
