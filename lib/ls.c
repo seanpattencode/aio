@@ -153,17 +153,14 @@ static void jobs_ssh_refresh(void) {
             FILE*f=popen(sc,"r");if(f){char buf[B];size_t r=fread(buf,1,B-1,f);buf[r]=0;(void)!write(pfd[1],buf,r);pclose(f);}
             close(pfd[1]);_exit(0);}
         close(pfd[1]);snprintf(SP[nsp].hn,64,"%s",hn);SP[nsp].fd=pfd[0];SP[nsp].pid=p;nsp++;}
-    char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
-    FILE*out=fopen(cf,"w");
+    char cf[P],tmp[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);snprintf(tmp,P,"%s.%d",cf,getpid());
+    FILE*out=fopen(tmp,"w");
     for(int s=0;s<nsp;s++){
         char ro[B];int len=(int)read(SP[s].fd,ro,B-1);ro[len>0?len:0]=0;close(SP[s].fd);waitpid(SP[s].pid,NULL,0);
         for(char*rp=ro;*rp;){char*re=strchr(rp,'\n');if(re)*re=0;
-            char*r1=strchr(rp,'|'),*r2=r1?strchr(r1+1,'|'):0;
-            if(r1&&r2){*r2=0;const char*cm=r1+1;
-                if(strcmp(cm,"bash")&&strcmp(cm,"zsh")&&strcmp(cm,"sh")){*r2='|';if(out)fprintf(out,"%s|%s\n",SP[s].hn,rp);}
-                else *r2='|';}
+            if(strchr(rp,'|')&&out)fprintf(out,"%s|%s\n",SP[s].hn,rp);
             if(re){rp=re+1;}else break;}}
-    if(out)fclose(out);
+    if(out){fclose(out);rename(tmp,cf);}
 }
 
 typedef struct{char sn[64],pid[32],cmd[32],p[128],dev[32];}jpane_t;
