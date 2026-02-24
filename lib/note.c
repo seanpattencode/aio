@@ -10,30 +10,28 @@ static void note_save(const char *d, const char *t) {
     snprintf(fn,P,"%s/%08x_%s.%09ld.txt",d,(unsigned)(tp.tv_nsec^(unsigned)now),ts,tp.tv_nsec);
     snprintf(buf,B,"Text: %s\nStatus: pending\nDevice: %s\nCreated: %s\n",t,DEV,ts); writef(fn,buf);
 }
-static char gnp[256][P],gnt[256][512];
+static char gnp[1024][P],gnt[1024][512];
+static int gn_archived;
 static int load_notes(const char *dir, const char *f) {
-    DIR *d=opendir(dir); if(!d) return 0; struct dirent *e; int n=0;
+    DIR *d=opendir(dir); if(!d) return 0; struct dirent *e; int n=0; gn_archived=0;
     while((e=readdir(d))) { if(e->d_name[0]=='.'||!strstr(e->d_name,".txt")) continue;
         char fp[P]; snprintf(fp,P,"%s/%s",dir,e->d_name); kvs_t kv=kvfile(fp);
         const char *t=kvget(&kv,"Text"),*s=kvget(&kv,"Status");
         if(t&&(!s||!strcmp(s,"pending"))&&(!f||strcasestr(t,f))){
             int dup=0;for(int i=0;i<n;i++)if(!strcmp(gnt[i],t)){dup=1;break;}
-            if(!dup&&n<256){snprintf(gnp[n],P,"%s",fp);snprintf(gnt[n],512,"%s",t);n++;}}
+            if(dup){do_archive(fp);gn_archived++;}
+            else if(n<1024){snprintf(gnp[n],P,"%s",fp);snprintf(gnt[n],512,"%s",t);n++;}}
     } closedir(d); return n;
 }
 static int cmd_note(int argc, char **argv) {
     if (getenv("A_BENCH")) return 0;
     char dir[P]; snprintf(dir,P,"%s/notes",SROOT); mkdirp(dir);
-    if(argc>2&&!strcmp(argv[2],"l")){
+    if(argc>2&&!strcmp(argv[2],"l")){do load_notes(dir,NULL);while(gn_archived);/* archive dupes */
         DIR *d=opendir(dir);if(!d){puts("(none)");return 0;}struct dirent *e;int n=0;
-        unsigned seen[1024];int ns=0;
         while((e=readdir(d))){if(e->d_name[0]=='.'||!strstr(e->d_name,".txt"))continue;
             char fp[P];snprintf(fp,P,"%s/%s",dir,e->d_name);kvs_t kv=kvfile(fp);
             const char *t=kvget(&kv,"Text"),*s=kvget(&kv,"Status"),*dv=kvget(&kv,"Device"),*cr=kvget(&kv,"Created");
             if(!t||(s&&strcmp(s,"pending")))continue;
-            unsigned h=5381;for(const char *p=t;*p;p++)h=h*33+(unsigned char)*p;
-            int dup=0;for(int i=0;i<ns;i++)if(seen[i]==h){dup=1;break;}
-            if(dup)continue;if(ns<1024)seen[ns++]=h;
             printf("%3d. %s",++n,t);
             if(dv||cr){printf("  \033[90m");if(dv)printf(" %s",dv);if(cr)printf(" %s",cr);printf("\033[0m");}
             putchar('\n');}
@@ -43,12 +41,12 @@ static int cmd_note(int argc, char **argv) {
     const char *f=(argc>2&&argv[2][0]=='?')?argv[2]+1:NULL; int n=load_notes(dir,f);
     if(!n){puts("a n <text> | a n l");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(gnt[i]);return 0;} perf_disarm();
     printf("Notes: %d pending  (a n l = list all)\n  %s\n\n[a]ck [d]el [s]earch [q]uit | type=add\n",n,dir);
-    for(int i=0,s=n<256?n:256;i<s;){
+    for(int i=0,s=n<1024?n:1024;i<s;){
         printf("\n[%d/%d] %s\n> ",i+1,n,gnt[i]); char line[B]; if(!fgets(line,B,stdin)) break; line[strcspn(line,"\n")]=0;
         if(line[0]=='q'&&!line[1]) break;
-        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(gnp[i]);sync_bg();puts("\xe2\x9c\x93");memmove(gnp+i,gnp+i+1,(size_t)(s-i-1)*P);memmove(gnt+i,gnt+i+1,(size_t)(s-i-1)*512);n--;s=n<256?n:256;continue;}
-        if(line[0]=='s'&&!line[1]){printf("search: ");char q[128];if(fgets(q,128,stdin)){q[strcspn(q,"\n")]=0;n=load_notes(dir,q);s=n<256?n:256;i=0;printf("%d results\n",n);}continue;}
-        if(line[0]){note_save(dir,line);sync_bg();n=load_notes(dir,NULL);s=n<256?n:256;printf("\xe2\x9c\x93 [%d]\n",n);continue;}
+        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(gnp[i]);sync_bg();puts("\xe2\x9c\x93");memmove(gnp+i,gnp+i+1,(size_t)(s-i-1)*P);memmove(gnt+i,gnt+i+1,(size_t)(s-i-1)*512);n--;s=n<1024?n:1024;continue;}
+        if(line[0]=='s'&&!line[1]){printf("search: ");char q[128];if(fgets(q,128,stdin)){q[strcspn(q,"\n")]=0;n=load_notes(dir,q);s=n<1024?n:1024;i=0;printf("%d results\n",n);}continue;}
+        if(line[0]){note_save(dir,line);sync_bg();n=load_notes(dir,NULL);s=n<1024?n:1024;printf("\xe2\x9c\x93 [%d]\n",n);continue;}
         i++;
     } return 0;
 }
