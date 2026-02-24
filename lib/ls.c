@@ -138,41 +138,70 @@ static int cmd_send(int argc, char **argv) {
     return 0;
 }
 
-/* ── jobs ── active panes + review worktrees */
+/* ── jobs ── active panes (local+remote) + review worktrees */
 static int cmd_jobs(int argc, char **argv) {
     const char *sel=NULL,*rm=NULL;
     for(int i=2;i<argc;i++){if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];
         else if(!strcmp(argv[i],"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","job",(char*)0);return 0;}
         else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
+    struct{char sn[64],pid[32],cmd[32],p[128],dev[32],host[256];}A[64];int na=0;
+    /* Local panes */
     char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
-    struct{char sn[64],pid[32],cmd[32],p[256];}A[32];int na=0;
-    for(char*p=out;*p&&na<32;){char*e=strchr(p,'\n');if(e)*e=0;
+    for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
         char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
         if(t1&&t2&&t3){*t1=*t2=*t3=0;
             if(strcmp(t2+1,"bash")&&strcmp(t2+1,"zsh")&&strcmp(t2+1,"sh")){
                 snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
-                snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,256,"%s",t3+1);na++;}}
+                snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
         if(e)p=e+1;else break;}
+    /* Remote panes via SSH */
     init_db();load_cfg();
+    char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
+    char paths[32][P];int np=listdir(sdir,paths,32);
+    for(int h=0;h<np&&na<64;h++){
+        kvs_t kv=kvfile(paths[h]);const char*hn=kvget(&kv,"Name"),*hh=kvget(&kv,"Host"),*pw=kvget(&kv,"Password");
+        if(!hn||!hh||!strcmp(hn,DEV))continue;
+        char hp[256],port[8];snprintf(hp,256,"%s",hh);{char*c=strrchr(hp,':');if(c){snprintf(port,8,"%s",c+1);*c=0;}else snprintf(port,8,"22");}
+        char sc[B];int sl=0;
+        if(pw&&pw[0])sl=snprintf(sc,B,"sshpass -p '%s' ",pw);
+        snprintf(sc+sl,(size_t)(B-sl),"ssh -oBatchMode=yes -oConnectTimeout=3 -p %s '%s' "
+            "'tmux list-panes -a -F \"#{session_name}\t#{pane_current_command}\t#{pane_current_path}\"' 2>/dev/null",port,hp);
+        char ro[B];if(pcmd(sc,ro,B))continue;
+        for(char*rp=ro;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
+            char*r1=strchr(rp,'\t'),*r2=r1?strchr(r1+1,'\t'):0;
+            if(r1&&r2){*r1=*r2=0;
+                if(strcmp(r1+1,"bash")&&strcmp(r1+1,"zsh")&&strcmp(r1+1,"sh")){
+                    snprintf(A[na].sn,64,"%s",rp);A[na].pid[0]=0;
+                    snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
+                    snprintf(A[na].dev,32,"%s",hn);snprintf(A[na].host,256,"%s",hh);na++;}}
+            if(re)rp=re+1;else break;}}
+    /* Review worktrees */
     char wd[P];{const char*w=cfget("worktrees_dir");if(w[0])snprintf(wd,P,"%s",w);else snprintf(wd,P,"%s/worktrees",AROOT);}
     struct{char n[64],p[256];}R[32];int nr=0;
     if(dexists(wd)){DIR*d=opendir(wd);struct dirent*de;if(d){while((de=readdir(d))&&nr<32){
         if(de->d_name[0]=='.')continue;char fp[P];snprintf(fp,P,"%s/%s",wd,de->d_name);
         if(!dexists(fp))continue;
-        int act=0;for(int i=0;i<na;i++)if(!strcmp(A[i].p,fp)){act=1;break;}if(act)continue;
+        int act=0;for(int i=0;i<na;i++)if(!A[i].dev[0]&&!strcmp(bname(fp),A[i].p)){act=1;break;}if(act)continue;
         snprintf(R[nr].n,64,"%s",de->d_name);snprintf(R[nr].p,256,"%s",fp);nr++;}closedir(d);}}
     if(rm&&!strcmp(rm,"all")){for(int i=0;i<nr;i++){char c[B];snprintf(c,B,"rm -rf '%s'",R[i].p);(void)!system(c);}
         printf("\xe2\x9c\x93 %d worktrees\n",nr);return 0;}
     if(rm&&*rm>='0'&&*rm<='9'){int x=atoi(rm);
-        if(x<na){char c[B];snprintf(c,B,"tmux kill-pane -t '%s'",A[x].pid);(void)!system(c);printf("\xe2\x9c\x93 %s\n",A[x].sn);}
-        else if(x-na<nr){char c[B];snprintf(c,B,"rm -rf '%s'",R[x-na].p);(void)!system(c);printf("\xe2\x9c\x93 %s\n",R[x-na].n);}
+        if(x<na&&!A[x].dev[0]){char c[B];snprintf(c,B,"tmux kill-pane -t '%s'",A[x].pid);(void)!system(c);printf("\xe2\x9c\x93 %s\n",A[x].sn);}
+        else if(x-na>=0&&x-na<nr){char c[B];snprintf(c,B,"rm -rf '%s'",R[x-na].p);(void)!system(c);printf("\xe2\x9c\x93 %s\n",R[x-na].n);}
         return 0;}
     if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);
-        if(x<na){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
+        if(x<na&&!A[x].dev[0]){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
+        else if(x<na){perf_disarm();char c[B*2];int n=0;char hp[256],port[8];
+            snprintf(hp,256,"%s",A[x].host);{char*cc=strrchr(hp,':');if(cc){snprintf(port,8,"%s",cc+1);*cc=0;}else snprintf(port,8,"22");}
+            /* load pw again for connect */
+            char pf[P];snprintf(pf,P,"%s/%s.txt",sdir,A[x].dev);kvs_t kv=kvfile(pf);const char*pw=kvget(&kv,"Password");
+            if(pw&&pw[0])n=snprintf(c,sizeof c,"sshpass -p '%s' ",pw);
+            snprintf(c+n,sizeof(c)-(size_t)n,"ssh -tt -p %s '%s' 'tmux attach -t \"%s\"'",port,hp,A[x].sn);
+            execl("/bin/sh","sh","-c",c,(char*)NULL);}
         else if(x-na<nr){perf_disarm();if(chdir(R[x-na].p)==0){const char*sh=getenv("SHELL");execlp(sh?sh:"/bin/bash",sh?sh:"bash",(char*)NULL);}}
         return 0;}
     if(!na&&!nr){puts("No jobs");return 0;}
-    if(na){puts("ACTIVE");for(int i=0;i<na;i++)printf("  %d  %-16s %-10s %s\n",i,A[i].sn,A[i].cmd,bname(A[i].p));}
+    if(na){puts("ACTIVE");for(int i=0;i<na;i++)printf("  %d  %-16s %-10s %-12s %s\n",i,A[i].sn,A[i].cmd,A[i].p,A[i].dev[0]?A[i].dev:"");}
     if(nr){if(na)puts("");puts("REVIEW");for(int i=0;i<nr;i++)printf("  %d  %s\n",na+i,R[i].n);}
     puts("\n  a job #              attach/cd\n  a job rm #           remove\n  a job rm all          clear review\n  a job <p> <prompt>    launch\n  a job <p> @name       saved prompt\n  a job <p> --device h  remote");
     return 0;
