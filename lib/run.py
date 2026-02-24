@@ -1,7 +1,7 @@
 """aio run - Run task on remote"""
 import sys, os, shlex
 from _common import init_db, load_sess, db
-from . ssh import _dec
+# ssh module ported to C; _dec was already dead code
 
 def run():
     init_db()

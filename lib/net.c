@@ -211,7 +211,7 @@ static int cmd_update(int argc, char **argv) {
     bg_backup_jsonl();
     if (sub && !strcmp(sub, "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");
-        snprintf(c, B, "python3 '%s/lib/ssh.py' ssh all 'a update'", SDIR); (void)!system(c);
+        snprintf(c, B, "'%s/a' ssh all 'a update'", SDIR); (void)!system(c);
     }
     return 0;
 }
