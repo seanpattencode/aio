@@ -138,23 +138,8 @@ static int cmd_send(int argc, char **argv) {
     return 0;
 }
 
-/* ── jobs ── active panes (local+remote) + review worktrees */
-static int cmd_jobs(int argc, char **argv) {
-    const char *sel=NULL,*rm=NULL;
-    for(int i=2;i<argc;i++){if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];
-        else if(!strcmp(argv[i],"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","job",(char*)0);return 0;}
-        else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
-    struct{char sn[64],pid[32],cmd[32],p[128],dev[32];}A[64];int na=0;
-    /* Local panes */
-    char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
-    for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
-        char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
-        if(t1&&t2&&t3){*t1=*t2=*t3=0;
-            if(strcmp(t2+1,"bash")&&strcmp(t2+1,"zsh")&&strcmp(t2+1,"sh")){
-                snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
-                snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
-        if(e)p=e+1;else break;}
-    /* Remote panes via a ssh (parallel) */
+/* ── jobs: ssh cache ── */
+static void jobs_ssh_refresh(void) {
     init_db();load_cfg();
     char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
     char hpaths[32][P];int nh=listdir(sdir,hpaths,32);
@@ -168,16 +153,53 @@ static int cmd_jobs(int argc, char **argv) {
             FILE*f=popen(sc,"r");if(f){char buf[B];size_t r=fread(buf,1,B-1,f);buf[r]=0;(void)!write(pfd[1],buf,r);pclose(f);}
             close(pfd[1]);_exit(0);}
         close(pfd[1]);snprintf(SP[nsp].hn,64,"%s",hn);SP[nsp].fd=pfd[0];SP[nsp].pid=p;nsp++;}
+    char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
+    FILE*out=fopen(cf,"w");
     for(int s=0;s<nsp;s++){
         char ro[B];int len=(int)read(SP[s].fd,ro,B-1);ro[len>0?len:0]=0;close(SP[s].fd);waitpid(SP[s].pid,NULL,0);
-        for(char*rp=ro;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
+        for(char*rp=ro;*rp;){char*re=strchr(rp,'\n');if(re)*re=0;
             char*r1=strchr(rp,'|'),*r2=r1?strchr(r1+1,'|'):0;
-            if(r1&&r2){*r1=*r2=0;
-                if(strcmp(r1+1,"bash")&&strcmp(r1+1,"zsh")&&strcmp(r1+1,"sh")){
-                    snprintf(A[na].sn,64,"%s",rp);A[na].pid[0]=0;
-                    snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
-                    snprintf(A[na].dev,32,"%s",SP[s].hn);na++;}}
-            if(re)rp=re+1;else break;}}
+            if(r1&&r2){*r2=0;const char*cm=r1+1;
+                if(strcmp(cm,"bash")&&strcmp(cm,"zsh")&&strcmp(cm,"sh")){*r2='|';if(out)fprintf(out,"%s|%s\n",SP[s].hn,rp);}
+                else *r2='|';}
+            if(re){rp=re+1;}else break;}}
+    if(out)fclose(out);
+}
+
+typedef struct{char sn[64],pid[32],cmd[32],p[128],dev[32];}jpane_t;
+static int jobs_load_cache(jpane_t*A,int na){
+    char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
+    char*dat=readf(cf,NULL);if(!dat)return na;
+    for(char*rp=dat;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
+        char*d1=strchr(rp,'|'),*r1=d1?strchr(d1+1,'|'):0,*r2=r1?strchr(r1+1,'|'):0;
+        if(d1&&r1&&r2){*d1=*r1=*r2=0;
+            snprintf(A[na].sn,64,"%s",d1+1);A[na].pid[0]=0;
+            snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
+            snprintf(A[na].dev,32,"%s",rp);na++;}
+        if(re)rp=re+1;else break;}
+    free(dat);return na;
+}
+
+/* ── jobs ── active panes (local+remote) + review worktrees */
+static int cmd_jobs(int argc, char **argv) {
+    const char *sel=NULL,*rm=NULL;
+    for(int i=2;i<argc;i++){if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];
+        else if(!strcmp(argv[i],"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","job",(char*)0);return 0;}
+        else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
+    jpane_t A[64];int na=0;
+    /* Local panes */
+    char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
+    for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
+        char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
+        if(t1&&t2&&t3){*t1=*t2=*t3=0;
+            if(strcmp(t2+1,"bash")&&strcmp(t2+1,"zsh")&&strcmp(t2+1,"sh")){
+                snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
+                snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
+        if(e)p=e+1;else break;}
+    /* Remote panes: cache + bg refresh */
+    init_db();load_cfg();
+    na=jobs_load_cache(A,na);
+    {pid_t bg=fork();if(bg==0){jobs_ssh_refresh();_exit(0);}}
     /* Review worktrees */
     char wd[P];{const char*w=cfget("worktrees_dir");if(w[0])snprintf(wd,P,"%s",w);else snprintf(wd,P,"%s/worktrees",AROOT);}
     struct{char n[64],p[256];}R[32];int nr=0;
