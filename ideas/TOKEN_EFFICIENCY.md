@@ -29,3 +29,9 @@ Generation time saved:
 ```
 
 Short CLI syntax is basically an optimization for AI agents at scale.
+
+## Error Rate Scales with Token Count
+
+Approximate error rate by magnitude of change: 1 token change introduces an error? No. 10? No. 100? Yes — seems like the right threshold. So if your fix fixes one issue but adds ~100 tokens, you've on average introduced a new error. Net negative — on average killed future progress.
+
+And it's worse than just bugs. Misalignment with value — does the program do useful work? — is error rate of the program *plus* deviation from valuable behavior. So you need to be even more aggressive on shortening. Token reduction must outpace the fix to drive net value increase, not just break even on bugs.
