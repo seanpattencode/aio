@@ -53,3 +53,5 @@ Single-person projects are consistently smaller, faster, more consistent, and di
 The resource and timing disparity explains why large orgs still exist: they have more people, more capital, more time. But if success potential is distributed roughly evenly among individuals, then larger orgs contain more individuals with potential greatness — their ideas just get implemented by committee, so the vision gets diluted. The team is the token bloat.
 
 In fact, virtually all successful projects have a small functional leadership — often one or two people — who are essential. The rest are implementation bandwidth. Linux has Torvalds. Python has van Rossum. The vision is always singular. The question is how much noise the implementation layer adds around it.
+
+LLMs replace the team. Singular vision plus LLM bandwidth — no coordination overhead, no vision dilution, no consensus tokens. We should see a corresponding explosion of single-person projects of great success. The bottleneck was never ideas or vision, it was implementation bandwidth. That bottleneck is gone.
