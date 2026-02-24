@@ -23,16 +23,16 @@ static int cmd_note(int argc, char **argv) {
     if (getenv("A_BENCH")) return 0;
     char dir[P]; snprintf(dir,P,"%s/notes",SROOT); mkdirp(dir);
     if(argc>2&&argv[2][0]!='?'){char t[B]="";for(int i=2,l=0;i<argc;i++) l+=snprintf(t+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
-        note_save(dir,t);sync_repo();puts("\xe2\x9c\x93");return 0;}
-    sync_repo(); const char *f=(argc>2&&argv[2][0]=='?')?argv[2]+1:NULL; int n=load_notes(dir,f);
-    if(!n){puts("a n <text>");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(gnt[i]);return 0;}
+        note_save(dir,t);sync_bg();puts("\xe2\x9c\x93");return 0;}
+    const char *f=(argc>2&&argv[2][0]=='?')?argv[2]+1:NULL; int n=load_notes(dir,f);
+    if(!n){puts("a n <text>");return 0;} if(!isatty(STDIN_FILENO)){for(int i=0;i<n&&i<10;i++)puts(gnt[i]);return 0;} perf_disarm();
     printf("Notes: %d pending\n  %s\n\n[a]ck [d]el [s]earch [q]uit | type=add\n",n,dir);
     for(int i=0,s=n<256?n:256;i<s;){
         printf("\n[%d/%d] %s\n> ",i+1,n,gnt[i]); char line[B]; if(!fgets(line,B,stdin)) break; line[strcspn(line,"\n")]=0;
         if(line[0]=='q'&&!line[1]) break;
-        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(gnp[i]);sync_repo();puts("\xe2\x9c\x93");memmove(gnp+i,gnp+i+1,(size_t)(s-i-1)*P);memmove(gnt+i,gnt+i+1,(size_t)(s-i-1)*512);n--;s=n<256?n:256;continue;}
+        if(!line[1]&&(line[0]=='a'||line[0]=='d')){do_archive(gnp[i]);sync_bg();puts("\xe2\x9c\x93");memmove(gnp+i,gnp+i+1,(size_t)(s-i-1)*P);memmove(gnt+i,gnt+i+1,(size_t)(s-i-1)*512);n--;s=n<256?n:256;continue;}
         if(line[0]=='s'&&!line[1]){printf("search: ");char q[128];if(fgets(q,128,stdin)){q[strcspn(q,"\n")]=0;n=load_notes(dir,q);s=n<256?n:256;i=0;printf("%d results\n",n);}continue;}
-        if(line[0]){note_save(dir,line);sync_repo();n=load_notes(dir,NULL);s=n<256?n:256;printf("\xe2\x9c\x93 [%d]\n",n);continue;}
+        if(line[0]){note_save(dir,line);sync_bg();n=load_notes(dir,NULL);s=n<256?n:256;printf("\xe2\x9c\x93 [%d]\n",n);continue;}
         i++;
     } return 0;
 }

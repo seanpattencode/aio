@@ -179,13 +179,9 @@ install)
     sh "$D/a.c" && ok "a compiled ($CC, $(wc -c < "$D/a") bytes)" || warn "Build failed"
     ln -sf "$D/a" "$BIN/a"
     [[ -f "$D/a-i" ]] && ln -sf "$D/a-i" "$BIN/a-i" && chmod +x "$BIN/a-i" && ok "a-i installed" || :
-    E_SRC="$HOME/projects/editor/e.c"
-    if [[ -f "$E_SRC" ]]; then
-        $CC -w -o "$BIN/e" "$E_SRC" && ok "e editor (local)"
-    else
-        E_URL="https://raw.githubusercontent.com/seanpattencode/editor/main/e.c"
-        curl -fsSL "$E_URL" -o /tmp/e.c && $CC -w -o "$BIN/e" /tmp/e.c && ok "e editor (remote)"
-    fi
+    E="$HOME/projects/editor"
+    [[ -f "$E/e.c" ]] || git clone https://github.com/seanpattencode/editor "$E" 2>/dev/null || :
+    [[ -f "$E/e.c" ]] && sh "$E/e.c" install || :
     _shell_funcs
     install_cli() {
         local pkg="$1" cmd="$2"
