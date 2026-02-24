@@ -47,7 +47,6 @@ static void tm_key(const char *s, const char *key) {
  * C: tm_read(sn,buf,B) inspect, tm_send(sn,text) literal, tm_key(sn,"Enter") key */
 
 /* ═══ TMUX CONFIG ═══ */
-/* clip_cmd() in util.c */
 
 static void tm_ensure_conf(void) {
     if (strcmp(cfget("tmux_conf"), "y") != 0) return;

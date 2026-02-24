@@ -47,27 +47,14 @@ static int cmd_kill(int argc, char **argv) {
     puts("\nSelect:\n  a kill 0\n  a kill all"); return 0;
 }
 
-/* ── copy: pipe or last tmux command output → clipboard ── */
-static int isprompt(const char*s){return strstr(s,"\xe2\x9d\xaf")||(strstr(s,"$")&&strstr(s,"@"));}
-static int cmd_copy(int c,char**v){(void)c;(void)v;
-    char out[B]="";int ol=0;
-    if(!isatty(STDIN_FILENO)){char buf[4096];int n;
-        while((n=(int)read(STDIN_FILENO,buf,sizeof(buf)))>0&&ol+n<B){memcpy(out+ol,buf,(size_t)n);ol+=n;}
-    } else if(getenv("TMUX")){
-        (void)!system("tmux capture-pane -pJ -S -99>/tmp/ac_copy.tmp");
-        char*d=readf("/tmp/ac_copy.tmp",NULL);if(!d)return 1;
-        char*L[1024];int nl=0;char*p=d;
-        while(*p&&nl<1024){L[nl++]=p;char*e=strchr(p,'\n');if(e){*e=0;p=e+1;}else break;}
-        int lp=-1;
-        for(int i=nl-1;i>=0;i--){if(!isprompt(L[i]))continue;
-            if(strstr(L[i],"copy")){lp=i;continue;} if(lp<0)continue;
-            for(int j=i+1;j<lp;j++)ol+=snprintf(out+ol,(size_t)(B-ol),"%s%s",ol?"\n":"",L[j]);break;}
-        free(d);
-    } else {puts("x Pipe input or run in tmux");return 1;}
-    if(!ol){puts("x No output found");return 0;}
-    out[ol]=0;int ok=!to_clip(out);
-    char s[54];snprintf(s,54,"%s",out);for(char*p=s;*p;p++)if(*p=='\n')*p=' ';
-    printf("%s %s\n",ok?"\xe2\x9c\x93":"(not copied)",s);return ok?0:1;}
+static int cmd_copy(int c,char**v){(void)c;(void)v;char o[B];int ol=0;
+    if(!isatty(0)){int n;while((n=read(0,o+ol,B-ol-1))>0)ol+=n;
+    }else if(getenv("TMUX")){
+        pcmd("tmux capture-pane -pJ -S-99|awk '/[$@].*[$@]|❯/{b=s;s=\"\";next}{s=s?s\"\\n\"$0:$0}END{printf\"%s\",b}'",o,B);
+        ol=(int)strlen(o);
+    }else return puts("x Pipe or tmux"),1;
+    if(ol<1)return puts("x No output"),0;
+    o[ol]=0;to_clip(o);printf("\xe2\x9c\x93 %.50s\n",o);return 0;}
 
 /* ── dash ── */
 static int cmd_dash(int argc, char **argv) { (void)argc;(void)argv;

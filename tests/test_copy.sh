@@ -85,7 +85,7 @@ check "plain bash rerun" "plain_bash_output_77" "$GOT"
 # --- Test 5: empty pipe ---
 echo "--- Test 5: empty pipe ---"
 OUT="$(printf '' | "$A" copy 2>&1)"
-check "empty pipe msg" "x No output found" "$OUT"
+check "empty pipe msg" "x No output" "$OUT"
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
