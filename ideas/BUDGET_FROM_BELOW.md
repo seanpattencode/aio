@@ -265,6 +265,26 @@ break is clarity.
 A training dataset built on budget-from-below would teach models to find the
 architecture break, not to golf.
 
+## The Floor Moves Up
+
+The 22-token floor was for imagined requirements: py files, headers, clipboard,
+dir param. Then reality screamed:
+- "doesn't work on Java" → drop .py filter, add binary detection (+tokens)
+- "spaces in filenames" → null delimiters (+tokens)
+- "perf kills on large repos" → perf_disarm (+tokens)
+- "no warning before catting 400 files" → file count check (+tokens)
+
+22 → 30 tokens. The floor went UP because the problem got bigger. Not bloat —
+every added token addresses a real scream.
+
+The theoretical minimum shifts as you discover the actual problem. You can't know
+the real floor until use reveals all the screams. The 22-token version was optimal
+for a problem that didn't exist: "concat only .py files in clean git repos with
+no spaces in paths."
+
+This is why tokens can increase without waste increasing. The test: can you point
+to the scream for each token? If yes, not bloat. If no, cut it.
+
 ## Rule
 
 1. Budget 10 tokens for any new feature (or rewrite)
