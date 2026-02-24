@@ -10,6 +10,6 @@ def run():
         cur = get_prompt('default') or ''
         print(f"Current: {cur or '(none)'}"); val = input("New (empty to clear): ").strip()
         if val == '' and cur == '': return
-    val = '' if val in ('off', 'none', '""', "''") else val
+    val = '' if val in ('off', 'none', 'clear', '""', "''") else val
     PROMPTS_DIR.mkdir(parents=True, exist_ok=True); pf.write_text(val); sync()
     list_all(quiet=True); print(f"✓ {'(cleared)' if not val else val}")

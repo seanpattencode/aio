@@ -421,6 +421,17 @@ static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, 
 static int cmd_job(int argc, char **argv)    { fallback_py("job", argc, argv); }
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
+static int cmd_j(int c,char**v){
+    if(c<3||(v[2][0]>='0'&&v[2][0]<='9'))return cmd_ls(c,v);
+    init_db();load_cfg();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
+    char pr[B]="";int pl=0;for(int i=2;i<c;i++)pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);
+    tm_ensure_conf();
+    if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
+        create_sess(sn,wd,"claude --dangerously-skip-permissions");send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}
+    char cm[B],pid[64];
+    snprintf(cm,B,"tmux new-window -P -F '#{pane_id}' -c '%s' 'claude --dangerously-skip-permissions'",wd);
+    pcmd(cm,pid,64);pid[strcspn(pid,"\n")]=0;if(pid[0])send_prefix_bg(pid,"claude",wd,pr);
+    return 0;}
 static int cmd_adb(int c,char**v){
     if(c>2&&!strcmp(v[2],"ssh"))return system("for s in $(adb devices|awk '/\\tdevice$/{print$1}');do printf '\\033[36m→ %s\\033[0m ' \"$s\";adb -s \"$s\" shell 'am broadcast -n com.termux/.app.TermuxOpenReceiver -a com.termux.RUN_COMMAND --es com.termux.RUN_COMMAND_PATH /data/data/com.termux/files/usr/bin/sshd --ez com.termux.RUN_COMMAND_BACKGROUND true' 2>&1|tail -1;done");
     (void)c;(void)v;execlp("adb","adb","devices","-l",(char*)0);return 1;
@@ -440,7 +451,7 @@ static const cmd_t CMDS[] = {
     {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
     {"e",cmd_e},{"email",cmd_email},{"gdrive",cmd_gdrive},
     {"help",cmd_help_full},{"hi",cmd_hi},{"hub",cmd_hub},{"i",cmd_i},
-    {"install",cmd_install},{"job",cmd_job},{"jobs",cmd_jobs},
+    {"install",cmd_install},{"j",cmd_j},{"job",cmd_job},{"jobs",cmd_jobs},
     {"kill",cmd_kill},{"log",cmd_log},{"login",cmd_login},{"ls",cmd_ls},
     {"monolith",cmd_mono},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},

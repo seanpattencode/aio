@@ -91,10 +91,12 @@ static int cmd_prompt(int argc, char **argv) {
         char c[B]; snprintf(c,B,"echo 'default.txt = session prepend' && ls '%s'",d); return system(c);
     }
     char val[B]="",df[P]; snprintf(df,P,"%s/default.txt",d);
+    if(argc>2&&!strcmp(argv[2],"clear")){writef(df,"");printf("✓ (cleared)\n");return 0;}
     if(argc>2)for(int i=2,l=0;i<argc;i++) l+=snprintf(val+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
-    else { perf_disarm(); printf("%.80s\n%s\n <text>|edit: ",dprompt(),d);
+    else { perf_disarm(); printf("%.80s\n%s\n <text>|edit|clear: ",dprompt(),d);
         if(!fgets(val,B,stdin)||val[0]=='\n') return 0; val[strcspn(val,"\n")]=0;
         if(!strcmp(val,"edit")){execlp("e","e",df,(char*)0);return 1;}
+        if(!strcmp(val,"clear")){writef(df,"");printf("✓ (cleared)\n");return 0;}
     }
     writef(df,val); printf("\xe2\x9c\x93 %s\n",val[0]?val:"(cleared)"); return 0;
 }
