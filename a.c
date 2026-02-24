@@ -418,7 +418,9 @@ static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
-static int cmd_job(int argc, char **argv)    { fallback_py("job", argc, argv); }
+static int cmd_job(int c,char**v){
+    if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
+    fallback_py("job",c,v);}
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
@@ -451,7 +453,7 @@ static const cmd_t CMDS[] = {
     {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
     {"e",cmd_e},{"email",cmd_email},{"gdrive",cmd_gdrive},
     {"help",cmd_help_full},{"hi",cmd_hi},{"hub",cmd_hub},{"i",cmd_i},
-    {"install",cmd_install},{"j",cmd_j},{"job",cmd_job},{"jobs",cmd_jobs},
+    {"install",cmd_install},{"j",cmd_j},{"job",cmd_job},{"jobs",cmd_job},
     {"kill",cmd_kill},{"log",cmd_log},{"login",cmd_login},{"ls",cmd_ls},
     {"monolith",cmd_mono},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},

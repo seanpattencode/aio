@@ -77,7 +77,7 @@ static int cmd_dash(int argc, char **argv) { (void)argc;(void)argv;
     if (!tm_has("dash")) {
         char c[B];
         snprintf(c, B, "tmux new-session -d -s dash -c '%s'", wd); (void)!system(c);
-        snprintf(c, B, "tmux split-window -h -t dash -c '%s' 'sh -c \"a jobs; exec $SHELL\"'", wd); (void)!system(c);
+        snprintf(c, B, "tmux split-window -h -t dash -c '%s' 'sh -c \"a job; exec $SHELL\"'", wd); (void)!system(c);
     }
     tm_go("dash"); return 0;
 }
@@ -193,7 +193,7 @@ static int cmd_jobs(int argc, char **argv) {
         if(J[j].act&&J[j].ns){char o[B];tm_read(J[j].s[0],o,B);
             char*p=o+strlen(o);while(p>o&&(p[-1]=='\n'||p[-1]==' '))p--;*p=0;
             char*q=p;while(q>o&&q[-1]!='\n')q--;if(*q)printf("         \033[90m%.70s\033[0m\n",q);}}
-    puts("\nSelect:\n  a jobs 0\n  a jobs watch\n  a jobs rm 0");return 0;
+    puts("\nSelect:\n  a job 0\n  a job watch\n  a job rm 0");return 0;
 }
 
 /* ── cleanup ── */
