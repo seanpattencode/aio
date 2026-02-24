@@ -152,9 +152,8 @@ static int cmd_jobs(int argc, char **argv) {
     for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
         char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
         if(t1&&t2&&t3){*t1=*t2=*t3=0;
-            if(strcmp(t2+1,"bash")&&strcmp(t2+1,"zsh")&&strcmp(t2+1,"sh")){
-                snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
-                snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
+            snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
+            snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));snprintf(A[na].dev,32,"%s",DEV);na++;}
         if(e)p=e+1;else break;}
     /* Remote panes: read cache, bg refresh */
     {char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
@@ -194,21 +193,21 @@ static int cmd_jobs(int argc, char **argv) {
     if(dexists(wd)){DIR*d=opendir(wd);struct dirent*de;if(d){while((de=readdir(d))&&nr<32){
         if(de->d_name[0]=='.')continue;char fp[P];snprintf(fp,P,"%s/%s",wd,de->d_name);
         if(!dexists(fp))continue;
-        int act=0;for(int i=0;i<na;i++)if(!A[i].dev[0]&&!strcmp(bname(fp),A[i].p)){act=1;break;}if(act)continue;
+        int act=0;for(int i=0;i<na;i++)if(A[i].pid[0]&&!strcmp(bname(fp),A[i].p)){act=1;break;}if(act)continue;
         snprintf(R[nr].n,64,"%s",de->d_name);snprintf(R[nr].p,256,"%s",fp);nr++;}closedir(d);}}
     if(rm&&!strcmp(rm,"all")){for(int i=0;i<nr;i++){char c[B];snprintf(c,B,"rm -rf '%s'",R[i].p);(void)!system(c);}
         printf("\xe2\x9c\x93 %d worktrees\n",nr);return 0;}
     if(rm&&*rm>='0'&&*rm<='9'){int x=atoi(rm);
-        if(x<na&&!A[x].dev[0]){char c[B];snprintf(c,B,"tmux kill-pane -t '%s'",A[x].pid);(void)!system(c);printf("\xe2\x9c\x93 %s\n",A[x].sn);}
+        if(x<na&&A[x].pid[0]){char c[B];snprintf(c,B,"tmux kill-pane -t '%s'",A[x].pid);(void)!system(c);printf("\xe2\x9c\x93 %s\n",A[x].sn);}
         else if(x-na>=0&&x-na<nr){char c[B];snprintf(c,B,"rm -rf '%s'",R[x-na].p);(void)!system(c);printf("\xe2\x9c\x93 %s\n",R[x-na].n);}
         return 0;}
     if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);
-        if(x<na&&!A[x].dev[0]){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
+        if(x<na&&A[x].pid[0]){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
         else if(x<na){perf_disarm();execlp("a","a","ssh",A[x].dev,"tmux","attach","-t",A[x].sn,(char*)NULL);/*foot terminal can fail here; ptyxis works*/}
         else if(x-na<nr){perf_disarm();if(chdir(R[x-na].p)==0){const char*sh=getenv("SHELL");execlp(sh?sh:"/bin/bash",sh?sh:"bash",(char*)NULL);}}
         return 0;}
     if(!na&&!nr){puts("No jobs");return 0;}
-    if(na){puts("ACTIVE");for(int i=0;i<na;i++)printf("  %d  %-16s %-10s %-12s %s\n",i,A[i].sn,A[i].cmd,A[i].p,A[i].dev[0]?A[i].dev:"");}
+    if(na){puts("ACTIVE");for(int i=0;i<na;i++)printf(" %d %-12s %-5s %-5s %s\n",i,A[i].sn,A[i].cmd,A[i].p,A[i].dev);}
     if(nr){if(na)puts("");puts("REVIEW");for(int i=0;i<nr;i++)printf("  %d  %s\n",na+i,R[i].n);}
     puts("\n  a job #              attach/cd\n  a job rm #           remove\n  a job rm all          clear review\n  a job <p> <prompt>    launch\n  a job <p> @name       saved prompt\n  a job <p> --device h  remote");
     return 0;
