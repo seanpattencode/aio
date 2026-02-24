@@ -227,6 +227,44 @@ Key distinction: **budget-from-below is for implementation, not requirements.**
 Requirements need exploration because the scream doesn't exist yet. Implementation
 can start at 10 tokens because the scream (requirement) already exists.
 
+## This Is Not Code Golf
+
+The objection: "minimizing tokens produces unreadable golf." Our data refutes this.
+
+Code golf version: `a=lambda:os.popen("git ls-files '*.py'|xargs tail -n+1").read()`
+Our 22-token version: `git ls-files '*.py'|xargs tail -n+1|xclip -sel c;xclip -o -sel c`
+
+The golf version is obscure. Ours is a unix tutorial. A junior dev can read it.
+Every component is a standard tool doing exactly what it was designed for.
+
+The difference: **code golf minimizes characters. Budget-from-below minimizes
+decisions.** Each token in our solution maps to one real design decision:
+- `git ls-files` = the tool that already knows tracked files
+- `tail -n+1` = the tool that already prints headers on multi-file input
+- `xclip` = the tool that already does clipboard
+
+No clever tricks. No obfuscation. No single-char variables. Just the right tool
+for each job with nothing between them. It's readable BECAUSE it's short — each
+piece is self-documenting.
+
+Code golf compresses logic into dense unreadable expressions.
+Budget-from-below eliminates unnecessary logic entirely.
+Golf compresses. Budget-from-below deletes.
+
+The squeeze-from-above path passes through a golf phase. Our 312→92 cut looked
+like golf — same Python architecture, just denser. If you keep going past the
+architecture break, you come out the other side into clarity. The 22-token version
+isn't compressed Python. It's a completely different architecture that happens to
+be both shorter AND more readable.
+
+People who say "this makes golf" haven't cut far enough to reach the break. They
+stopped in the squeeze phase where you're fighting the original architecture —
+renaming variables, collapsing lines, inlining functions. That IS golf. Past the
+break is clarity.
+
+A training dataset built on budget-from-below would teach models to find the
+architecture break, not to golf.
+
 ## Rule
 
 1. Budget 10 tokens for any new feature (or rewrite)
