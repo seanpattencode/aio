@@ -82,6 +82,7 @@ a() {
     local d="${1/#\~/$HOME}"; [[ "$1" == "/projects/"* ]] && d="$HOME$1"
     [[ -d "$d" ]] && { printf '📂 %s\n' "$d"; cd "$d"; return; }
     [[ "$1" == *.py && -f "$1" ]] && { local py=python3 ev=1; [[ -n "$VIRTUAL_ENV" ]] && py="$VIRTUAL_ENV/bin/python" ev=0; [[ -x .venv/bin/python ]] && py=.venv/bin/python ev=0; local s=$(($(date +%s%N)/1000000)); if command -v uv &>/dev/null && [[ -f pyproject.toml || -f uv.lock ]]; then uv run python "$@"; ev=0; else $py "$@"; fi; local r=$?; echo "{\"cmd\":\"$1\",\"ms\":$(($(($(date +%s%N)/1000000))-s)),\"ts\":\"$(date -Iseconds)\"}" >> $dd/timing.jsonl; [[ $r -ne 0 && $ev -ne 0 ]] && printf '  try: a c fix python env for this project\n'; return $r; }
+    [[ "$1" == "copy" && -z "$TMUX" && -t 0 ]] && { local lc="$(fc -ln -2 -2 2>/dev/null|sed 's/^\s*//')"; [[ -z "$lc" || "$lc" == a\ copy* ]] && { echo "x No previous command"; return 1; }; eval "$lc" 2>&1 | command a copy; return; }
     command a "$@"; [[ -f $dd/cd_target ]] && { read -r d < $dd/cd_target; rm $dd/cd_target; cd "$d" 2>/dev/null; }
 }
 aio() { a "$@"; }
@@ -414,7 +415,10 @@ static void perf_disarm(void);
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
 static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
-    return system("f=$(git ls-files);n=$(echo \"$f\"|wc -l);[ $n -gt 100 ]&&echo >&2 \"$n files\";echo \"$f\"|xargs -d'\\n' grep -lI ''|xargs -d'\\n' tail -n+1|xclip -sel c;xclip -o -sel c;echo >&2;echo '✓ copied' >&2");}
+    const char*cc=clip_cmd();
+    char cm[B];snprintf(cm,B,"f=$(git ls-files);n=$(echo \"$f\"|wc -l);[ $n -gt 100 ]&&echo >&2 \"$n files\";echo \"$f\"|xargs -d'\\n' grep -lI ''|xargs -d'\\n' tail -n+1|%s;echo >&2;echo '✓ copied' >&2",
+        cc?cc:"{ printf '\\033]52;c;';base64 -w0;printf '\\a';} >/dev/tty");
+    return system(cm);}
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }

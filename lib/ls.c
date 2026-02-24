@@ -47,29 +47,27 @@ static int cmd_kill(int argc, char **argv) {
     puts("\nSelect:\n  a kill 0\n  a kill all"); return 0;
 }
 
-/* ── copy ── */
-static int cmd_copy(int argc, char **argv) { (void)argc;(void)argv;
-    if (!getenv("TMUX")) { puts("x Not in tmux"); return 1; }
-    (void)!system("tmux capture-pane -pJ -S -99 > /tmp/ac_copy.tmp");
-    char *d = readf("/tmp/ac_copy.tmp", NULL);
-    if (!d) return 1;
-    char *lines[1024]; int nl = 0; char *p = d;
-    while (*p && nl < 1024) { lines[nl++] = p; char *e = strchr(p,'\n'); if (e) { *e=0; p=e+1; } else break; }
-    int last_prompt = -1;
-    for (int i = nl - 1; i >= 0; i--) {
-        if (!(strstr(lines[i],"\xe2\x9d\xaf") || (strstr(lines[i],"$") && strstr(lines[i],"@")))) continue;
-        if (strstr(lines[i], "copy")) { last_prompt = i; continue; }
-        if (last_prompt < 0) continue;
-        char out[B]=""; int ol=0;
-        for(int j=i+1;j<last_prompt&&j<nl;j++) ol+=snprintf(out+ol,(size_t)(B-ol),"%s%s",ol?"\n":"",lines[j]);
-        FILE *fp = popen("wl-copy 2>/dev/null || xclip -selection clipboard -i 2>/dev/null", "w");
-        if (fp) { fputs(out, fp); pclose(fp); }
-        char s[54]; snprintf(s, 54, "%s", out); for (char *c=s;*c;c++) if(*c=='\n')*c=' ';
-        printf("\xe2\x9c\x93 %s\n", s);
-        free(d); return 0;
-    }
-    free(d); puts("x No output found"); return 0;
-}
+/* ── copy: pipe or last tmux command output → clipboard ── */
+static int isprompt(const char*s){return strstr(s,"\xe2\x9d\xaf")||(strstr(s,"$")&&strstr(s,"@"));}
+static int cmd_copy(int c,char**v){(void)c;(void)v;
+    char out[B]="";int ol=0;
+    if(!isatty(STDIN_FILENO)){char buf[4096];int n;
+        while((n=(int)read(STDIN_FILENO,buf,sizeof(buf)))>0&&ol+n<B){memcpy(out+ol,buf,(size_t)n);ol+=n;}
+    } else if(getenv("TMUX")){
+        (void)!system("tmux capture-pane -pJ -S -99>/tmp/ac_copy.tmp");
+        char*d=readf("/tmp/ac_copy.tmp",NULL);if(!d)return 1;
+        char*L[1024];int nl=0;char*p=d;
+        while(*p&&nl<1024){L[nl++]=p;char*e=strchr(p,'\n');if(e){*e=0;p=e+1;}else break;}
+        int lp=-1;
+        for(int i=nl-1;i>=0;i--){if(!isprompt(L[i]))continue;
+            if(strstr(L[i],"copy")){lp=i;continue;} if(lp<0)continue;
+            for(int j=i+1;j<lp;j++)ol+=snprintf(out+ol,(size_t)(B-ol),"%s%s",ol?"\n":"",L[j]);break;}
+        free(d);
+    } else {puts("x Pipe input or run in tmux");return 1;}
+    if(!ol){puts("x No output found");return 0;}
+    out[ol]=0;int ok=!to_clip(out);
+    char s[54];snprintf(s,54,"%s",out);for(char*p=s;*p;p++)if(*p=='\n')*p=' ';
+    printf("%s %s\n",ok?"\xe2\x9c\x93":"(not copied)",s);return ok?0:1;}
 
 /* ── dash ── */
 static int cmd_dash(int argc, char **argv) { (void)argc;(void)argv;

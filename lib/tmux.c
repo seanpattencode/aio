@@ -47,12 +47,7 @@ static void tm_key(const char *s, const char *key) {
  * C: tm_read(sn,buf,B) inspect, tm_send(sn,text) literal, tm_key(sn,"Enter") key */
 
 /* ═══ TMUX CONFIG ═══ */
-static const char *tm_clip(void) {
-    if (system("which wl-copy >/dev/null 2>&1") == 0) return "wl-copy";
-    if (system("which xclip >/dev/null 2>&1") == 0) return "xclip -selection clipboard -i";
-    if (system("which xsel >/dev/null 2>&1") == 0) return "xsel --clipboard --input";
-    return NULL;
-}
+/* clip_cmd() in util.c */
 
 static void tm_ensure_conf(void) {
     if (strcmp(cfget("tmux_conf"), "y") != 0) return;
@@ -61,7 +56,7 @@ static void tm_ensure_conf(void) {
     char cpath[P]; snprintf(cpath, P, "%s/tmux.conf", adir);
     FILE *f = fopen(cpath, "w");
     if (!f) return;
-    const char *cc = tm_clip();
+    const char *cc = clip_cmd();
     fputs("# aio-managed-config\n"
         "set -ga update-environment \"WAYLAND_DISPLAY\"\n"
         "set -g mouse on\n"
