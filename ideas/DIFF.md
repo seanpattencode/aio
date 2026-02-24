@@ -98,6 +98,10 @@ You're not debugging, you're exploring a design space. Terse code is a creative 
 
 **Why?** Terse code plays closer to the fundamental axioms of the problem rather than abstractions on top of them. Each token is a rule of the system, not plumbing. Change a token, change a rule, get a different valid system. Change plumbing, get a crash.
 
+## a diff does more work than anything else
+
+`a diff` is the highest-leverage command in the system. Every other tool writes code — `a diff` is the only one that evaluates whether the code should exist. It enforces the token ratchet: after every change, you see whether the codebase grew or shrank. Without it, you're coding blind — you think you fixed something, but you may have net-added error surface. It turns an implicit gut feeling ("this seems bigger") into an explicit number that compounds across every commit.
+
 ## Design decisions
 
 - Pragmatic over pure: Shows real commit size, not git staging state
