@@ -95,10 +95,38 @@ Base 2 matches the structure of design decisions (include/exclude a capability).
 Base 3+ overshoots — grants budget for decisions not yet proven necessary.
 Base 10 is the escape hatch for genuinely hard problems, not the default.
 
+## Fix Depth: Why 2x Cuts Break Near the Floor
+
+On fixes, 2x is too aggressive for code that's already been ratcheted.
+
+`a cat` is 22 tokens of essential logic. A fix demanding 2x would mean: fix the
+bug AND cut to 11 tokens. At 11 tokens you lose either clipboard, dir param, or
+headers — all of which scream. The cut hits bone, not fat.
+
+The difference is distance from floor:
+- At 2x+ over optimal: 2x cuts hit fat. Plenty of waste to find.
+- At 1.1x over optimal: 2x cuts hit bone. Essential functionality dies.
+
+How do you know where you are? Fix cycle count. Fresh code has fat. Code that's
+survived 3+ fix-and-shorten cycles is probably within 20% of optimal. Demanding
+2x on that destroys function for marginal token savings.
+
+Three regimes:
+- **New features**: budget-from-below (10, 2x until works)
+- **First fix on bloated code**: 2x cut (still fat to find)
+- **Fix on ratcheted code**: any negative (near floor, preserve function)
+
+The signal is history. Code with no cut history is bloated — demand 2x. Code
+that's been cut repeatedly is near-optimal — accept any negative. The ratchet
+tightens naturally: aggressive early, gentle late. Forcing 2x uniformly penalizes
+code that's already been optimized, which is exactly the code you should trust.
+
 ## Rule
 
 1. Budget 10 tokens for any new feature
 2. Attempt implementation
 3. If broken: 2x budget, retry
 4. Accept first working version
-5. On fix touches: squeeze 2x (maintenance ratchet)
+5. On fix touches:
+   - Bloated (few prior cuts): demand 2x
+   - Ratcheted (3+ prior cuts): accept any negative
