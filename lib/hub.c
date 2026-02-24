@@ -31,7 +31,15 @@ static void hub_save(hub_t *j) {
 }
 
 static void hub_timer(hub_t *j, int on) {
-    char sd[P],buf[B]; snprintf(sd,P,"%s/.config/systemd/user",HOME); mkdirp(sd);
+    char buf[B];
+#ifdef __ANDROID__
+    /* Termux: use cron (no systemd) */
+    int h=0,m=0; sscanf(j->s,"%d:%d",&h,&m);
+    if(on) snprintf(buf,B,"(crontab -l 2>/dev/null|grep -v 'aio:%s';echo '%d %d * * * %s/.local/bin/a hub run %s # aio:%s')|crontab -",j->n,m,h,HOME,j->n,j->n);
+    else snprintf(buf,B,"(crontab -l 2>/dev/null|grep -v 'aio:%s')|crontab -",j->n);
+    (void)!system("pgrep crond>/dev/null||crond");
+#else
+    char sd[P]; snprintf(sd,P,"%s/.config/systemd/user",HOME); mkdirp(sd);
     if(on) {
         snprintf(buf,B,"[Unit]\nDescription=%s\n[Service]\nType=oneshot\nExecStart=/bin/bash -c '%s/.local/bin/a hub run %s'\n",j->n,HOME,j->n);
         char svc[P]; snprintf(svc,P,"%s/aio-%s.service",sd,j->n); writef(svc,buf);
@@ -42,6 +50,7 @@ static void hub_timer(hub_t *j, int on) {
         snprintf(buf,B,"systemctl --user disable --now aio-%s.timer 2>/dev/null;"
             "rm -f '%s/aio-%s.timer' '%s/aio-%s.service'",j->n,sd,j->n,sd,j->n);
     }
+#endif
     (void)!system(buf);
 }
 
@@ -61,12 +70,22 @@ static int cmd_hub(int argc, char **argv) {
         pcmd(c,url,512); url[strcspn(url,"\n")]=0;
         printf("Hub: %d jobs\n  %s\n  %s\n\n",NJ,hd,url);
         /* timer status */
-        char tl[B*4]; pcmd("systemctl --user list-timers 2>/dev/null",tl,sizeof(tl));
+        char tl[B*4];
+#ifdef __ANDROID__
+        pcmd("crontab -l 2>/dev/null",tl,sizeof(tl));
+#else
+        pcmd("systemctl --user list-timers 2>/dev/null",tl,sizeof(tl));
+#endif
         int tw=80; struct winsize ws; if(ioctl(STDOUT_FILENO,TIOCGWINSZ,&ws)==0) tw=ws.ws_col;
         int m=tw<60, cw=tw-(m?32:48);
         printf(m?"# %-8s %-9s On Cmd\n":"# %-10s %-6s %-12s %-8s On Cmd\n","Name",m?"Last":"Sched","Last","Dev");
         for(int i=0;i<NJ;i++) {
-            hub_t *j=&HJ[i]; char pat[96]; snprintf(pat,96,"aio-%s.timer",j->n);
+            hub_t *j=&HJ[i]; char pat[96];
+#ifdef __ANDROID__
+            snprintf(pat,96,"aio:%s",j->n);
+#else
+            snprintf(pat,96,"aio-%s.timer",j->n);
+#endif
             int on=(!strcmp(j->d,DEV))?j->en&&strstr(tl,pat)!=NULL:j->en;
             char cp[512]; int pl=(int)strlen(j->p);
             if(pl>cw&&cw>5){int h=cw/2-1;snprintf(cp,512,"%.*s..%s",h,j->p,j->p+pl-(cw-h-2));}
