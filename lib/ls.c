@@ -138,51 +138,14 @@ static int cmd_send(int argc, char **argv) {
     return 0;
 }
 
-/* ── jobs: ssh cache ── */
-static void jobs_ssh_refresh(void) {
-    init_db();load_cfg();
-    char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
-    char hpaths[32][P];int nh=listdir(sdir,hpaths,32);
-    struct{char hn[64];int fd;pid_t pid;}SP[16];int nsp=0;
-    for(int h=0;h<nh&&nsp<16;h++){
-        kvs_t kv=kvfile(hpaths[h]);const char*hn=kvget(&kv,"Name");
-        if(!hn||!strcmp(hn,DEV))continue;
-        int pfd[2];if(pipe(pfd))continue;
-        pid_t p=fork();if(p==0){close(pfd[0]);
-            char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-panes -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
-            FILE*f=popen(sc,"r");if(f){char buf[B];size_t r=fread(buf,1,B-1,f);buf[r]=0;(void)!write(pfd[1],buf,r);pclose(f);}
-            close(pfd[1]);_exit(0);}
-        close(pfd[1]);snprintf(SP[nsp].hn,64,"%s",hn);SP[nsp].fd=pfd[0];SP[nsp].pid=p;nsp++;}
-    char cf[P],tmp[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);snprintf(tmp,P,"%s.%d",cf,getpid());
-    FILE*out=fopen(tmp,"w");
-    for(int s=0;s<nsp;s++){
-        char ro[B];int len=(int)read(SP[s].fd,ro,B-1);ro[len>0?len:0]=0;close(SP[s].fd);waitpid(SP[s].pid,NULL,0);
-        for(char*rp=ro;*rp;){char*re=strchr(rp,'\n');if(re)*re=0;
-            if(strchr(rp,'|')&&out)fprintf(out,"%s|%s\n",SP[s].hn,rp);
-            if(re){rp=re+1;}else break;}}
-    if(out){fclose(out);rename(tmp,cf);}
-}
-
-typedef struct{char sn[64],pid[32],cmd[32],p[128],dev[32];}jpane_t;
-static int jobs_load_cache(jpane_t*A,int na){
-    char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
-    char*dat=readf(cf,NULL);if(!dat)return na;
-    for(char*rp=dat;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
-        char*d1=strchr(rp,'|'),*r1=d1?strchr(d1+1,'|'):0,*r2=r1?strchr(r1+1,'|'):0;
-        if(d1&&r1&&r2){*d1=*r1=*r2=0;
-            snprintf(A[na].sn,64,"%s",d1+1);A[na].pid[0]=0;
-            snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
-            snprintf(A[na].dev,32,"%s",rp);na++;}
-        if(re)rp=re+1;else break;}
-    free(dat);return na;
-}
-
 /* ── jobs ── active panes (local+remote) + review worktrees */
+typedef struct{char sn[64],pid[32],cmd[32],p[128],dev[32];}jpane_t;
 static int cmd_jobs(int argc, char **argv) {
     const char *sel=NULL,*rm=NULL;
     for(int i=2;i<argc;i++){if(!strcmp(argv[i],"rm")&&i+1<argc)rm=argv[++i];
         else if(!strcmp(argv[i],"watch")){perf_disarm();execlp("watch","watch","-n2","-c","a","job",(char*)0);return 0;}
         else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
+    init_db();load_cfg();
     jpane_t A[64];int na=0;
     /* Local panes */
     char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
@@ -193,10 +156,38 @@ static int cmd_jobs(int argc, char **argv) {
                 snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
                 snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));A[na].dev[0]=0;na++;}}
         if(e)p=e+1;else break;}
-    /* Remote panes: cache + bg refresh */
-    init_db();load_cfg();
-    na=jobs_load_cache(A,na);
-    {pid_t bg=fork();if(bg==0){jobs_ssh_refresh();_exit(0);}}
+    /* Remote panes: read cache, bg refresh */
+    {char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
+    char*dat=readf(cf,NULL);if(dat){
+        for(char*rp=dat;*rp&&na<64;){char*re=strchr(rp,'\n');if(re)*re=0;
+            char*d1=strchr(rp,'|'),*r1=d1?strchr(d1+1,'|'):0,*r2=r1?strchr(r1+1,'|'):0;
+            if(d1&&r1&&r2){*d1=*r1=*r2=0;
+                snprintf(A[na].sn,64,"%s",d1+1);A[na].pid[0]=0;
+                snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
+                snprintf(A[na].dev,32,"%s",rp);na++;}
+            if(re)rp=re+1;else break;}free(dat);}}
+    {pid_t bg=fork();if(bg==0){close(1);close(2);
+        char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
+        char hp[32][P];int nh=listdir(sdir,hp,32);
+        struct{char hn[64];int fd;pid_t pid;}SP[16];int nsp=0;
+        for(int h=0;h<nh&&nsp<16;h++){
+            kvs_t kv=kvfile(hp[h]);const char*hn=kvget(&kv,"Name");
+            if(!hn||!strcmp(hn,DEV))continue;
+            int pfd[2];if(pipe(pfd))continue;
+            pid_t p=fork();if(p==0){close(pfd[0]);
+                char sc[B];snprintf(sc,B,"a ssh %s 'tmux list-panes -a -F \"#{session_name}|#{pane_current_command}|#{pane_current_path}\"' 2>/dev/null",hn);
+                FILE*f=popen(sc,"r");if(f){char buf[B];size_t r=fread(buf,1,B-1,f);buf[r]=0;(void)!write(pfd[1],buf,r);pclose(f);}
+                close(pfd[1]);_exit(0);}
+            close(pfd[1]);snprintf(SP[nsp].hn,64,"%s",hn);SP[nsp].fd=pfd[0];SP[nsp].pid=p;nsp++;}
+        char cf[P],tmp[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);snprintf(tmp,P,"%s.%d",cf,getpid());
+        FILE*fo=fopen(tmp,"w");
+        for(int s=0;s<nsp;s++){
+            char ro[B];int len=(int)read(SP[s].fd,ro,B-1);ro[len>0?len:0]=0;close(SP[s].fd);waitpid(SP[s].pid,NULL,0);
+            for(char*rp=ro;*rp;){char*re=strchr(rp,'\n');if(re)*re=0;
+                if(strchr(rp,'|')&&fo)fprintf(fo,"%s|%s\n",SP[s].hn,rp);
+                if(re){rp=re+1;}else break;}}
+        if(fo){fclose(fo);rename(tmp,cf);}
+        _exit(0);}}
     /* Review worktrees */
     char wd[P];{const char*w=cfget("worktrees_dir");if(w[0])snprintf(wd,P,"%s",w);else snprintf(wd,P,"%s/worktrees",AROOT);}
     struct{char n[64],p[256];}R[32];int nr=0;
