@@ -107,7 +107,7 @@ static int cmd_ssh(int argc,char**argv){
                     "netsh interface portproxy add v4tov4 listenport=2222 listenaddress=0.0.0.0 connectport=22 connectaddress=%s;"
                     "netsh advfirewall firewall delete rule name=\\\"WSL SSH\\\" 2>\\$null;"
                     "netsh advfirewall firewall add rule name=\\\"WSL SSH\\\" dir=in action=allow protocol=tcp localport=2222'\"",wip);
-                (void)!system(c);printf("Press Enter after admin window completes...");getchar();}
+                (void)!system(c);printf("Press Enter after admin window completes...");(void)getchar();}
             printf("\xe2\x9c\x93 WSL port forward\n");
 #ifdef __APPLE__
         }else if(1){
