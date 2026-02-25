@@ -176,12 +176,15 @@ static int cmd_jobs(int argc, char **argv) {
         _exit(0);}}
     /* Review worktrees */
     char wd[P];{const char*w=cfget("worktrees_dir");if(w[0])snprintf(wd,P,"%s",w);else snprintf(wd,P,"%s/worktrees",AROOT);}
-    struct{char n[64],p[256];}R[32];int nr=0;
+    struct{char n[64],p[256];time_t mt;}R[32];int nr=0;
     if(dexists(wd)){DIR*d=opendir(wd);struct dirent*de;if(d){while((de=readdir(d))&&nr<32){
         if(de->d_name[0]=='.')continue;char fp[P];snprintf(fp,P,"%s/%s",wd,de->d_name);
         if(!dexists(fp))continue;
         int act=0;for(int i=0;i<na;i++)if(A[i].pid[0]&&!strcmp(bname(fp),A[i].p)){act=1;break;}if(act)continue;
-        snprintf(R[nr].n,64,"%s",de->d_name);snprintf(R[nr].p,256,"%s",fp);nr++;}closedir(d);}}
+        snprintf(R[nr].n,64,"%s",de->d_name);snprintf(R[nr].p,256,"%s",fp);
+        struct stat st;R[nr].mt=(!stat(fp,&st))?st.st_mtime:0;
+        nr++;}closedir(d);}
+    for(int i=0;i<nr-1;i++)for(int j=i+1;j<nr;j++)if(R[j].mt>R[i].mt){char t[328];memcpy(t,&R[i],328);R[i]=R[j];memcpy(&R[j],t,328);}}
     if(rm&&!strcmp(rm,"all")){for(int i=0;i<nr;i++){char c[B];snprintf(c,B,"rm -rf '%s'",R[i].p);(void)!system(c);}
         printf("\xe2\x9c\x93 %d worktrees\n",nr);return 0;}
     if(rm&&*rm>='0'&&*rm<='9'){int x=atoi(rm);
@@ -195,7 +198,10 @@ static int cmd_jobs(int argc, char **argv) {
         return 0;}
     if(!na&&!nr){puts("No jobs");return 0;}
     if(na){puts("ACTIVE");for(int i=0;i<na;i++)printf(" %d %-12s %-5s %-5s %s\n",i,A[i].sn,A[i].cmd,A[i].p,A[i].dev);}
-    if(nr){if(na)puts("");puts("REVIEW");for(int i=0;i<nr;i++)printf("  %d  %s\n",na+i,R[i].n);}
+    if(nr){if(na)puts("");puts("REVIEW");for(int i=0;i<nr;i++){
+        char*d=R[i].n,*s=strrchr(d,'-'),*s2=s?memrchr(d,'-',(size_t)(s-d)):NULL;
+        if(s2)printf("  %d  %-16.*s %s\n",na+i,(int)(s2-d),d,s2+1);
+        else printf("  %d  %s\n",na+i,d);}}
     puts("\n  a j \"task\"           new worktree+window (cwd)\n  a j <#> \"task\"       new worktree+window (project #)\n  a job #              attach/cd\n  a job rm #           remove\n  a job rm all         clear review\n  a job <#> \"prompt\"   full lifecycle (worktree>agent>PR>email)");
     return 0;
 }
