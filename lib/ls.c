@@ -132,14 +132,13 @@ static int cmd_jobs(int argc, char **argv) {
         else if(strcmp(argv[i],"-r")&&strcmp(argv[i],"--running"))sel=argv[i];}
     init_db();load_cfg();
     jpane_t A[64];int na=0;
-    /* Local panes */
-    char out[B*2];pcmd("tmux list-panes -a -F '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
+    /* Local windows */
+    char out[B*2];pcmd("tmux list-windows -a -F '#{session_name}\t#{window_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null",out,B*2);
     for(char*p=out;*p&&na<64;){char*e=strchr(p,'\n');if(e)*e=0;
         char*t1=strchr(p,'\t'),*t2=t1?strchr(t1+1,'\t'):0,*t3=t2?strchr(t2+1,'\t'):0;
         if(t1&&t2&&t3){*t1=*t2=*t3=0;
-            int dup=0;for(int j=0;j<na;j++)if(!strcmp(A[j].sn,p)&&!strcmp(A[j].dev,DEV)){dup=1;break;}
-            if(!dup){snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
-            snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));snprintf(A[na].dev,32,"%s",DEV);na++;}}
+            snprintf(A[na].sn,64,"%s",p);snprintf(A[na].pid,32,"%s",t1+1);
+            snprintf(A[na].cmd,32,"%s",t2+1);snprintf(A[na].p,128,"%s",bname(t3+1));snprintf(A[na].dev,32,"%s",DEV);na++;}
         if(e)p=e+1;else break;}
     /* Remote panes: read cache, bg refresh */
     {char cf[P];snprintf(cf,P,"%s/job_remote.cache",DDIR);
@@ -188,11 +187,11 @@ static int cmd_jobs(int argc, char **argv) {
     if(rm&&!strcmp(rm,"all")){for(int i=0;i<nr;i++){char c[B];snprintf(c,B,"rm -rf '%s'",R[i].p);(void)!system(c);}
         printf("\xe2\x9c\x93 %d worktrees\n",nr);return 0;}
     if(rm&&*rm>='0'&&*rm<='9'){int x=atoi(rm);
-        if(x<na&&A[x].pid[0]){char c[B];snprintf(c,B,"tmux kill-pane -t '%s'",A[x].pid);(void)!system(c);printf("\xe2\x9c\x93 %s\n",A[x].sn);}
+        if(x<na&&A[x].pid[0]){char c[B];snprintf(c,B,"tmux kill-window -t '%s'",A[x].pid);(void)!system(c);printf("\xe2\x9c\x93 %s\n",A[x].sn);}
         else if(x-na>=0&&x-na<nr){char c[B];snprintf(c,B,"rm -rf '%s'",R[x-na].p);(void)!system(c);printf("\xe2\x9c\x93 %s\n",R[x-na].n);}
         return 0;}
     if(sel&&*sel>='0'&&*sel<='9'){int x=atoi(sel);
-        if(x<na&&A[x].pid[0]){char c[B];snprintf(c,B,"tmux select-pane -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
+        if(x<na&&A[x].pid[0]){char c[B];snprintf(c,B,"tmux select-window -t '%s'",A[x].pid);(void)!system(c);tm_go(A[x].sn);}
         else if(x<na){perf_disarm();execlp("a","a","ssh",A[x].dev,"tmux","attach","-t",A[x].sn,(char*)NULL);/*foot terminal can fail here; ptyxis works*/}
         else if(x-na<nr){perf_disarm();if(chdir(R[x-na].p)==0){const char*sh=getenv("SHELL");execlp(sh?sh:"/bin/bash",sh?sh:"bash",(char*)NULL);}}
         return 0;}

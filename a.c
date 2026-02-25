@@ -432,10 +432,10 @@ static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     if(c==3&&v[2][0]>='0'&&v[2][0]<='9')return cmd_jobs(c,v);
     init_db();load_cfg();load_proj();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
-    int si=2;if(c>3&&v[2][0]>='0'&&v[2][0]<='9'){int idx=atoi(v[2]);if(idx<NPJ)snprintf(wd,P,"%s",PJ[idx].path);si++;}
-    char pr[B]="";int pl=0;for(int i=si;i<c;i++)pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);
+    int si=2,nowt=0;if(c>3&&v[2][0]>='0'&&v[2][0]<='9'){int idx=atoi(v[2]);if(idx<NPJ)snprintf(wd,P,"%s",PJ[idx].path);si++;}
+    char pr[B]="";int pl=0;for(int i=si;i<c;i++){if(!strcmp(v[i],"--no-wt")){nowt=1;continue;}pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);}
     /* worktree */
-    if(git_in_repo(wd)){
+    if(!nowt&&git_in_repo(wd)){
         const char*w=cfget("worktrees_dir");char wt[P];
         if(w[0])snprintf(wt,P,"%s",w);else snprintf(wt,P,"%s/worktrees",AROOT);
         time_t now=time(NULL);struct tm*t=localtime(&now);char ts[16];
