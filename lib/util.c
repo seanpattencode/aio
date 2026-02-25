@@ -36,14 +36,6 @@ static int pcmd(const char *cmd, char *out, int sz) {
 
 static const char *bname(const char *p) { const char *s = strrchr(p, '/'); return s ? s + 1 : p; }
 
-static const char*clip_cmd(void){
-    if(getenv("TERMUX_VERSION"))return "termux-clipboard-set";
-    #ifdef __APPLE__
-    return "pbcopy";
-    #endif
-    if(dexists("/mnt/c"))return "clip.exe";
-    if(!access("/usr/bin/wl-copy",X_OK))return "wl-copy";
-    if(!access("/usr/bin/xclip",X_OK))return "xclip -sel c";
-    if(!access("/usr/bin/xsel",X_OK))return "xsel -b";return NULL;}
+static const char*clip_cmd(void){return getenv("TMUX")?"tmux load-buffer -":NULL;}
 static int to_clip(const char*d){const char*c=clip_cmd();
     FILE*f=c?popen(c,"w"):NULL;if(!f)return 1;fputs(d,f);return pclose(f);}

@@ -54,7 +54,7 @@ static int cmd_copy(int c,char**v){(void)c;(void)v;char o[B];int ol=0;
         ol=(int)strlen(o);
     }else{puts("x Pipe or tmux");return 1;}
     if(ol<1){puts("x No output");return 0;}
-    o[ol]=0;to_clip(o);printf("\xe2\x9c\x93 %.50s\n",o);return 0;}
+    o[ol]=0;if(to_clip(o)){puts("x Needs tmux");return 1;}printf("\xe2\x9c\x93 %.50s\n",o);return 0;}
 
 /* ── dash ── */
 static int cmd_dash(int argc, char **argv) { (void)argc;(void)argv;
