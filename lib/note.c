@@ -349,7 +349,7 @@ static int cmd_task(int argc,char**argv){
                     if(pd)closedir(pd);
                     if(!found){printf("  x Invalid prompt #\n");show=0;continue;}}
                 /* hand off to a job */
-                {char pf[P];snprintf(pf,P,"/tmp/a_task_%d.txt",(int)getpid());writef(pf,prompt);
+                {char pf[P];snprintf(pf,P,"%s/a_task_%d.txt",TMP,(int)getpid());writef(pf,prompt);
                 char cmd[B];snprintf(cmd,B,"a job '%s' --prompt-file '%s' --no-worktree --model %s --bg",pfolder,pf,pmodel);
                 (void)!system(cmd);}show=0;}
             else if(k=='g'){
@@ -432,7 +432,7 @@ static int cmd_task(int argc,char**argv){
         return 0;}
     if(!strcmp(sub,"sync")){sync_repo();puts("\xe2\x9c\x93");return 0;}
     if(!strcmp(sub,"flag")||!strcmp(sub,"f")){int n=load_tasks(dir);if(!n){puts("No tasks");return 0;}
-        char tf[P];snprintf(tf,P,"/tmp/a_flag_%d.txt",(int)getpid());
+        char tf[P];snprintf(tf,P,"%s/a_flag_%d.txt",TMP,(int)getpid());
         FILE*fp=fopen(tf,"w");if(!fp)return 1;
         fprintf(fp,"Help me clean up my task list. Identify tasks to archive (duplicate, done, vague, obsolete).\n"
             "Ask me to confirm each batch. For confirmed tasks run: a task d <dirname> <dirname>...\n"

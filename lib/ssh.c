@@ -1,5 +1,5 @@
 /* ── ssh ── */
-#define SMUX " -oControlMaster=auto -oControlPath=/tmp/a-ssh-%%C -oControlPersist=300"
+#define SMUX " -oControlMaster=auto -oControlPath=%%d/.ssh/a-%%C -oControlPersist=300"
 static void ssh_parse(const char*h,char*hp,char*port){
     snprintf(hp,256,"%s",h);char*c=strrchr(hp,':');if(c){snprintf(port,8,"%s",c+1);*c=0;}else snprintf(port,8,"22");}
 static int ssh_pre(char*c,int sz,const char*pw,const char*opts,const char*port,const char*hp){
