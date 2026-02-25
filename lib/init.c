@@ -14,10 +14,8 @@ static void init_paths(void) {
         self[n] = 0;
         char *s = strrchr(self, '/');
         if (s) { *s = 0; snprintf(SDIR, P, "%s", self);
-            /* Von Neumann: code and data in the same space. adata/ lives inside
-             * the project dir (.gitignored) — one directory, one world. VS Code
-             * users see everything, LLMs see everything, 'a push' and data sync
-             * are independent git operations on the same tree. */
+            /* worktree binary: resolve AROOT to real project root */
+            {char *wt=strstr(self,"/adata/worktrees/");if(wt)*wt=0;}
             snprintf(AROOT, P, "%s/adata", self);
             snprintf(SROOT, P, "%s/git", AROOT);
         }
