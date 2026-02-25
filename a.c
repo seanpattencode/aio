@@ -449,7 +449,7 @@ static int cmd_j(int c,char**v){
     printf("+ job: %s\n  %.*s\n",bname(wd),80,pr);
     if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
     tm_ensure_conf();
-    const char*jcmd="ulimit -v 5000000; while :; do claude --dangerously-skip-permissions; e=$?; [ $e -eq 0 ]&&break; echo \"! Agent crashed (exit $e, 5GB mem limit). Restarting in 2s...\"; sleep 2; done";
+    char jcmd[B];snprintf(jcmd,B,"ulimit -v 5000000;while :;do claude --dangerously-skip-permissions;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
         tm_ensure_conf();tm_new(sn,wd,jcmd);send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}
     char cm[B],pid[64];
