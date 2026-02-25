@@ -432,6 +432,17 @@ static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     if(c==3&&v[2][0]>='0'&&v[2][0]<='9')return cmd_jobs(c,v);
     init_db();load_cfg();load_proj();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
+    /* resume: a j --resume <worktree-path> */
+    if(c>3&&!strcmp(v[2],"--resume")){snprintf(wd,P,"%s",v[3]);
+        char jf[P],*jp;snprintf(jf,P,"%s/.a_job",wd);jp=readf(jf,NULL);
+        if(!jp){printf("x No .a_job in %s\n",wd);return 1;}
+        printf("+ resume: %s\n",wd);
+        /* 16GB virt-mem cap per agent: claude's bun/JSC runtime maps ~8GB
+           virtual (thread stacks, GC arenas) despite only ~1.2GB RSS */
+        tm_ensure_conf();char jcmd[B];snprintf(jcmd,B,"ulimit -v 16000000;while :;do claude --dangerously-skip-permissions --continue;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
+        if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));tm_new(sn,wd,jcmd);tm_go(sn);}
+        else{char cm[B],pid[64];snprintf(cm,B,"tmux new-window -P -F '#{pane_id}' -c '%s' '%s'",wd,jcmd);pcmd(cm,pid,64);}
+        free(jp);return 0;}
     int si=2,nowt=0;if(c>3&&v[2][0]>='0'&&v[2][0]<='9'){int idx=atoi(v[2]);if(idx<NPJ)snprintf(wd,P,"%s",PJ[idx].path);si++;}
     char pr[B]="";int pl=0;for(int i=si;i<c;i++){if(!strcmp(v[i],"--no-wt")){nowt=1;continue;}pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);}
     /* worktree */
@@ -446,10 +457,11 @@ static int cmd_j(int c,char**v){
         snprintf(gc,B,"mkdir -p '%s'&&git -C '%s' worktree add -b 'j-%s' '%s' HEAD 2>/dev/null",wt,wd,nm,wp);
         if(!system(gc)){printf("+ %s\n",wp);snprintf(wd,P,"%s",wp);}
     }
+    {char jf[P];snprintf(jf,P,"%s/.a_job",wd);FILE*f=fopen(jf,"w");if(f){fprintf(f,"%s",pr);fclose(f);}}
     printf("+ job: %s\n  %.*s\n",bname(wd),80,pr);
     if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
     tm_ensure_conf();
-    char jcmd[B];snprintf(jcmd,B,"ulimit -v 5000000;while :;do claude --dangerously-skip-permissions;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
+    char jcmd[B];snprintf(jcmd,B,"ulimit -v 16000000;while :;do claude --dangerously-skip-permissions;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
         tm_ensure_conf();tm_new(sn,wd,jcmd);send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}
     char cm[B],pid[64];

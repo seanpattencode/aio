@@ -27,7 +27,7 @@ static void create_sess(const char *sn, const char *wd, const char *cmd) {
     int ai = cmd && (strstr(cmd,"claude") || strstr(cmd,"codex") || strstr(cmd,"gemini") || strstr(cmd,"aider"));
     char wcmd[B*2];
     if (ai) snprintf(wcmd, sizeof(wcmd),
-        "ulimit -v 5000000;unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT;while :;do %s;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo -e \"\\n! crash $e [R]estart/[Q]uit:\";read -n1 k;[[ $k =~ [Rr] ]]||break;done", cmd, LOGDIR);
+        "ulimit -v 16000000;unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT;while :;do %s;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo -e \"\\n! crash $e [R]estart/[Q]uit:\";read -n1 k;[[ $k =~ [Rr] ]]||break;done", cmd, LOGDIR);
     else snprintf(wcmd, sizeof(wcmd), "%s", cmd ? cmd : "");
     tm_ensure_conf();
     tm_new(sn, wd, wcmd);
