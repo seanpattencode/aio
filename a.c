@@ -441,9 +441,8 @@ static int cmd_j(int c,char**v){
         char jf[P],*jp;snprintf(jf,P,"%s/.a_job",wd);jp=readf(jf,NULL);
         if(!jp){printf("x No .a_job in %s\n",wd);return 1;}
         printf("+ resume: %s\n",wd);
-        /* 16GB virt-mem cap per agent: claude's bun/JSC runtime maps ~8GB
-           virtual (thread stacks, GC arenas) despite only ~1.2GB RSS */
-        tm_ensure_conf();char jcmd[B];snprintf(jcmd,B,"ulimit -v 16000000;while :;do claude --dangerously-skip-permissions --continue;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
+        /* no ulimit: bun/nucleo need unbounded virt-mem; 4-slot limit is the real guard */
+        tm_ensure_conf();char jcmd[B];snprintf(jcmd,B,"while :;do claude --dangerously-skip-permissions --continue;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
         if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));tm_new(sn,wd,jcmd);tm_go(sn);}
         else{char cm[B],pid[64];snprintf(cm,B,"tmux new-window -P -F '#{pane_id}' -c '%s' '%s'",wd,jcmd);pcmd(cm,pid,64);}
         free(jp);return 0;}
@@ -465,7 +464,7 @@ static int cmd_j(int c,char**v){
     printf("+ job: %s\n  %.*s\n",bname(wd),80,pr);
     if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
     tm_ensure_conf();
-    char jcmd[B];snprintf(jcmd,B,"ulimit -v 16000000;while :;do claude --dangerously-skip-permissions;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
+    char jcmd[B];snprintf(jcmd,B,"while :;do claude --dangerously-skip-permissions;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
         tm_ensure_conf();tm_new(sn,wd,jcmd);send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}
     char cm[B],pid[64];
