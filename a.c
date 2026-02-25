@@ -449,10 +449,11 @@ static int cmd_j(int c,char**v){
     printf("+ job: %s\n  %.*s\n",bname(wd),80,pr);
     if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
     tm_ensure_conf();
+    const char*jcmd="ulimit -v 5000000; while :; do claude --dangerously-skip-permissions; e=$?; [ $e -eq 0 ]&&break; echo \"! Agent crashed (exit $e, 5GB mem limit). Restarting in 2s...\"; sleep 2; done";
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
-        create_sess(sn,wd,"claude --dangerously-skip-permissions");send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}
+        tm_ensure_conf();tm_new(sn,wd,jcmd);send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}
     char cm[B],pid[64];
-    snprintf(cm,B,"tmux new-window -P -F '#{pane_id}' -c '%s' 'claude --dangerously-skip-permissions'",wd);
+    snprintf(cm,B,"tmux new-window -P -F '#{pane_id}' -c '%s' '%s'",wd,jcmd);
     pcmd(cm,pid,64);pid[strcspn(pid,"\n")]=0;if(pid[0])send_prefix_bg(pid,"claude",wd,pr);
     return 0;}
 static int cmd_adb(int c,char**v){
