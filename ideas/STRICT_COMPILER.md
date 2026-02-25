@@ -63,6 +63,14 @@ install breaks, that's a bug to fix in the install code, not a support ticket.
 Same philosophy as the strict compiler. Don't hope things work — prove they work.
 If they don't, fix the code, not the docs.
 
+## Only fix what breaks in front of you
+
+If you identify 10 theoretical issues every turn, and nothing forces you to pick
+one, you do 10x the work. Each "preventive fix" can introduce its own bug, creating
+more theoretical issues, compounding in the wrong direction. One real bug that breaks
+in front of you has a 100% hit rate. Ten theoretical bugs have maybe 10-20% each.
+You do 10x the work for 1-2x the value. The discipline is saying no to the other 9.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
