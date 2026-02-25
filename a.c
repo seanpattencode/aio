@@ -74,7 +74,7 @@ _shell_funcs() {
         touch "$RC"
         grep -q '.local/bin' "$RC" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
         sed -i -e '/^_ADD=/d' -e '/^a() {/,/^}/d' -e '/^aio() {/,/^}/d' -e '/^ai() {/,/^}/d' "$RC" 2>/dev/null||:
-        echo "_ADD=\"$D/adata/local\"" >> "$RC"
+        echo "_ADD=\"${D%%/adata/worktrees/*}/adata/local\"" >> "$RC"
         cat >> "$RC" << 'AFUNC'
 a() {
     local dd="$_ADD"
@@ -89,7 +89,7 @@ aio() { a "$@"; }
 ai() { a "$@"; }
 AFUNC
     done
-    # Termux: /tmp owned by shell:shell (0771), Claude Code mkdir /tmp/claude-* fails EACCES
+    # Termux: /tmp not writable, redirect Claude Code tmpdir
     if [[ -d /data/data/com.termux ]]; then
         mkdir -p "$HOME/.tmp"
         grep -q CLAUDE_CODE_TMPDIR "$HOME/.bashrc" 2>/dev/null || echo 'export CLAUDE_CODE_TMPDIR="$HOME/.tmp"' >> "$HOME/.bashrc"
