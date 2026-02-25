@@ -28,8 +28,20 @@ static int cmd_sess(int argc, char **argv) {
         pl+=snprintf(prompt+pl,(size_t)(B-pl),"%s%s",pl?" ":"",argv[i]);
         is_prompt = 1;
     }
+    /* Existing session = fast path (check before split pane logic) */
+    char sn[256]; snprintf(sn, 256, "%s-%s", s->name, bname(wd));
+    if (tm_has(sn)) {
+        if (is_prompt && prompt[0]) {
+            tm_send(sn, prompt); usleep(100000);
+            tm_key(sn, "Enter");
+            puts("Prompt queued (existing session)");
+        }
+        tm_go(sn);
+        return 0;
+    }
     /* Inside tmux + single char key = split pane mode */
     if (getenv("TMUX") && strlen(key) == 1 && key[0] != 'a') {
+        perf_disarm();
         char ww[16],nc[16]; pcmd("tmux display-message -p '#{window_width}'",ww,16);
         pcmd("tmux list-panes -F '#{pane_left}'|sort -un|wc -l",nc,16);
         int nw=atoi(nc)>0?atoi(ww)/(atoi(nc)+1):atoi(ww)/2;
@@ -42,20 +54,7 @@ static int cmd_sess(int argc, char **argv) {
         }
         return 0;
     }
-    /* Find or create named session */
-    char sn[256]; snprintf(sn, 256, "%s-%s", s->name, bname(wd));
-    /* Check for existing session with same base name */
-    if (tm_has(sn)) {
-        if (is_prompt && prompt[0]) {
-            /* Send prompt to existing session */
-            tm_send(sn, prompt); usleep(100000);
-            tm_key(sn, "Enter");
-            puts("Prompt queued (existing session)");
-        }
-        tm_go(sn);
-        return 0;
-    }
-    /* Create new session */
+    /* Create new named session */
     create_sess(sn, wd, s->cmd);
     send_prefix_bg(sn, s->name, wd, is_prompt ? prompt : NULL);
     tm_go(sn);
