@@ -109,6 +109,23 @@ if the abstraction makes the command longer or harder to reason about, it's nega
 value. Short command, high frequency = abstraction wins. Long command, low frequency
 = just type it.
 
+## Abstraction is fan-out, indirection is fan-one
+
+Abstraction is compression: one input → many outputs. `a c` → tmux session + env
+setup + crash loop + pane layout + prompt injection + logging. One decision by the
+human, ten decisions by the system. Indirection is one input → one output, just
+somewhere else. Symlink, pointer, redirect. Same information, different address.
+That's why indirection causes bugs (worktree symlinks) — it preserves complexity,
+just moves it.
+
+Human bandwidth is fixed. You make roughly the same number of decisions per minute
+whether writing assembly or commanding agents. The only way to get more done is to
+make each decision trigger more work. The language itself is the compression layer.
+`a c` means more than a 200-character tmux command. Each shortening isn't fewer
+characters — it's fewer decisions the human holds in their head. The limit isn't
+compute. It's human attention. Compressing intent into shorter commands is the
+bottleneck worth removing.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
