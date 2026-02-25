@@ -195,6 +195,16 @@ more users. The economics pulled in the engineering talent. Same pattern every t
 The thing that wins isn't the best technology or the best philosophy. It's the thing
 on the path between someone and their money. Everything else is a hobby project.
 
+And the irony: Linux does immense good that the philosophical projects claimed to
+want. A free OS. High quality engineering. It boots. These are not trivial — they
+are measurable goods. BSD argued about license purity. GNU argued about freedom.
+Linux shipped, and by shipping it delivered more freedom and more quality than
+either. You can claim philosophical purity and consistency, but making the world
+better by measuring impact and pragmatically adjusting is its own kind of purity —
+one that doesn't require a single ideology, just simple metrics everyone can agree
+on. Does it work? Is it free? Does it make people's lives better? Those aren't
+philosophy. They're engineering.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
