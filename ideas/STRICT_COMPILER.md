@@ -71,6 +71,16 @@ more theoretical issues, compounding in the wrong direction. One real bug that b
 in front of you has a 100% hit rate. Ten theoretical bugs have maybe 10-20% each.
 You do 10x the work for 1-2x the value. The discipline is saying no to the other 9.
 
+## Two filters that collapse infinity
+
+"Improve my code" is unbounded. An LLM will happily generate infinite refactors,
+add error handling for impossible cases, write docstrings for self-evident code,
+abstract one-time operations. Each looks productive in isolation. None of it moves
+anything forward. You could have a million items of work and never get anything
+useful. The compiler and the human are the only two filters that collapse infinity
+into a finite list. The compiler says "this is provably wrong." The human says "this
+broke in front of me." Everything else is make-work disguised as progress.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
