@@ -169,6 +169,20 @@ AI more valuable when it serves human intent — not because it's constrained to
 because the architecture only works that way. Alignment by design, not restriction.
 Grounded in shipping code, not thought experiments.
 
+## Alignment must be the path that makes money
+
+Most alignment research treats safety as a cost — safety tax, capability tradeoff,
+regulatory compliance. Something you do despite it hurting your bottom line. That
+framing guarantees it gets cut when money is tight. The fix: make alignment the
+product. The human-AI interface that compresses intent into agent work — that's what
+people pay for. The architecture that makes it useful is the same architecture that
+makes it aligned. No tradeoff. If aligned systems make more money than unaligned
+ones, every profit-motivated company adopts alignment by default. No regulation
+needed, no ethics board, no papers nobody reads. Just a better product that happens
+to be aligned because that's the only way the compression works. The research
+community tries to solve alignment before deployment. The market solves it after —
+but only if someone demonstrates the economics. That's the demo.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
