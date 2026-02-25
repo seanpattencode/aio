@@ -139,6 +139,19 @@ an alignment protocol — human intent compressed into short commands, AI agents
 expanding it into parallel work. That's human-AI collaboration: not control, but
 compression.
 
+## Language is abstraction all the way down
+
+Binary → assembly → C → Python → natural language. Each layer compresses more intent
+into fewer symbols. Programming languages just made the abstraction explicit and
+verifiable. Natural language does the same thing but the compiler is another human
+(or now an LLM) instead of a machine. Programming languages exist because natural
+language was too ambiguous for machines to fan out reliably. Now that LLMs can parse
+natural language into action, the gap is closing. `a j "fix the login bug"` is
+natural language compiled into agent work. The whole history of computing is making
+the compression ratio between human intent and machine action higher. Punch cards →
+assembly → C → scripts → CLI → natural language prompts. Each step lets one human
+decision trigger more machine work.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
