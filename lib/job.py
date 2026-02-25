@@ -73,6 +73,11 @@ def _ssh_wait_done(dev, sn, timeout=600):
         time.sleep(5)
     return True
 
+def _email_start(jn, rn, prompt, dev=''):
+    subj=f'[a job] STARTED {rn}: {prompt[:60]}'
+    body=f'Job: {jn}\nRepo: {rn}\nDevice: {dev or DEVICE_ID}\nTime: {datetime.now():%Y-%m-%d %H:%M}\n\nPrompt:\n{prompt}'
+    S.Popen([_A,'email',subj,body],stdout=S.DEVNULL,stderr=S.DEVNULL)
+
 def _extract_pr_url(text):
     import re
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)  # strip ANSI
@@ -207,6 +212,7 @@ def _run_local(ak, proj, rn, prompt, jn, br, wp, wt, sn, watch=False, timeout=60
     time.sleep(0.5)
     S.run(['tmux', 'send-keys', '-t', sn, 'Enter'], env=env)
     print(f"+ Attach: a {sn}")
+    _email_start(jn, rn, prompt)
     if bg: _db_job(jn, 'bg', 'running', wp, sn); return
 
     _db_job(jn, 'waiting', 'running', wp, sn)
@@ -282,6 +288,7 @@ def _run_remote(dev, ak, proj, rn, prompt, jn, br, ts, sn):
     time.sleep(1)
     _ssh(dev, f"tmux send-keys -t '{sn}' Enter", timeout=10)
     print(f"+ Prompt sent")
+    _email_start(jn, rn, prompt, dev)
 
     # Wait for completion
     _db_job(jn, 'waiting', 'running', dev, sn)

@@ -168,9 +168,8 @@ static int cmd_perf(int argc, char **argv) {
                 printf("\033[32m\xe2\x9c\x93\033[0m Saved: %s\n", pf);
             }
         } else puts("No limits tightened — all commands at or above current limits.");
-        if(passed<shown){char c[B];snprintf(c,B,"'%s/a' email '[a perf] %d/%d FAILED on %s' 'bench failure'",SDIR,shown-passed,shown,DEV);(void)!system(c);
-            char fl[B]=""; int fll=0; for(int i=0;i<ncmds;i++) if(!res[i].skip&&!res[i].pass){char ft[32];fmt_us(res[i].us,ft,32);fll+=snprintf(fl+fll,(size_t)(B-fll),"%s(%s) ",res[i].cmd[0]?res[i].cmd:"(bare)",ft);}
-            snprintf(c,B,"'%s/a' job a 'a perf bench FAILED: %s— run a perf bench yourself, read the killed commands source, fix them, run a perf bench to verify all pass.' --timeout 300",SDIR,fl);(void)!system(c);}
+        if(passed<shown){char fl[B]="";int fll=0;for(int i=0;i<ncmds;i++)if(!res[i].skip&&!res[i].pass){char ft[32];fmt_us(res[i].us,ft,32);fll+=snprintf(fl+fll,(size_t)(B-fll),"%s(%s) ",res[i].cmd[0]?res[i].cmd:"(bare)",ft);}
+            char c[B];snprintf(c,B,"'%s/a' job a 'a perf bench FAILED on %s: %s— read the killed commands source, fix them, run a perf bench to verify all pass.' --timeout 300 </dev/null >/dev/null 2>&1 &",SDIR,DEV,fl);(void)!system(c);}
         free(data); free(res);
         return 0;
     }
