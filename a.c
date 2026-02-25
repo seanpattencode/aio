@@ -427,9 +427,10 @@ static int cmd_job(int c,char**v){
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
-    if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
+    if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
+    if(c==3&&v[2][0]>='0'&&v[2][0]<='9')return cmd_jobs(c,v);
     init_db();load_cfg();load_proj();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
-    int si=2;if(c>2&&v[2][0]>='0'&&v[2][0]<='9'){int idx=atoi(v[2]);if(idx<NPJ)snprintf(wd,P,"%s",PJ[idx].path);si++;}
+    int si=2;if(c>3&&v[2][0]>='0'&&v[2][0]<='9'){int idx=atoi(v[2]);if(idx<NPJ)snprintf(wd,P,"%s",PJ[idx].path);si++;}
     char pr[B]="";int pl=0;for(int i=si;i<c;i++)pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);
     /* worktree */
     if(git_in_repo(wd)){
@@ -443,6 +444,7 @@ static int cmd_j(int c,char**v){
         snprintf(gc,B,"mkdir -p '%s'&&git -C '%s' worktree add -b 'j-%s' '%s' HEAD 2>/dev/null",wt,wd,nm,wp);
         if(!system(gc)){printf("+ %s\n",wp);snprintf(wd,P,"%s",wp);}
     }
+    printf("+ job: %s\n  %.*s\n",bname(wd),80,pr);
     if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
     tm_ensure_conf();
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
