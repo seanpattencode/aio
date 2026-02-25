@@ -165,6 +165,7 @@ static int cmd_x(int argc, char **argv) { (void)argc;(void)argv;
 }
 
 static int cmd_web(int argc, char **argv) {
+    if (getenv("A_BENCH")) return 0;
     char url[B] = "https://google.com";
     if (argc > 2) {
         int l=snprintf(url,B,"https://google.com/search?q=");

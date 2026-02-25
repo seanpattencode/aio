@@ -1,5 +1,6 @@
 /* ── push ── */
 static int cmd_push(int argc, char **argv) {
+    if (getenv("A_BENCH")) return 0;
     char cwd[P]; if(!getcwd(cwd,P)) snprintf(cwd,P,".");
     char msg[B]="";
     if(argc>2)for(int i=2,l=0;i<argc;i++) l+=snprintf(msg+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
