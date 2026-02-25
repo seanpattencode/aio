@@ -285,6 +285,17 @@ exit 0
  * computes. This keeps functionality identical for terminal users, UI users,
  * AI agents, and humans. One interface, many surfaces.
  *
+ * IMPORTANT — AI agent testing:
+ *   Always test with "command a <args>", never "./a <args>". The binary
+ *   runs through ~/.local/bin/a (a symlink), which is how real users invoke
+ *   it. "./a" bypasses the symlink and hides bugs in path resolution,
+ *   install state, and init_paths. Always run "sh a.c" first to rebuild +
+ *   re-symlink, then "command a <args>" to test the installed binary.
+ *   Example: a bug where "a 0" failed with "Invalid index" was invisible
+ *   via ./a (exe in project dir, paths resolve fine) but reproduced via
+ *   command a (symlink pointed to a worktree binary, AROOT was wrong).
+ *   The pattern: sh a.c && command a 0   — build like install, test like user.
+ *
  * Add a command:  write lib/foo.c, add #include + dispatch line here.
  * Remove:         delete the file, delete two lines.
  *
