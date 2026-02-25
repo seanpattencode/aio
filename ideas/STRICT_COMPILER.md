@@ -98,6 +98,17 @@ the user's, the faster the loop closes. Terminal agents are the natural evolutio
 of AI on Unix: the shell is the universal interface that both humans and agents
 speak natively.
 
+## Abstraction cost vs frequency
+
+`a` is 1 token. `./a` is 3-4. Across thousands of agent invocations that's real
+cost — generation time, attention, error surface. The `./` prefix is meaningless
+noise to the intent. The abstraction layers (shell function, symlink, path
+resolution) exist to collapse a full path into `a`. The cost is paid once at
+install, the savings compound on every invocation forever. But there's a threshold:
+if the abstraction makes the command longer or harder to reason about, it's negative
+value. Short command, high frequency = abstraction wins. Long command, low frequency
+= just type it.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
