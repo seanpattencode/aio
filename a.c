@@ -100,12 +100,14 @@ AFUNC
 
 case "${1:-build}" in
 build)
+    # LLMs: use "sh a.c" to build — it compiles + symlinks so "a" works immediately
     _ensure_cc
     _warn_flags
     $CC $WARN $HARDEN -DSRC="\"$D\"" -O3 -flto -fsyntax-only "$D/a.c" & P1=$!
     $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$D/a" "$D/a.c" $LDFLAGS & P2=$!
     $CC -O2 -march=native -w -o "$D/a-i" "$D/lib/aid.c" & P3=$!
     wait $P1 && wait $P2 && wait $P3
+    BIN="$HOME/.local/bin"; mkdir -p "$BIN"; ln -sf "$D/a" "$BIN/a"; [ -f "$D/a-i" ] && ln -sf "$D/a-i" "$BIN/a-i"
     "$D/a-i" --stop 2>/dev/null || :
     ;;
 analyze)
