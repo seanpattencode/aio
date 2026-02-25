@@ -427,6 +427,7 @@ static int cmd_job(int c,char**v){
     if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     fallback_py("job",c,v);}
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
+static int cmd_telegram(int argc, char **argv){ fallback_py("telegram", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
@@ -502,7 +503,7 @@ static const cmd_t CMDS[] = {
     {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
     {"ssh",cmd_ssh},{"ssh add",cmd_ssh},{"ssh all",cmd_ssh},{"ssh rm",cmd_ssh},
     {"ssh self",cmd_ssh},{"ssh setup",cmd_ssh},{"ssh start",cmd_ssh},{"ssh stop",cmd_ssh},
-    {"sync",cmd_sync},{"t",cmd_task},{"task",cmd_task},
+    {"sync",cmd_sync},{"t",cmd_task},{"task",cmd_task},{"telegram",cmd_telegram},
     {"tree",cmd_tree},{"u",cmd_update},{"ui",cmd_ui},{"uninstall",cmd_uninstall},
     {"update",cmd_update},{"watch",cmd_watch},{"web",cmd_web},
     {"work",cmd_work},{"x",cmd_x},
@@ -519,7 +520,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
 static void perf_arm(const char *cmd) {
     if (getenv("A_BENCH")) return; /* bench children: parent handles timeout */
     if (isdigit(*cmd)) return;
-    static const char *skip[] = {"push","pull","sync","u","update","login","ssh","gdrive","mono","email","install","send","j","job","pr","hub",NULL};
+    static const char *skip[] = {"push","pull","sync","u","update","login","ssh","gdrive","mono","email","install","send","j","job","pr","hub","telegram",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
     /* per-device override: adata/git/perf/{DEV}.txt — command:us (microseconds) */
