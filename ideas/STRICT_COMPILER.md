@@ -126,6 +126,19 @@ characters — it's fewer decisions the human holds in their head. The limit isn
 compute. It's human attention. Compressing intent into shorter commands is the
 bottleneck worth removing.
 
+## Alignment is the interface, not the values
+
+If AI is 1:1 with human instructions — human says do X, AI does X — the AI is just
+a faster typist. Useful but replaceable. If the human compresses intent (1:many) and
+the AI fans it out into meaningful work, neither side works without the other. The
+human can't execute at that throughput. The AI can't decide what's worth doing.
+Alignment isn't about guardrails. It's about the interface. A good abstraction layer
+between human and AI makes both sides more valuable. A bad one (1:1 indirection)
+makes the AI a tool and the human a bottleneck. A command set like `a` is literally
+an alignment protocol — human intent compressed into short commands, AI agents
+expanding it into parallel work. That's human-AI collaboration: not control, but
+compression.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
