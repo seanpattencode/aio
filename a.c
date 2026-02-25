@@ -11,13 +11,11 @@
 # script; the C preprocessor skips everything between #if 0 and #endif.
 # Three files (a.c + Makefile + install.sh) become one.
 #
-# CLAUDE CODE TERMUX WORKAROUND:
-# Claude Code's sandbox treats "bash <script>" differently from direct
-# commands. Running a script file triggers sandbox monitoring that tries
-# to mkdir under /tmp. On Termux, /tmp is owned by "shell" (not the app
-# user), so that mkdir fails and the script never starts.
-# Direct commands (clang-21 ..., python3 ..., ./a help) skip that path
-# and work fine. So: run the compiler directly instead of "bash a.c".
+# TERMUX + CLAUDE CODE:
+# Sandbox monitors "bash <script>", tries mkdir /tmp which Termux denies
+# (owned by shell:shell 0771). Direct commands skip sandbox path and work.
+# Also set CLAUDE_CODE_TMPDIR=$HOME/.tmp (see _shell_funcs below).
+# Manual build (bypass sandbox): run compiler directly, not "bash a.c".
 #   D=/data/data/com.termux/files/home/projects/a
 #   clang-21 -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" \
 #     -O3 -march=native -flto -w -o "$D/a" "$D/a.c"
@@ -100,15 +98,16 @@ AFUNC
 
 case "${1:-build}" in
 build)
-    # LLMs: use "sh a.c" to build — it compiles + symlinks so "a" works immediately
+    # LLMs: always "sh a.c && command a <args>" to test (see comment below)
     _ensure_cc
     _warn_flags
+    R="${D%%/adata/worktrees/*}"
     $CC $WARN $HARDEN -DSRC="\"$D\"" -O3 -flto -fsyntax-only "$D/a.c" & P1=$!
-    $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$D/a" "$D/a.c" $LDFLAGS & P2=$!
-    $CC -O2 -march=native -w -o "$D/a-i" "$D/lib/aid.c" & P3=$!
+    $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$R/a" "$D/a.c" $LDFLAGS & P2=$!
+    $CC -O2 -march=native -w -o "$R/a-i" "$D/lib/aid.c" & P3=$!
     wait $P1 && wait $P2 && wait $P3
-    BIN="$HOME/.local/bin"; mkdir -p "$BIN"; ln -sf "$D/a" "$BIN/a"; [ -f "$D/a-i" ] && ln -sf "$D/a-i" "$BIN/a-i"
-    "$D/a-i" --stop 2>/dev/null || :
+    BIN="$HOME/.local/bin"; mkdir -p "$BIN"; ln -sf "$R/a" "$BIN/a"; [ -f "$R/a-i" ] && ln -sf "$R/a-i" "$BIN/a-i"
+    "$R/a-i" --stop 2>/dev/null || :
     ;;
 analyze)
     _ensure_cc
