@@ -49,6 +49,20 @@ mismatches — at compile time, before the code ever runs.
 The agent writes code, the checker proves it's clean, the build proceeds. No human
 in the loop for the mechanical part. That's the whole point.
 
+## Failed install is a dev bug, not a user problem
+
+Most projects ship a README with 15 steps and if step 7 fails it's "check your
+PATH" or "open an issue." The install broke but the developer considers it the
+user's problem.
+
+The install should be code, not documentation. Detect the OS, install missing deps,
+set up shell functions, create symlinks, handle platform quirks, fall back
+gracefully — and if something fails, tell the user exactly what to do. If the
+install breaks, that's a bug to fix in the install code, not a support ticket.
+
+Same philosophy as the strict compiler. Don't hope things work — prove they work.
+If they don't, fix the code, not the docs.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
