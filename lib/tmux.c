@@ -57,6 +57,10 @@ static void tm_ensure_conf(void) {
     if (!f) return;
     const char *cc = clip_cmd();
     fputs("# aio-managed-config\n"
+        /* default splits/windows inherit cwd so worktrees stay in worktree */
+        "bind '\"' split-window -c '#{pane_current_path}'\n"
+        "bind % split-window -h -c '#{pane_current_path}'\n"
+        "bind c new-window -c '#{pane_current_path}'\n"
         "set -ga update-environment \"WAYLAND_DISPLAY\"\n"
         "set -g mouse on\n"
         "set -g focus-events on\n"
@@ -73,18 +77,20 @@ static void tm_ensure_conf(void) {
         "#[range=user|agent]Agent#[norange] #[range=user|win]Win#[norange] #[range=user|new]Pane#[norange] #[range=user|side]Side#[norange] #[range=user|close]Close#[norange] #[range=user|edit]Edit#[norange] #[range=user|detach]Quit#[norange],"
         "#[range=user|agent]Ctrl+A:Agent#[norange] #[range=user|win]Ctrl+N:Win#[norange] #[range=user|new]Ctrl+T:Pane#[norange] #[range=user|side]Ctrl+Y:Side#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|detach]Ctrl+Q:Quit#[norange]}\"\n"
         "set -g status-format[2] \"#[align=left]#[range=user|esc]Esc#[norange]#[align=centre]#[range=user|kbd]Keyboard#[norange]\"\n"
-        "bind-key -n C-n new-window\n"
-        "bind-key -n C-t split-window\n"
-        "bind-key -n C-y split-window -fh\n"
-        "bind-key -n C-a split-window -h 'claude --dangerously-skip-permissions'\n"
+        /* -c pane_current_path: new panes/windows inherit cwd, not session start dir.
+         * Without this, splits in worktrees open in the original project root. */
+        "bind-key -n C-n new-window -c '#{pane_current_path}'\n"
+        "bind-key -n C-t split-window -c '#{pane_current_path}'\n"
+        "bind-key -n C-y split-window -fh -c '#{pane_current_path}'\n"
+        "bind-key -n C-a split-window -h -c '#{pane_current_path}' 'claude --dangerously-skip-permissions'\n"
         "bind-key -n C-w kill-pane\n"
         "bind-key -n C-q detach\n"
         "bind-key -n C-x confirm-before -p \"Kill session? (y/n)\" kill-session\n"
         "bind-key -n C-e split-window -fh -c '#{pane_current_path}' ~/.local/bin/e\n"
         "bind-key -T root MouseDown1Status if -F '#{==:#{mouse_status_range},window}' "
         "{ select-window } { run-shell 'r=\"#{mouse_status_range}\"; case \"$r\" in "
-        "agent) tmux split-window -h \"claude --dangerously-skip-permissions\";; "
-        "win) tmux new-window;; new) tmux split-window;; side) tmux split-window -fh;; "
+        "agent) tmux split-window -h -c \"#{pane_current_path}\" \"claude --dangerously-skip-permissions\";; "
+        "win) tmux new-window -c \"#{pane_current_path}\";; new) tmux split-window -c \"#{pane_current_path}\";; side) tmux split-window -fh -c \"#{pane_current_path}\";; "
         "close) tmux kill-pane;; edit) tmux split-window -fh -c \"#{pane_current_path}\" ~/.local/bin/e;; "
         "detach) tmux detach;; esc) tmux send-keys Escape;; "
         "kbd) tmux set -g mouse off; tmux display-message \"Mouse off 3s\"; "
