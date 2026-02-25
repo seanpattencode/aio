@@ -81,6 +81,23 @@ useful. The compiler and the human are the only two filters that collapse infini
 into a finite list. The compiler says "this is provably wrong." The human says "this
 broke in front of me." Everything else is make-work disguised as progress.
 
+## Terminal is the tightest feedback loop
+
+The bottleneck isn't the LLM — it's the time from fix to verified. Compile time,
+run time, and verification time compound across every iteration of every agent on
+every fix. What matters is the total round-trip: write → build → run → see result.
+C compiles in milliseconds and runs in microseconds. Python starts instantly but
+runs slower. The real metric is total cycle time, not any single phase.
+
+Terminal development is the tightest possible loop because there's zero abstraction
+between the agent and the system. No IDE, no GUI, no API wrapper. The agent runs the
+same commands the human runs, sees the same output, hits the same errors. That's why
+agents must test with `command a`, not `./a` — the agent has to experience the real
+path, not a shortcut that hides the bug. The closer the agent's experience matches
+the user's, the faster the loop closes. Terminal agents are the natural evolution
+of AI on Unix: the shell is the universal interface that both humans and agents
+speak natively.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
