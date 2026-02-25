@@ -431,6 +431,10 @@ static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); 
 static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     if(c==3&&v[2][0]>='0'&&v[2][0]<='9')return cmd_jobs(c,v);
+    /* limit concurrent jobs: each claude ~1.2GB RSS */
+    {char nb[16]="";pcmd("pgrep -xc claude 2>/dev/null||echo 0",nb,16);
+    int nj=atoi(nb)-1;if(nj<0)nj=0; /* -1 for this session */
+    if(nj>=4&&!(c>2&&!strcmp(v[2],"--resume"))){printf("x %d/4 job slots full — use 'a job' to see running\n",nj);return 1;}}
     init_db();load_cfg();load_proj();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
     /* resume: a j --resume <worktree-path> */
     if(c>3&&!strcmp(v[2],"--resume")){snprintf(wd,P,"%s",v[3]);
@@ -452,7 +456,7 @@ static int cmd_j(int c,char**v){
         time_t now=time(NULL);struct tm*t=localtime(&now);char ts[16];
         strftime(ts,16,"%b%d",t);for(char*p=ts;*p;p++)*p=(*p>='A'&&*p<='Z')?*p+32:*p;
         int h=t->tm_hour%12;if(!h)h=12;char nm[64],wp[P],gc[B];
-        snprintf(nm,64,"%s-%s-%d%02d%s",bname(wd),ts,h,t->tm_min,t->tm_hour>=12?"pm":"am");
+        snprintf(nm,64,"%s-%s-%d%02d%02d%s",bname(wd),ts,h,t->tm_min,t->tm_sec,t->tm_hour>=12?"pm":"am");
         snprintf(wp,P,"%s/%s",wt,nm);
         snprintf(gc,B,"mkdir -p '%s'&&git -C '%s' worktree add -b 'j-%s' '%s' HEAD 2>/dev/null",wt,wd,nm,wp);
         if(!system(gc)){printf("+ %s\n",wp);snprintf(wd,P,"%s",wp);}
