@@ -428,8 +428,22 @@ static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); 
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
     if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
-    init_db();load_cfg();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
-    char pr[B]="";int pl=0;for(int i=2;i<c;i++)pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);
+    init_db();load_cfg();load_proj();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
+    int si=2;if(c>2&&v[2][0]>='0'&&v[2][0]<='9'){int idx=atoi(v[2]);if(idx<NPJ)snprintf(wd,P,"%s",PJ[idx].path);si++;}
+    char pr[B]="";int pl=0;for(int i=si;i<c;i++)pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);
+    /* worktree */
+    if(git_in_repo(wd)){
+        const char*w=cfget("worktrees_dir");char wt[P];
+        if(w[0])snprintf(wt,P,"%s",w);else snprintf(wt,P,"%s/worktrees",AROOT);
+        time_t now=time(NULL);struct tm*t=localtime(&now);char ts[16];
+        strftime(ts,16,"%b%d",t);for(char*p=ts;*p;p++)*p=(*p>='A'&&*p<='Z')?*p+32:*p;
+        int h=t->tm_hour%12;if(!h)h=12;char nm[64],wp[P],gc[B];
+        snprintf(nm,64,"%s-%s-%d%02d%s",bname(wd),ts,h,t->tm_min,t->tm_hour>=12?"pm":"am");
+        snprintf(wp,P,"%s/%s",wt,nm);
+        snprintf(gc,B,"mkdir -p '%s'&&git -C '%s' worktree add -b 'j-%s' '%s' HEAD 2>/dev/null",wt,wd,nm,wp);
+        if(!system(gc)){printf("+ %s\n",wp);snprintf(wd,P,"%s",wp);}
+    }
+    if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
     tm_ensure_conf();
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
         create_sess(sn,wd,"claude --dangerously-skip-permissions");send_prefix_bg(sn,"claude",wd,pr);tm_go(sn);}

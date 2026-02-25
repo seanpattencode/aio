@@ -28,7 +28,8 @@ static const char *HELP_FULL =
     "  a ssh <#>           Connect to host\n"
     "  a run <#> \"task\"    Run task on remote\n\n"
     "OTHER\n"
-    "  a job               Active sessions\n"
+    "  a j \"task\"           Job in new worktree+window (cwd or a j <#>)\n"
+    "  a job               Active jobs + review worktrees\n"
     "  a ls                List tmux sessions\n"
     "  a attach            Reconnect to session\n"
     "  a kill              Kill all sessions\n"
@@ -130,7 +131,25 @@ static int cmd_hi(int argc, char **argv) { (void)argc;(void)argv; for (int i = 1
 
 static int cmd_done(int argc, char **argv) {
     char p[P]; snprintf(p, P, "%s/.done", DDIR);
-    FILE *f = fopen(p, "w"); if (f) { for (int i=2;i<argc;i++) fprintf(f,"%s%s",i>2?" ":"",argv[i]); fclose(f); }
+    char msg[B]="";int ml=0;for(int i=2;i<argc;i++)ml+=snprintf(msg+ml,(size_t)(B-ml),"%s%s",i>2?" ":"",argv[i]);
+    FILE *f=fopen(p,"w");if(f){fputs(msg,f);fclose(f);}
+    /* auto-PR if in worktree */
+    char wd[P],gc[B],gd[P];if(!getcwd(wd,P))wd[0]=0;
+    snprintf(gc,B,"git -C '%s' rev-parse --git-dir 2>/dev/null",wd);
+    pcmd(gc,gd,P);gd[strcspn(gd,"\n")]=0;
+    if(strstr(gd,"worktrees")){perf_disarm();
+        char sm[B];snprintf(sm,B,"job: %.200s",msg[0]?msg:"done");
+        snprintf(gc,B,"cd '%s'&&git add -A&&git diff --cached --quiet 2>/dev/null||"
+            "(git commit -m '%s'&&git push -u origin HEAD 2>/dev/null&&"
+            "gh pr create --fill 2>/dev/null)",wd,sm);
+        int r=system(gc);
+        if(!r)puts("+ PR created");
+        /* email */
+        char ad[B]="";snprintf(gc,B,"cd '%s'&&a diff main 2>/dev/null",wd);
+        pcmd(gc,ad,B);
+        snprintf(gc,B,"a email '[a job] %s' '%s\n%s'",bname(wd),msg[0]?msg:"done",ad);
+        (void)!system(gc);
+    }
     puts("\xe2\x9c\x93 done"); return 0;
 }
 
