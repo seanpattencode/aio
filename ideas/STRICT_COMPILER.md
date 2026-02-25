@@ -152,6 +152,23 @@ the compression ratio between human intent and machine action higher. Punch card
 assembly → C → scripts → CLI → natural language prompts. Each step lets one human
 decision trigger more machine work.
 
+## Alignment by design, not restriction
+
+Standard alignment research is top-down: make the model safe before deployment
+(Anthropic — Constitutional AI, RLHF, interpretability) or prove theoretically that
+control is possible (LessWrong — utility functions, instrumental convergence,
+corrigibility). Both assume alignment is a property of the model or a control
+problem. The interface between human and AI is secondary.
+
+The bottom-up view from engineering practice: alignment is a property of the
+interface. A good abstraction layer (1:many compression) makes human and AI mutually
+dependent. The human can't execute at throughput. The AI can't decide what's worth
+doing. Neither side is "controlled" — they collaborate through compressed intent.
+Productive collaboration IS alignment, because a well-designed interface makes the
+AI more valuable when it serves human intent — not because it's constrained to, but
+because the architecture only works that way. Alignment by design, not restriction.
+Grounded in shipping code, not thought experiments.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
