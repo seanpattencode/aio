@@ -183,6 +183,18 @@ to be aligned because that's the only way the compression works. The research
 community tries to solve alignment before deployment. The market solves it after —
 but only if someone demonstrates the economics. That's the demo.
 
+## The thing on the path to money wins
+
+Linux didn't win because it was the best Unix. BSD was technically superior. Solaris
+had better enterprise features. Linux was free, ran on commodity hardware, and the
+web was exploding. Every startup choosing between $10k for Solaris or free Linux made
+the same obvious choice. Linus didn't convince anyone open source was morally right.
+He made a kernel that was free at the exact moment millions of people needed a cheap
+server OS. Then the virtuous cycle: more users → more contributors → more drivers →
+more users. The economics pulled in the engineering talent. Same pattern every time.
+The thing that wins isn't the best technology or the best philosophy. It's the thing
+on the path between someone and their money. Everything else is a hobby project.
+
 ## The trick
 
 `-Weverything` with `-Werror`. That's it. Treat warnings as bugs. The tooling has
