@@ -294,6 +294,11 @@ exit 0
  *   Example: a bug where "a 0" failed with "Invalid index" was invisible
  *   via ./a (exe in project dir, paths resolve fine) but reproduced via
  *   command a (symlink pointed to a worktree binary, AROOT was wrong).
+ *   "sh a.c" also runs the strict -Weverything checker in parallel with the
+ *   build. Skipping it (./a, or manual gcc) means code that compiles fine
+ *   now but fails the checker on the next real build. Strict checks catch
+ *   real bugs (implicit conversions, sign issues, unused results) that
+ *   compound over time — the checker is the gatekeeper, not optional.
  *   The pattern: sh a.c && command a 0   — build like install, test like user.
  *
  * Add a command:  write lib/foo.c, add #include + dispatch line here.
