@@ -620,14 +620,14 @@ int main(int argc, char **argv) {
     if (arg[0] == 'w' && !fexists(arg))
         return cmd_wt(argc, argv);
 
+    /* "a c" — session key from sessions.txt */
+    { init_db(); load_cfg(); load_sess();
+      if (find_sess(arg)) return cmd_sess(argc, argv); }
+
     /* "a /some/path" or "a file.py" — open directory or file */
     if (dexists(arg) || fexists(arg)) return cmd_dir_file(argc, argv);
     { char ep[P]; snprintf(ep, P, "%s%s", HOME, arg);
       if (arg[0] == '/' && dexists(ep)) return cmd_dir_file(argc, argv); }
-
-    /* "a c" — session key from sessions.txt */
-    { init_db(); load_cfg(); load_sess();
-      if (find_sess(arg)) return cmd_sess(argc, argv); }
 
     /* 1-3 char keys not in table — try as session */
     if (strlen(arg) <= 3 && arg[0] >= 'a' && arg[0] <= 'z')
