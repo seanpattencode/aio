@@ -147,6 +147,27 @@ The workcycle already enforces this: "scream at biggest inadequacy" is a precise
 
 Implication: the optimal interface maximizes human prompt quality and minimizes agent response length. Which is exactly what `a` does — short commands, constrained outputs, human stays in loop.
 
+## Binary decisions compound — the Torvalds effect
+
+> If a human simply makes binary decisions, a few made without them unlikely to be off, but over many decisions drift probability adds up. Linux wouldn't change if Torvalds left for a month but years and it would be very different.
+
+Binary decisions look trivial individually — approve/reject, merge/don't. Any single one could be made by someone else. Drift per decision is tiny. But compound:
+
+```
+Even at p=0.01 (1% drift per decision):
+  100 decisions:  (0.99)^100  = 37% aligned
+  500 decisions:  (0.99)^500  =  1% aligned
+ 1000 decisions:  (0.99)^1000 =  0% aligned
+```
+
+Torvalds makes ~10 merge decisions/day. Month away = 300 decisions by others. At 1% drift each, 5% still aligned. A year = near zero. Linux would compile. It would just gradually become a different project — drifting toward committee consensus instead of one person's taste.
+
+Observable: every project where the founder left became "enterprise." Apple without Jobs (1985-1997). Python without van Rossum — governance explicitly changed because nobody could replicate the binary taste decisions.
+
+The human isn't making complex decisions. They're making simple ones at high frequency. The value isn't any single yes/no. It's the compound error correction of thousands of yes/nos aligned to one consistent taste function.
+
+Same principle as `a`: agents do the hard work. Human makes binary decisions — accept/reject, shorter/longer, this scream/not that one. Each trivial. The compound effect is the product.
+
 ## Open questions
 
 - What is actual p? Measurable by running N-turn chains and scoring groundedness.
