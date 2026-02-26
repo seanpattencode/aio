@@ -198,5 +198,9 @@ async def note_archive(r): d=await r.json();f=os.path.basename(d.get('f',''));nd
 
 app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api), web.post('/api/note/archive', note_archive)])
 
-def run(port=1111): web.run_app(app, port=port, print=None)
+def run(port=1111):
+    pf = os.path.join(_D, 'adata', 'local', 'ui.pid')
+    os.makedirs(os.path.dirname(pf), exist_ok=True)
+    with open(pf, 'w') as f: f.write(str(os.getpid()))
+    web.run_app(app, port=port, print=None)
 if __name__ == '__main__': run(int(sys.argv[1]) if len(sys.argv) > 1 else 1111)

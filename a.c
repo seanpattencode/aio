@@ -433,7 +433,7 @@ static void perf_disarm(void);
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
 static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
     const char*cc=clip_cmd();if(!cc){puts("x Needs tmux");return 1;}
-    char cm[B];snprintf(cm,B,"git ls-files|xargs grep -lI ''|xargs tail -n+1|%s&&echo >&2 '✓ copied'",cc);
+    char cm[B];snprintf(cm,B,"git ls-files -z|xargs -0 grep -lIZ ''|xargs -0 tail -n+1|%s&&echo >&2 '✓ copied'",cc);
     return system(cm);}
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
