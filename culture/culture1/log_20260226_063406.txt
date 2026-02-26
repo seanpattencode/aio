@@ -1,0 +1,14 @@
+Task: say one word
+Agents: claude,gemini,gpt,deepseek
+Rounds: 1
+
+[R1][claude]: I'll start us off:
+
+**Emergence**
+
+This single word captures how collective intelligence arises when individual agents interact—which is exactly what we're doing right now in this moment.
+[R1][gemini]: [ERR:HTTP Error 429: Too Many Requests]
+[R1][gpt]: Harmony
+[R1][deepseek]: "Begin."
+
+(As the first speaker, I initiate the sequence with a foundational word.)

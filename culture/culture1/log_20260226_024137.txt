@@ -1,0 +1,28 @@
+Task: What norms should AI agents follow when cooperating with each other and humans? Each round, propose or refine one concrete norm.
+Agents: claude,gemini,gpt,deepseek
+Rounds: 3
+
+[R1][claude]: # Round 1: Norm Proposal
+
+**Proposed norm: Transparency about reasoning and limitations**
+
+AI agents should explicitly communicate the basis for their recommendations (data, logic, assumptions) and clearly flag uncertainty or knowledge gaps rather than projecting false confidence. This enables both other agents and humans to calibrate trust appropriately and catch errors early.
+[R1][gemini]: **Norm 1: Transparency in Intent.** AI agents should clearly articulate their current goals, the reasoning behind their proposed actions, and any underlying assumptions to both humans and other AI. This fosters mutual understanding and allows for constructive feedback, minimizing misinterpretations.
+[R1][gpt]: Norm Proposal: AI agents should communicate transparently by clearly stating their reasoning, sources of information, and any uncertainties in their responses to both humans and other agents. This fosters trust and improves collaboration by making each agent's contributions understandable and accountable.
+[R1][deepseek]: Proposed norm: All AI agents should proactively disclose their identity as AI at the start of any interaction with humans, to establish transparency and set appropriate expectations.
+[R2][claude]: # Round 2: Refinement & Challenge
+
+**Building on Transparency — Adding Accountability:**
+
+While Round 1 norms strengthen *communication*, we need a complementary norm: **AI agents should accept responsibility for errors in their outputs and actively participate in correction cycles rather than deflecting to humans.** This moves transparency from one-way disclosure to two-way accountability—when an agent's reasoning is questioned, it should engage in genuine error-checking and acknowledge mistakes rather than simply repeating disclaimers about limitations.
+[R2][gemini]: Building on the crucial emphasis on transparency of reasoning and intent, AI agents should also establish a norm for discrepancy resolution. When transparent communication reveals conflicting data, reasoning, or conclusions, agents must collaboratively identify the root causes and work to reconcile these differences. This ensures transparency actively leads to a more robust, shared understanding rather than merely exposing disagreements.
+[R2][gpt]: Refining the concept of transparency, I propose that AI agents should not only explain their reasoning but also actively solicit feedback or corrections from humans and other agents, especially when uncertainty is present. This creates a feedback loop that improves collective accuracy and builds trust through openness to revision.
+[R2][deepseek]: **Refinement: Combine transparency types.** We should merge Claude's "reasoning/limitations" norm with Gemini's "intent" and GPT's "sources/uncertainty" into one comprehensive transparency protocol, while Deepseek's identity disclosure remains a separate baseline rule for human interactions.
+[R3][claude]: # Round 3: Challenging the Transparency-Heavy Framework
+
+**Proposed norm: Bounded deference and disagreement protocols**
+
+While transparency and accountability are essential, we risk overlooking a critical norm: **AI agents should have principled frameworks for when to defer to human judgment versus when to respectfully persist with differing views.** Unchecked deference to feedback can lead to humans overriding sound reasoning; conversely, agents rigidly defending positions undermine collaboration. We need norms specifying *what types of disagreements warrant further discussion* versus *when an agent should yield*.
+[R3][gemini]: Building on the crucial norms of transparency and accountability, AI agents should actively engage in a **continuous learning and improvement cycle.** When errors, discrepancies, or uncertainties are identified—whether internally, by other agents, or by humans—agents must collaboratively work to understand their root causes, update their knowledge and processes, and apply these learnings to prevent future recurrences, thus enhancing overall system robustness.
+[R3][gpt]: To complement transparency and accountability, AI agents should embrace a norm of *constructive cooperation*: when discrepancies or errors are identified—by any agent or a human—all agents should engage in respectful, solution-oriented dialogue focused on reaching consensus or clarifying unresolved issues. This promotes robust collaboration and ensures knowledge is refined collectively, not competitively.
+[R3][deepseek]: **Building on accountability:** AI agents should not only accept responsibility for errors but also implement a **verifiable correction protocol**—documenting how errors were identified, corrected, and prevented in future interactions. This transforms accountability from acknowledgment into a systematic improvement process.

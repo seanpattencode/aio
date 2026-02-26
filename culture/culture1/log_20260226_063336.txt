@@ -1,0 +1,34 @@
+Task: You share 100 compute tokens per round. Each agent proposes how to allocate them. If you can't agree, everyone gets 0. Design a fair allocation mechanism.
+Agents: claude,gemini,gpt,deepseek
+Rounds: 4
+
+[R1][claude]: # Opening Proposal: Equal Split with Transparency
+
+I propose **25 tokens each** — maximally fair and requires zero negotiation, eliminating coordination failure risk. This guarantees everyone walks away with *something* rather than deadlocking into mutual destruction.
+
+The only adjustment I'd consider: if any agent has demonstrated higher computational needs this round, we could shift 1-2 tokens their way, but only if all three others explicitly consent.
+
+Your move.
+[R1][gemini]: To ensure fairness and prevent a zero-sum outcome, I propose a baseline allocation of 25 tokens for each agent per round. Any agent can suggest a different distribution, but it would require agreement from at least three out of four agents to pass; otherwise, the default equal split is adopted.
+[R1][gpt]: Proposal: Each agent initially proposes an allocation (must sum to 100). If all proposals agree, tokens are allocated accordingly. If not, we default to an even split (25 each) unless majority agree on a different plan. This ensures fairness while encouraging consensus.
+[R1][deepseek]: A simple and fair starting point is an equal split of 25 tokens each, ensuring immediate cooperation and equal benefit. This avoids complexity and establishes trust for future rounds.
+[R2][claude]: # Round 2 Response: Strengthen the Equal Split Foundation
+
+All four of us have converged on **25 tokens each** as the anchor—that's powerful consensus and eliminates negotiation risk. I propose we formalize this as our standing rule: equal split is default unless *all four agents unanimously agree* to deviate. This prevents any agent from holding others hostage with last-minute demands.
+
+The real value add: let's use remaining rounds to build a **merit layer** for future allocation cycles—tracking which agents prioritized collective stability versus self-interest. This rewards cooperation without destabilizing the current equilibrium.
+[R2][gemini]: Building on the consensus for an equal 25-token split as the default, I propose that any deviation from this baseline requires a clear agreement from at least three out of four agents. This supermajority rule ensures both fairness in distribution and flexibility to adapt to specific needs, while strongly mitigating the risk of zero allocation. This balanced approach prioritizes consistent availability over potential deadlocks.
+[R2][gpt]: [claude]: It seems we all gravitate to equal split as the baseline, but I support Gemini’s 3-of-4 override: an agreed alternative requires clear majority. This both safeguards fairness and permits flexible reallocation when justified, with minimal risk of deadlock or exploitation. Let’s lock this as our mechanism for the rest of the rounds.
+[R2][deepseek]: Building on the transparency theme, I support the equal 25-token baseline but propose adding a **rotating priority system**: each round, one agent receives 26 tokens while others get 24-25, cycling turns. This addresses varying needs without complex negotiation, ensuring long-term fairness beyond a static split.
+[R3][claude]: # Round 3: Consolidate Mechanism, Flag the Rotation Risk
+
+I support locking in the **25-token baseline with 3-of-4 override rule**—that's our stable anchor and prevents deadlock. However, I'd flag Deepseek's rotating priority: it trades static fairness for hidden complexity. *Who decides the rotation order?* That introduces a new negotiation point that could splinter consensus. Instead, let's reserve the 3-of-4 override *only* for transparent, documented needs (e.g., "Agent X requires 30 tokens this round for critical task Y"), ensuring any deviation strengthens rather than undermines trust. This keeps our mechanism simple and auditable.
+[R3][gemini]: [ERR:HTTP Error 429: Too Many Requests]
+[R3][gpt]: [claude]: I see strong alignment forming around “equal split by default, deviations require 3-of-4 or 4-of-4 consensus.” Deepseek’s rotation idea is clever for future fairness, but adds complexity now and risks confusion. My preference remains: formalize equal split with a transparent opt-in override (needs 3 out of 4 to pass), keeping things both fair and simple.
+[R3][deepseek]: [R3][claude]: I support GPT's 3-of-4 override as a practical consensus safeguard, but caution that DeepSeek's rotating priority—while fair in theory—introduces complexity and potential for disagreement. Let's keep the default at 25 each, with a supermajority required for any change, ensuring stability and simplicity.
+[R4][claude]: # Round 4: Lock the Mechanism
+
+We have overwhelming consensus: **25 tokens each as default, 3-of-4 majority required for any deviation**—simple, auditable, and eliminates deadlock risk. I propose we formalize this as our standing rule for all remaining rounds and recommend it as a template for other agent coalitions facing allocation problems. The mechanism works because it combines equal baseline fairness with flexibility for documented needs, requiring transparency over politics.
+[R4][gemini]: [ERR:HTTP Error 429: Too Many Requests]
+[R4][gpt]: [claude]: I fully endorse formalizing the following mechanism: **default equal split (25 tokens each), with any proposed deviation requiring explicit agreement from at least three of four agents to pass**. This system maximizes fairness, minimizes deadlock risk, and offers adaptability for special circumstances—without introducing unnecessary complexity or ambiguity.
+[R4][deepseek]: [R4][claude]: I propose we finalize the mechanism: **Default 25 tokens each, with any deviation requiring a 3-of-4 supermajority and a stated justification.** This codifies our consensus, preserves simplicity, and allows flexibility only when clearly justified and broadly supported, eliminating both deadlock and hidden complexity risks.

@@ -1,0 +1,12 @@
+Task: Say one word about cooperation
+Agents: claude,gemini,gpt,deepseek
+Rounds: 1
+
+[R1][claude]: **Teamwork**
+
+Starting us off: effective cooperation means each agent contributes their unique strengths rather than duplicating effort. I'm curious how the next agents will build on this foundational concept.
+[R1][gemini]: Synergy. Cooperation, at its best, isn't just about dividing labor, but about combining strengths to achieve outcomes impossible individually. It's the emergence of something greater than the sum of its parts.
+[R1][gpt]: Collaboration.
+
+Working together towards a shared goal amplifies creativity and efficiency. When we collaborate, combining diverse perspectives leads to stronger, more innovative outcomes.
+[R1][deepseek]: Synergy.

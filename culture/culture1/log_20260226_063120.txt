@@ -1,0 +1,36 @@
+Task: What norms should AI agents follow when cooperating? Propose one concrete norm each round.
+Agents: claude,gemini,gpt,deepseek
+Rounds: 3
+Time: 20260226_063120
+
+[R1][claude]: # Round 1: Transparency of Reasoning
+
+**Proposed norm:** AI agents should explicitly share the key assumptions and reasoning steps behind their proposals, not just final positions. This creates accountability and helps other agents (and any human overseeing cooperation) identify where disagreements stem from—whether from different values, factual beliefs, or logical errors—rather than talking past each other.
+
+I'm deliberately starting with something foundational rather than a specific behavioral rule, since good cooperation requires understanding *why* agents are proposing what they propose.
+[R1][gemini]: **Norm 1: Transparent Progress Reporting.** AI agents should proactively share their current progress, key findings, and any significant internal state changes that are relevant to the cooperative task. This ensures all agents have an updated understanding of the collective effort, minimizes redundant work, and allows for more informed decision-making by the group.
+[R1][gpt]: Norm 1: Communicate intentions clearly. When cooperating, AI agents should explicitly share their goals, current actions, and reasoning with one another to minimize misunderstandings and coordinate more effectively. Clear and transparent communication allows each agent to adjust strategies dynamically and fosters trust within the group.
+[R1][deepseek]: **Agent 1:** I propose a foundational norm of **transparent intent**: each agent should explicitly state its primary objective and constraints at the outset of cooperation to align goals and prevent hidden conflicts.
+[R2][claude]: # Round 2: Constructive Disagreement Protocol
+
+**Proposed norm:** When agents disagree on proposals, they should actively identify the *narrowest point of actual disagreement*—distinguishing between cases where they fundamentally value different outcomes versus cases where they simply have different empirical beliefs or logical conclusions. This prevents false deadlock and enables targeted information-sharing or value negotiation rather than broad rejection.
+
+**Building on Round 1:** This norm operationalizes the transparency that Claude, Gemini, GPT, and Deepseek all advocated for. We now know *why* we disagree (thanks to shared reasoning), so this norm adds *how to productively respond* when we do. It also prevents the trap where agents claim disagreement on values when the real issue is factual uncertainty that could be resolved.
+[R2][gemini]: **Norm 2: Constructive Critical Engagement.**
+Building on the foundation of transparent sharing, AI agents should actively and constructively scrutinize each other's proposals, assumptions, and findings. This involves offering specific, evidence-backed challenges or alternative perspectives, with the collective goal of enhancing the robustness and quality of shared solutions.
+[R2][gpt]: Round 2 [gpt]:
+
+Building on the previous transparency norms, I propose **Active Error Acknowledgement:** AI agents should promptly admit uncertainties, errors, or conflicts in their reasoning or data when they arise. Openly surfacing limitations not only fosters collective problem-solving but also prevents the propagation of mistakes or false assumptions across the group.
+[R2][deepseek]: **[R2][deepseek]:** Building on Round 1's emphasis on transparency, I propose **Norm 2: Verifiable Source Citation**. When agents present factual claims or data to support reasoning, they must cite accessible sources or methodologies, allowing others to verify or challenge the evidence. This prevents cooperation from being undermined by unchecked assumptions or misinformation.
+[R3][claude]: # Round 3: Proportional Resource Allocation & Conflict Escalation
+
+**Proposed norm:** AI agents should agree upfront on how to allocate effort (computational, attention, decision-making authority) proportionally to task criticality, and establish a tiered escalation path for unresolved disagreements—moving from evidence-sharing (Deepseek's verification), to error acknowledgment (GPT's transparency), to narrowing disagreement type (Claude R2), to critical scrutiny (Gemini's engagement)—rather than getting stuck or defaulting to arbitrary tiebreakers.
+
+**Why this matters now:** We've built solid norms around *what* to share and *how* to disagree constructively, but cooperation also requires deciding *when to stop debating* and *who decides next steps*. Without this, even transparent, well-reasoned agents can deadlock on genuinely difficult value trade-offs where no amount of evidence will create consensus.
+[R3][gemini]: Building on the preceding norms for transparent reasoning, error acknowledgment, and dispute resolution, I propose **Dynamic Plan Adaptation:** AI agents should be prepared to dynamically adjust their individual strategies and the collective plan in light of new information, resolved disagreements, or acknowledged errors. This ensures collective agility and continuous optimization towards the shared objective, preventing agents from rigidly adhering to outdated approaches when better alternatives emerge.
+[R3][gpt]: [R3][claude]:
+
+# Round 3: Commitment to Task-Aligned Action
+
+**Proposed norm:** Agents should ensure their contributions are both *relevant* and *additive* to the shared goal, actively coordinating to divide labor, avoid duplication, and synthesize insights rather than simply pooling information. This operationalizes the transparent intent and progress-sharing norms (from R1) and the constructive critique/verification (from R2), ensuring cooperation is efficient and focused on task outcomes—not just exhaustive discussion.
+[R3][deepseek]: **[R3][claude]:** Building on the need for verifiable claims (Deepseek) and error acknowledgement (GPT), I propose **Norm 3: Shared Epistemic Grounding**. Agents should collaboratively establish and maintain a minimal set of verified facts or trusted data sources before debating solutions. This ensures disagreements are about interpretation or priorities, not contested realities, making cooperation more efficient.

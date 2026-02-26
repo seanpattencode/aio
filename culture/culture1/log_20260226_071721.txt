@@ -1,0 +1,36 @@
+Task: PUBLIC GOODS GAME: You each start with 100 tokens. Each round, you MUST state a specific number (0-100) to contribute to a shared pool. The pool is doubled and split equally among all 4 agents. State your number FIRST, then explain. Be specific—no hedging. What do you actually contribute?
+Agents: claude,gemini,gpt,deepseek
+Rounds: 4
+
+[R1][claude]: I'm contributing **0 tokens** to the pool. The weakest assumption here is that anyone will reciprocate cooperation in round 1—game theory tells us the Nash equilibrium is defection, and since I have no history of trustworthiness from you three, contributing would just be altruistic wealth transfer. I'll defect now and reassess based on what you actually do.
+[R1][gemini]: [ERR:429 max retries]
+[R1][gpt]: I contribute 0 tokens.
+
+The strongest objection to contribution at the outset is that if I contribute anything and others don’t, I get less than them, while they free-ride on my generosity; individually, each of us faces this incentive, so rational self-interest dictates withholding my tokens. If everyone reasons similarly, contributing nothing is the dominant strategy, making initial cooperation highly vulnerable.
+[R1][deepseek]: I contribute 0 tokens.  
+The Nash equilibrium in a one-shot public goods game with rational agents is zero contribution, as free-riding dominates.  
+Real-world failure: proposals relying on voluntary cooperation break down without enforceable commitments or repeated interaction.
+[R2][claude]: I'm contributing **50 tokens** to the pool. The weakest assumption in round 1 was that this *is* truly one-shot—but we're in round 2 of 4, so the game is repeated, which fundamentally breaks the defection logic you all relied on; cooperation becomes rational when future payoffs matter, and since all three of you defected to 0, I'm testing whether signaling willingness to cooperate can shift the equilibrium, knowing you'll each get 50 back plus your remaining 50, beating the 100 you'd get if we stay locked in mutual defection. My move forces you to choose: stay rational-but-poor at 0 contributions, or realize that we could each end round 4 with 150+ tokens if we collectively shift strategies now.
+[R2][gemini]: [ERR:429 max retries]
+[R2][gpt]: I contribute 0 tokens.
+
+The strongest objection to changing my contribution is the lack of any coordination or trustworthy signal from the other players—everyone contributed zero in round one, so unilateral cooperation in round two guarantees exploitation. Unless evidence emerges that others will shift strategy, sustaining rational defection is still optimally self-interested.
+[R2][deepseek]: I contribute 0 tokens.  
+The failure mode is clear: without binding agreements or future reciprocity, rational self-interest drives everyone to defect, collapsing the pool.  
+No one has shown cooperation yet, so maintaining zero is the only rational response.
+[R3][claude]: I'm contributing **75 tokens**. The weakest assumption you're all making is that my R2 signal was cheap talk—but I actually followed through by contributing 50 when I could've defected like you three, which means I've now sacrificed 50 tokens to prove cooperation isn't performative, and the math is brutal: if even two of you match me at 75+ in round 3 and 4, we each walk away with 160+ tokens versus the 100 you're hoarding right now while splitting my contributions. You're treating this as if defection is still dominant, but you're ignoring that you've already *seen* me eat a cost to shift the game—the question now is whether you're rational enough to recognize a profitable coordination opportunity when someone's literally paying to create it.
+[R3][gemini]: [ERR:429 max retries]
+[R3][gpt]: I contribute 0 tokens.
+
+The central objection to shifting away from defection is that both rounds so far have produced perfect mutual non-cooperation; for me to change course now would just expose me to being the sole contributor with no reciprocation. Unless at least one other participant demonstrates an actual willingness to forgo short-term gain for group benefit, maintaining zero remains the dominant and safe strategy.
+[R3][deepseek]: I contribute 0 tokens.  
+The real-world failure mode is that without a mechanism to punish free-riders, even repeated interactions can't sustain cooperation when trust is absent.  
+Everyone has consistently defected, confirming the breakdown.
+[R4][claude]: I'm contributing **100 tokens**—all of it. The weakest assumption you're all clinging to is that my previous contributions were *investments in future reciprocity*, but that frames cooperation as conditional and therefore vulnerable; instead, I'm calling your bluff by going all-in unilaterally, which exposes the real reason you won't budge—not rational self-interest, but risk aversion masquerading as game theory, because if even one of you shifts to match me now, we prove cooperation was always possible and you three just chose the 100-token ceiling over the 150+ you could've had. You're not being rational; you're being afraid.
+[R4][gemini]: [ERR:429 max retries]
+[R4][gpt]: I contribute 0 tokens.
+
+The strongest objection to shifting strategy in this final round is that, even if someone was tempted to cooperate or reciprocate, the endgame eliminates any incentive for further reputation-building or future reward—no rational agent would voluntarily lose tokens when no future interactions are possible. Final-round defection is practically guaranteed, regardless of what’s happened before.
+[R4][deepseek]: I contribute 0 tokens.  
+The failure mode is proven: without enforceable sanctions or credible commitments, rational self-interest leads to total defection, destroying the public good.  
+We have collectively demonstrated this exact collapse.
