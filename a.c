@@ -491,6 +491,22 @@ static int cmd_adb(int c,char**v){
     (void)c;(void)v;execlp("adb","adb","devices","-l",(char*)0);return 1;
 }
 
+/* ── once — headless single-shot claude -p (opus, 10min default) ── */
+static unsigned once_tl;
+__attribute__((noreturn)) static void once_alarm(int sig){(void)sig;
+    char m[128];int n=snprintf(m,128,"\n\033[31m✗ TIMEOUT\033[0m: a once exceeded %us\n",once_tl);
+    (void)!write(STDERR_FILENO,m,(size_t)n);kill(0,SIGTERM);_exit(124);}
+static int cmd_run_once(int c,char**v){
+    if(c<3){puts("Usage: a once [-t secs] [claude flags] <prompt>");return 1;}
+    once_tl=600;int si=2;
+    if(c>3&&!strcmp(v[2],"-t")){once_tl=(unsigned)atoi(v[3]);si=4;}
+    perf_disarm();signal(SIGALRM,once_alarm);alarm(once_tl);
+    unsetenv("CLAUDECODE");unsetenv("CLAUDE_CODE_ENTRYPOINT");
+    char**a=malloc(((unsigned)c+4)*sizeof(char*));
+    a[0]="claude";a[1]="-p";a[2]="--dangerously-skip-permissions";a[3]="--model";a[4]="opus";
+    for(int i=si;i<c;i++)a[i-si+5]=v[i];a[c-si+5]=NULL;
+    execvp("claude",a);perror("claude");return 1;}
+
 /* ═══ DISPATCH TABLE — sorted for bsearch, every alias is one entry ═══ */
 typedef struct { const char *n; int (*fn)(int, char**); } cmd_t;
 static int cmd_cmp(const void *a, const void *b) {
@@ -508,7 +524,7 @@ static const cmd_t CMDS[] = {
     {"install",cmd_install},{"j",cmd_j},{"job",cmd_job},{"jobs",cmd_job},
     {"kill",cmd_kill},{"log",cmd_log},{"login",cmd_login},{"ls",cmd_ls},
     {"monolith",cmd_mono},{"move",cmd_move},
-    {"n",cmd_note},{"note",cmd_note},
+    {"n",cmd_note},{"note",cmd_note},{"once",cmd_run_once},
     {"p",cmd_push},{"perf",cmd_perf},{"pr",cmd_pr},{"prompt",cmd_prompt},
     {"pull",cmd_pull},{"push",cmd_push},
     {"remove",cmd_remove},{"repo",cmd_repo},{"revert",cmd_revert},{"review",cmd_review},
