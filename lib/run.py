@@ -18,3 +18,4 @@ def run():
     cmd = f'cd ~/projects/{proj} && aio {agent}++' + (f' && sleep 2 && tmux send-keys -t $(tmux ls -F "#{{{{session_name}}}}" | grep "^{proj}" | tail -1) {shlex.quote(task)} Enter' if task else '')
     print(f"→ {n}")
     os.execvp('sshpass', ['sshpass', '-p', pw, 'ssh', '-tt', '-p', hp[1] if len(hp) > 1 else '22', hp[0], cmd])
+run()

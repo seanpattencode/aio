@@ -1,7 +1,7 @@
 """a x.url <url> - open in browser on all devices"""
 import sys, subprocess as sp
 from concurrent.futures import ThreadPoolExecutor as TP, as_completed
-from ..ssh import _load
+from ssh import _load
 
 # OS-specific browser commands (detected from OS field)
 def _browser_cmd(os_info, url):

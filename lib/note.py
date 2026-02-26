@@ -5,7 +5,7 @@ import sys, subprocess as sp
 from pathlib import Path
 from datetime import datetime
 from _common import DEVICE_ID, SYNC_ROOT
-from .sync import _sync, ts, add_timestamps
+from sync import _sync, ts, add_timestamps
 
 NOTES_DIR = SYNC_ROOT / 'notes'
 

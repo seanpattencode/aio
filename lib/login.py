@@ -2,7 +2,7 @@
 import sys, shutil, subprocess as sp
 from pathlib import Path
 from datetime import datetime
-from .sync import sync, SYNC_ROOT
+from sync import sync, SYNC_ROOT
 from _common import cloud_account, DEVICE_ID
 
 LOGIN_DIR = SYNC_ROOT / 'login'
@@ -62,3 +62,4 @@ def run():
             shutil.copy(LOGIN_DIR/'rclone.conf', RCLONE_LOCAL)
             print("✓ rclone applied")
     elif wda: print(f"save | apply")
+run()

@@ -3,7 +3,7 @@ import sys, os, time, subprocess as sp, shutil, json
 from pathlib import Path
 from datetime import datetime as D
 from _common import init_db, LOG_DIR, DEVICE_ID, RCLONE_BACKUP_PATH, get_rclone, _configured_remotes as CR, cloud_install as CI, alog
-from .sync import cloud_sync,_merge_rclone as MR
+from sync import cloud_sync,_merge_rclone as MR
 CD = Path.home()/'.claude'
 
 def run():
@@ -34,3 +34,4 @@ def run():
         sn = '__'.join(f.stem.split('__')[1:]) or f.stem
         print(f"{i:>2} {D.fromtimestamp(f.stat().st_mtime):%m/%d %H:%M} {sn[:26]:<26} {f.stat().st_size//1024:>5}K")
     logs and print("\na log #  view | a log sync")
+run()
