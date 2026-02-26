@@ -432,6 +432,7 @@ static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
     const char*cc=clip_cmd();if(!cc){puts("x Needs tmux");return 1;}
     char cm[B];snprintf(cm,B,"git ls-files -z|xargs -0 grep -lIZ ''|xargs -0 tail -n+1|%s&&echo >&2 '✓ copied'",cc);
     return system(cm);}
+static int cmd_apk(int argc, char **argv)    { fallback_py("apk", argc, argv); }
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
@@ -521,7 +522,7 @@ static int cmd_cmp(const void *a, const void *b) {
 static const cmd_t CMDS[] = {
     {"--help",cmd_help_full},{"-h",cmd_help_full},
     {"a",cmd_all},{"adb",cmd_adb},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
-    {"all",cmd_all},{"ask",cmd_ask},{"attach",cmd_attach},
+    {"all",cmd_all},{"apk",cmd_apk},{"ask",cmd_ask},{"attach",cmd_attach},
     {"cat",cmd_cat},{"cleanup",cmd_cleanup},{"config",cmd_config},
     {"copy",cmd_copy},{"dash",cmd_dash},{"deps",cmd_deps},
     {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
