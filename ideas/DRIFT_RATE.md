@@ -125,6 +125,28 @@ This creates a market: human prompt quality as scarce resource agents compete fo
 
 Alignment through incentives made concrete: cooperation isn't moral, it's optimal. The agent that listens beats the agent that doesn't, same as the organism with DNA error correction beats the one without.
 
+## Human:agent token ratio as error correction strength
+
+> Does ratio matter — if a long human prompt and short AI LLM response, the human correction might be stronger.
+
+If drift is proportional to tokens generated, then the ratio of human-tokens to agent-tokens determines error correction strength.
+
+```
+Long human prompt + short agent response:
+  human: 500 tokens (error-corrected)    agent: 50 tokens (minimal drift)
+  ratio 10:1 → output heavily constrained by human intent
+
+Short human prompt + long agent response:
+  human: 10 tokens    agent: 2000 tokens (maximum drift surface)
+  ratio 1:200 → output mostly self-generated, maximum drift
+```
+
+Best agent results come from detailed human prompts with constrained agent output. "Fix off-by-one line 43" → 3-line fix. "Make codebase better" → 500 lines of drift.
+
+The workcycle already enforces this: "scream at biggest inadequacy" is a precise prompt. "Demand fewer tokens" constrains output length. Budget-from-below (10 tokens) forces high human:agent ratio — complex human thought, minimal agent output. Maximum error correction per token.
+
+Implication: the optimal interface maximizes human prompt quality and minimizes agent response length. Which is exactly what `a` does — short commands, constrained outputs, human stays in loop.
+
 ## Open questions
 
 - What is actual p? Measurable by running N-turn chains and scoring groundedness.
