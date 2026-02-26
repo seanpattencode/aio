@@ -29,7 +29,16 @@ static int cmd_ssh(int argc,char**argv){
     if(arc)sync_bg();
     const char*sub=argc>2?argv[2]:NULL;
     /* list */
-    if(!sub){int on=!system("pgrep -x sshd >/dev/null 2>&1");
+    if(!sub){/* auto-register self */
+        {int f=0;for(int i=0;i<nh;i++)if(!strcmp(H[i].name,DEV)){f=1;break;}
+        if(!f&&nh<32){char ip[128]="",port[8]="22",h[256];const char*u=getenv("USER");
+            char pv[64];pcmd("grep -ci microsoft /proc/version 2>/dev/null",pv,64);
+            if(atoi(pv)>0){pcmd("powershell.exe -c \"ipconfig\"|grep -oP '192\\.168\\.\\d+\\.\\d+'|head -1",ip,128);ip[strcspn(ip,"\n")]=0;snprintf(port,8,"2222");}
+            else{pcmd("hostname -I 2>/dev/null|awk '{printf $1}'",ip,128);
+                if(!access("/data/data/com.termux",F_OK))snprintf(port,8,"8022");}
+            if(ip[0]){snprintf(h,256,!strcmp(port,"22")?"%s@%s":"%s@%s:%s",u?u:"",ip,port);
+                ssh_save(dir,DEV,h,NULL);snprintf(H[nh].name,128,"%s",DEV);snprintf(H[nh].host,256,"%s",h);H[nh].pw[0]=0;nh++;}}}
+        int on=!system("pgrep -x sshd >/dev/null 2>&1");
         printf("SSH sshd:%s\n\n",on?" \033[32mon\033[0m":" \033[31moff\033[0m");
         for(int i=0;i<nh;i++){int s=!strcmp(H[i].name,DEV);
             printf("  %d. %s%s%s: %s%s\n",i,s?"\033[32m":"",H[i].name,s?" (self)\033[0m":"",H[i].host,H[i].pw[0]?" [pw]":"");}

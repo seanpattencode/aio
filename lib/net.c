@@ -200,14 +200,15 @@ static int cmd_update(int argc, char **argv) {
     snprintf(c, B, "'%s/a' update cache", SDIR); (void)!system(c);
     ensure_adata();
     sync_repo();
-    /* auto-sync rclone config: save if configured, apply if not */
-    { char rc[P]; snprintf(rc,P,"%s/git/login/rclone.conf",AROOT);
+    /* rclone: append-only timestamped */
+    { char ld[P];snprintf(ld,P,"%s/git/login",AROOT);mkdirp(ld);
       char t[64];pcmd("rclone listremotes 2>/dev/null|grep a-gdrive|head -1",t,64);
-      if(t[0]&&t[0]!='\n'){/* configured — save for other devices */
-        snprintf(c,B,"mkdir -p '%s/git/login' && cp ~/.config/rclone/rclone.conf '%s'",AROOT,rc);(void)!system(c);
-      } else if(fexists(rc)){/* not configured — apply from sync */
-        snprintf(c,B,"mkdir -p ~/.config/rclone && cp '%s' ~/.config/rclone/rclone.conf",rc);
-        if(!system(c))puts("\xe2\x9c\x93 rclone config applied from login sync");}}
+      if(t[0]&&t[0]!='\n'){struct timespec ts;clock_gettime(CLOCK_REALTIME,&ts);struct tm*tm=localtime(&ts.tv_sec);char tf[32];strftime(tf,32,"%Y%m%dT%H%M%S",tm);
+        snprintf(c,B,"cp ~/.config/rclone/rclone.conf '%s/rclone_%s.%09ld.conf'",ld,tf,ts.tv_nsec);(void)!system(c);
+      } else {char ps[16][P];int np=listdir(ld,ps,16);char*lp=NULL;
+        for(int i=np-1;i>=0;i--)if(strstr(ps[i],"rclone_")&&strstr(ps[i],".conf")){lp=ps[i];break;}
+        if(lp){snprintf(c,B,"mkdir -p ~/.config/rclone&&cp '%s' ~/.config/rclone/rclone.conf",lp);
+          if(!system(c))puts("\xe2\x9c\x93 rclone config from sync");}}}
     bg_backup_jsonl();
     if (sub && !strcmp(sub, "all")) {
         puts("\n--- Broadcasting to SSH hosts ---");

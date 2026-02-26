@@ -11,8 +11,8 @@ import sys, random
 from pathlib import Path
 
 # Import production sync functions directly - this ensures tests match production
-sys.path.insert(0, str(Path(__file__).parents[2]))
-from a_cmd.sync import q, ts, is_conflict, resolve_conflicts, add_timestamps, soft_delete, _sync, MAX_RETRIES
+sys.path.insert(0, str(Path(__file__).parents[2] / 'lib'))
+from sync import q, ts, is_conflict, resolve_conflicts, add_timestamps, soft_delete, _sync, MAX_RETRIES
 import subprocess as sp
 
 # === TEST HARNESS ===
@@ -144,8 +144,18 @@ def monte_carlo(n=1000, verbose=False):
         sp.run(f'cd {q(ROOT/d)} && git add -A && git commit -qm "mkdir" && git push origin main', shell=True, capture_output=True)
     [pull(d) for d in DEVICES]
 
+    # Create hub-style and rclone-style files (append-only timestamped)
+    for d in DEVICES:
+        (ROOT/d/'agents').mkdir(exist_ok=True)
+        (ROOT/d/'login').mkdir(exist_ok=True)
+        (ROOT/d/'agents'/f'checker_{ts()}.txt').write_text('Name: checker\nSchedule: 8:00\nEnabled: true\nLast-Run: \n')
+        (ROOT/d/'agents'/f'backup_{ts()}.txt').write_text('Name: backup\nSchedule: 12:00\nEnabled: true\nLast-Run: \n')
+        (ROOT/d/'login'/f'rclone_{ts()}.conf').write_text('[a-gdrive]\ntoken = initial\n')
+        sp.run(f'cd {q(ROOT/d)} && git add -A && git commit -qm "init hub+rclone" && git push origin main', shell=True, capture_output=True)
+    [pull(d) for d in DEVICES]
+
     conflicts, errors, reseeds = [], [], 0
-    ops = ['add', 'delete', 'archive', 'edit', 'edit_raw', 'nested', 'non_txt']
+    ops = ['add', 'delete', 'archive', 'edit', 'edit_raw', 'nested', 'non_txt', 'hub_edit', 'rclone_edit']
 
     for i in range(n):
         d = random.choice(DEVICES)
@@ -191,6 +201,17 @@ def monte_carlo(n=1000, verbose=False):
                 (ROOT/d/f'file{i}{ext}').write_text(f'{i}')
                 ok, c = sync(d)
                 if c: conflicts.append((i, d, 'non_txt'))
+            elif op == 'hub_edit':
+                # Simulates hub_save: append-only timestamped file per save
+                agent = random.choice(['checker', 'backup'])
+                (ROOT/d/'agents'/f'{agent}_{ts()}.txt').write_text(f'Name: {agent}\nSchedule: 8:00\nEnabled: true\nLast-Run: 2026-01-{i%28+1:02d}\n')
+                ok, c = sync(d)
+                if c: conflicts.append((i, d, 'hub_edit'))
+            elif op == 'rclone_edit':
+                # Simulates rclone token refresh: append-only timestamped conf
+                (ROOT/d/'login'/f'rclone_{ts()}.conf').write_text(f'[a-gdrive]\ntoken = refreshed_{d}_{i}\n')
+                ok, c = sync(d)
+                if c: conflicts.append((i, d, 'rclone_edit'))
 
         except Exception as e:
             errors.append((i, d, op, str(e)))
@@ -215,6 +236,44 @@ def monte_carlo(n=1000, verbose=False):
         'error_details': errors[:5] if errors else []
     }
 
+def test_hub_conflict(n=10):
+    """Two devices write hub agent files - append-only: each writes new timestamped file"""
+    setup(); create_file('device_a', 'seed'); [pull(d) for d in DEVICES]
+    for d in DEVICES:
+        (ROOT/d/'agents').mkdir(exist_ok=True)
+        (ROOT/d/'agents'/f'checker_{ts()}.txt').write_text('Name: checker\nSchedule: 8:00\nEnabled: true\nLast-Run: \n')
+        sp.run(f'cd {q(ROOT/d)} && git add -A && git commit -qm "init hub" && git push origin main', shell=True, capture_output=True)
+    [pull(d) for d in DEVICES]
+    conflicts = []
+    for i in range(n):
+        # Both devices write NEW timestamped files (append-only, no edit-in-place)
+        (ROOT/'device_a'/'agents'/f'checker_{ts()}.txt').write_text(f'Name: checker\nSchedule: 8:00\nEnabled: true\nLast-Run: 2026-01-{i:02d} from A\n')
+        (ROOT/'device_b'/'agents'/f'checker_{ts()}.txt').write_text(f'Name: checker\nSchedule: 8:00\nEnabled: true\nLast-Run: 2026-01-{i:02d} from B\n')
+        ok1, c1 = sync('device_a')
+        ok2, c2 = sync('device_b')
+        if c1 or c2: conflicts.append((i, 'a' if c1 else '', 'b' if c2 else ''))
+        [pull(d) for d in DEVICES]
+    counts = {d: len(list((ROOT/d).glob('*.txt'))) for d in DEVICES}
+    return {'iterations': n, 'conflicts': len(conflicts), 'conflict_details': conflicts[:5], 'counts': counts, 'match': len(set(counts.values()))==1}
+
+def test_rclone_conflict(n=10):
+    """Two devices save rclone tokens - append-only: each writes new timestamped conf"""
+    setup(); create_file('device_a', 'seed'); [pull(d) for d in DEVICES]
+    for d in DEVICES:
+        (ROOT/d/'login').mkdir(exist_ok=True)
+        (ROOT/d/'login'/f'rclone_{ts()}.conf').write_text('[a-gdrive]\ntoken = initial\n')
+        sp.run(f'cd {q(ROOT/d)} && git add -A && git commit -qm "init rclone" && git push origin main', shell=True, capture_output=True)
+    [pull(d) for d in DEVICES]
+    conflicts = []
+    for i in range(n):
+        (ROOT/'device_a'/'login'/f'rclone_{ts()}.conf').write_text(f'[a-gdrive]\ntoken = refresh_a_{i}\n')
+        (ROOT/'device_b'/'login'/f'rclone_{ts()}.conf').write_text(f'[a-gdrive]\ntoken = refresh_b_{i}\n')
+        ok1, c1 = sync('device_a')
+        ok2, c2 = sync('device_b')
+        if c1 or c2: conflicts.append((i, 'a' if c1 else '', 'b' if c2 else ''))
+        [pull(d) for d in DEVICES]
+    return {'iterations': n, 'conflicts': len(conflicts), 'conflict_details': conflicts[:5]}
+
 # === TEST RUNNER ===
 
 TESTS = {
@@ -224,6 +283,8 @@ TESTS = {
     'delete_race': test_delete_race,
     'edit_delete': test_edit_delete_race,
     'monte': monte_carlo,
+    'hub': test_hub_conflict,
+    'rclone': test_rclone_conflict,
 }
 
 def sim(name=None, timeout=60):
