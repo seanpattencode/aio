@@ -80,8 +80,8 @@ static void load_proj(void) {
         const char *pa = kvget(&kv, "Path");
         const char *re = kvget(&kv, "Repo");
         snprintf(PJ[NPJ].name, 128, "%s", nm); snprintf(PJ[NPJ].file, P, "%s", paths[i]);
-        if (pa) { if (pa[0]=='~') snprintf(PJ[NPJ].path,512,"%s%s",HOME,pa+1); else snprintf(PJ[NPJ].path,512,"%s",pa); }
-        else snprintf(PJ[NPJ].path, 512, "%s/projects/%s", HOME, nm);
+        {char*pp=PJ[NPJ].path;snprintf(pp,512,"%s/projects/%s",HOME,nm);
+        if(pa){if(pa[0]=='~')snprintf(pp,512,"%s%s",HOME,pa+1);else if(dexists(pa))snprintf(pp,512,"%s",pa);}}
         snprintf(PJ[NPJ].repo, 512, "%s", re ? re : "");
         const char *ord = kvget(&kv, "Order"); PJ[NPJ].order = ord ? atoi(ord) : 9999;
         NPJ++;
