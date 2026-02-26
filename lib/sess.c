@@ -1,6 +1,6 @@
 /* ── session (c, l, g, co, cp, etc.) ── */
 static int cmd_sess(int argc, char **argv) {
-    init_db(); load_cfg(); load_proj(); load_apps(); load_sess();
+    init_db(); load_cfg(); load_proj(); load_apps(); load_sess(); tm_ensure_conf();
     const char *key = argv[1];
     sess_t *s = find_sess(key);
     if (!s) return -1;  /* not a session key */

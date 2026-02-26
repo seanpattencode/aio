@@ -45,10 +45,11 @@ static void tm_key(const char *s, const char *key) {
 /* ═══ TMUX CONFIG ═══ */
 
 static void tm_ensure_conf(void) {
-    if (strcmp(cfget("tmux_conf"), "y") != 0) return;
     char adir[P]; snprintf(adir, P, "%s/.a", HOME);
     mkdirp(adir);
     char cpath[P]; snprintf(cpath, P, "%s/tmux.conf", adir);
+    if(!fexists(cpath)){FILE*t=fopen(cpath,"a");if(t)fclose(t);}
+    if (strcmp(cfget("tmux_conf"), "y") != 0) return;
     FILE *f = fopen(cpath, "w");
     if (!f) return;
     const char *cc = clip_cmd();
@@ -107,17 +108,12 @@ static void tm_ensure_conf(void) {
     if (vmaj > 3 || (vmaj == 3 && vmin >= 6))
         fputs("set -g pane-scrollbars on\nset -g pane-scrollbars-position right\n", f);
     fclose(f);
-    /* Append source line to ~/.tmux.conf if not present */
     char uconf[P]; snprintf(uconf, P, "%s/.tmux.conf", HOME);
     char *uc = readf(uconf, NULL);
     if (!uc || !strstr(uc, "~/.a/tmux.conf")) {
         FILE *uf = fopen(uconf, "a");
-        if (uf) { fputs("\nsource-file ~/.a/tmux.conf  # a\n", uf); fclose(uf); }
+        if (uf) { fputs("\nsource-file -q ~/.a/tmux.conf  # a\n", uf); fclose(uf); }
     }
     free(uc);
-    /* Source config in running tmux server */
-    if (system("tmux info >/dev/null 2>&1") != 0) return;
-    char cmd[B]; snprintf(cmd, B, "tmux source-file '%s' 2>/dev/null", cpath);
-    (void)!system(cmd);
-    (void)!system("tmux refresh-client -S 2>/dev/null");
+    if(!system("tmux info >/dev/null 2>&1")){char cmd[B];snprintf(cmd,B,"tmux source-file '%s' 2>/dev/null",cpath);(void)!system(cmd);(void)!system("tmux refresh-client -S 2>/dev/null");}
 }
