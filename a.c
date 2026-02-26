@@ -492,20 +492,29 @@ static int cmd_adb(int c,char**v){
 }
 
 /* ── once — headless single-shot claude -p (opus, 10min default) ── */
-static unsigned once_tl;
-__attribute__((noreturn)) static void once_alarm(int sig){(void)sig;
-    char m[128];int n=snprintf(m,128,"\n\033[31m✗ TIMEOUT\033[0m: a once exceeded %us\n",once_tl);
-    (void)!write(STDERR_FILENO,m,(size_t)n);kill(0,SIGTERM);_exit(124);}
 static int cmd_run_once(int c,char**v){
-    if(c<3){puts("Usage: a once [-t secs] [claude flags] <prompt>");return 1;}
-    once_tl=600;int si=2;
-    if(c>3&&!strcmp(v[2],"-t")){once_tl=(unsigned)atoi(v[3]);si=4;}
-    perf_disarm();signal(SIGALRM,once_alarm);alarm(once_tl);
-    unsetenv("CLAUDECODE");unsetenv("CLAUDE_CODE_ENTRYPOINT");
-    char**a=malloc(((unsigned)c+4)*sizeof(char*));
-    a[0]="claude";a[1]="-p";a[2]="--dangerously-skip-permissions";a[3]="--model";a[4]="opus";
-    for(int i=si;i<c;i++)a[i-si+5]=v[i];a[c-si+5]=NULL;
-    execvp("claude",a);perror("claude");return 1;}
+    if(c<3){puts("Usage: a once [-t secs] [claude flags] prompt words...");return 1;}
+    unsigned tl=600;int si=2;
+    if(c>3&&!strcmp(v[2],"-t")){tl=(unsigned)atoi(v[3]);si=4;}
+    perf_disarm();unsetenv("CLAUDECODE");unsetenv("CLAUDE_CODE_ENTRYPOINT");
+    char*flags[16];int nf=0;char pr[B]="";int pl=0;
+    for(int i=si;i<c;i++){
+        if(v[i][0]=='-'&&nf<14){flags[nf++]=v[i];
+            if((!strcmp(v[i],"--model")||!strcmp(v[i],"--max-budget-usd"))&&i+1<c)flags[nf++]=v[++i];
+        }else pl+=snprintf(pr+pl,(size_t)(B-pl),"%s%s",pl?" ":"",v[i]);}
+    char**a=malloc(((unsigned)nf+7)*sizeof(char*));int n=0;
+    a[n++]="claude";a[n++]="-p";a[n++]="--dangerously-skip-permissions";a[n++]="--model";a[n++]="opus";
+    for(int i=0;i<nf;i++)a[n++]=flags[i];
+    a[n++]=pr;a[n]=NULL;
+    pid_t ch=fork();
+    if(ch==0){execvp("claude",a);perror("claude");_exit(127);}
+    free(a);int st;
+    for(unsigned elapsed=0;elapsed<tl;elapsed++){
+        pid_t r=waitpid(ch,&st,WNOHANG);
+        if(r>0)return WIFEXITED(st)?WEXITSTATUS(st):1;
+        sleep(1);}
+    fprintf(stderr,"\n\033[31m✗ TIMEOUT\033[0m: a once exceeded %us\n",tl);
+    kill(ch,SIGKILL);waitpid(ch,NULL,0);return 124;}
 
 /* ═══ DISPATCH TABLE — sorted for bsearch, every alias is one entry ═══ */
 typedef struct { const char *n; int (*fn)(int, char**); } cmd_t;
