@@ -29,7 +29,7 @@ HTML = '''<!doctype html>
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.min.js"></script>
-<style>*{font-family:system-ui}[data-go]{touch-action:manipulation}</style>
+<style>*{font-family:system-ui}[data-go]{touch-action:manipulation}.b{padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer}</style>
 <body style="margin:0;height:100vh;background:#000;overflow:hidden">
 <div id=v_index style="display:none;height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:20px">
   <a data-go="/jobs" style="font-size:28px;color:#4af;cursor:pointer;padding:20px 40px;border:2px solid #4af;border-radius:12px">jobs</a>
@@ -51,15 +51,16 @@ HTML = '''<!doctype html>
     <input id=jc placeholder="prompt" onkeydown="if(event.key==='Enter')runjob()" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
     <select id=jn style="font-size:20px;padding:12px;background:#111;color:#fff;border:1px solid #333;border-radius:8px"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
     <label style="color:#4af;font-size:18px;display:flex;align-items:center;gap:4px"><input type=checkbox id=jpr>PR</label>
-    <button onclick="runjob()" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">run</button>
+    <button class=b onclick="runjob()">run</button>
   </div>
   <div id=jl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px;font-family:monospace;font-size:14px;white-space:pre;color:#aaa">__JO__</div>
 </div>
 <div id=v_note style="display:none;height:100vh;flex-direction:column;padding-top:20px;align-items:center">
   <form id=nf style="display:flex;gap:10px;width:95vw;align-items:center">
     <input id=nc autofocus placeholder="note" style="flex:1;font-size:24px;padding:16px;background:#111;color:#fff;border:1px solid #333;border-radius:8px">
-    <button type=submit style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">save</button>
-    <button type=button data-go="/term" style="padding:16px 24px;font-size:24px;background:#1a1a2e;color:#4af;border:2px solid #4af;border-radius:8px;cursor:pointer">term</button>
+    <button class=b type=submit>save</button>
+    <button class=b type=button onclick="this.textContent='...';fetch('/api/sync').then(()=>location.reload())">sync</button>
+    <button class=b type=button data-go="/term">term</button>
   </form>
   <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px">__NO__</div>
 </div>
@@ -98,6 +99,7 @@ show(views[location.pathname]?location.pathname:'/');
 </script>'''
 
 async def spa(r):
+    S.Popen(['git','-C',_G,'pull','-q','--rebase'],stdout=S.DEVNULL,stderr=S.DEVNULL)
     po='<option value="">~ (home)</option>';pd=f'{_G}/workspace/projects'
     if os.path.isdir(pd):
         for f in sorted(os.listdir(pd)):
@@ -195,8 +197,9 @@ async def note_api(r):
     if r.method == 'POST': d = await r.post(); c = d.get('c', '').strip(); c and S.Popen([_A, 'note', c]); return web.Response(text='ok')
     return web.Response(text='')
 async def note_archive(r): d=await r.json();f=os.path.basename(d.get('f',''));nd=f'{_G}/notes';ad=f'{nd}/.archive';os.makedirs(ad,exist_ok=True);p=f'{nd}/{f}';os.path.isfile(p) and os.rename(p,f'{ad}/{f}');return web.Response(text='ok')
+async def sync_api(r): S.run(f'cd {_G}&&git pull -q --rebase&&git add -A&&git commit -qm sync;git push -q',shell=True,timeout=15,capture_output=True);return web.Response(text='ok')
 
-app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api), web.post('/api/note/archive', note_archive)])
+app = web.Application(); app.add_routes([web.get('/', spa), web.get('/jobs', spa), web.get('/term', spa), web.get('/note', spa), web.get('/ws', term), web.get('/restart', restart), web.get('/api/jobs', jobs_api), web.post('/api/jobs', jobs_api), web.get('/api/job-status', job_status_api), web.get('/api/term', term_capture), web.post('/note', note_api), web.post('/api/note/archive', note_archive), web.get('/api/sync', sync_api)])
 
 def run(port=1111): web.run_app(app, port=port, print=None)
 if __name__ == '__main__': run(int(sys.argv[1]) if len(sys.argv) > 1 else 1111)
