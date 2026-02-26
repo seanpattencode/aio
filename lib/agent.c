@@ -22,26 +22,23 @@ static int cmd_run(int argc, char **argv) { fallback_py("run", argc, argv); }
 /* ── agent ── */
 static int cmd_agent(int argc, char **argv) {
     if (argc < 3) { puts("Usage: a agent [run <name>|g|c|l] <task>"); return 1; }
-    /* a agent run <name> [args...] — uv run --script (auto-installs PEP 723 deps) */
+    /* a agent run <name> — PEP 723 → uv, else → python3 */
     if (!strcmp(argv[2],"run") && argc > 3) {
         char py[P]; snprintf(py,P,"%s/personal/%s.py",SDIR,argv[3]);
         if (!fexists(py)) { fprintf(stderr,"x %s\n",py); return 1; }
         perf_disarm();
         char **na=malloc(((unsigned)argc+2)*sizeof(char*));
-        /* try uv run --script first */
-        char uv[P]; snprintf(uv,P,"%s/.local/bin/uv",HOME);
-        na[0]="uv"; na[1]="run"; na[2]="--script"; na[3]=py;
-        for(int i=4;i<argc;i++) na[i]=argv[i];
-        na[argc]=NULL;
-        if(access(uv,X_OK)==0){na[0]=uv;execv(uv,na);}
-        execvp("uv",na);
-        /* fallback: venv python, then system python3 */
-        char vpy[P]; snprintf(vpy,P,"%s/venv/bin/python",AROOT);
-        na[0]="python"; na[1]=py;
-        for(int i=4;i<argc;i++) na[i-2]=argv[i];
-        na[argc-2]=NULL;
-        if(access(vpy,X_OK)==0) execv(vpy,na);
-        na[0]="python3"; execvp("python3",na);
+        {FILE *f=fopen(py,"r");char h[32]={0};
+        if(f){(void)!fgets(h,32,f);fclose(f);}
+        if(strstr(h,"/// script")){
+            char uv[P];snprintf(uv,P,"%s/.local/bin/uv",HOME);
+            na[0]="uv";na[1]="run";na[2]="--script";na[3]=py;
+            for(int i=4;i<argc;i++)na[i]=argv[i];na[argc]=NULL;
+            if(access(uv,X_OK)==0){na[0]=uv;execv(uv,na);}
+            execvp("uv",na);}}
+        na[0]="python3";na[1]=py;
+        for(int i=4;i<argc;i++)na[i-2]=argv[i];na[argc-2]=NULL;
+        execvp("python3",na);
         perror("python3"); return 1;
     }
     init_db(); load_cfg(); load_sess();

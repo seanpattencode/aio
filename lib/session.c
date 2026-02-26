@@ -1,25 +1,22 @@
-/* ═══ FALLBACK ═══ */
+/* ═══ FALLBACK — PEP 723 (# /// script) → uv; else → python3 (5x faster) ═══ */
 __attribute__((noreturn))
 static void fallback_py(const char *mod, int argc, char **argv) {
     if (getenv("A_BENCH")) _exit(0);
-    perf_disarm(); /* python takes over — no timeout */
+    perf_disarm();
     char path[P]; snprintf(path, P, "%s/lib/%s.py", SDIR, mod);
-    /* try uv run --script (auto-installs deps from PEP 723 metadata) */
-    char uv[P]; snprintf(uv, P, "%s/.local/bin/uv", HOME);
-    char **ua = malloc(((unsigned)argc + 5) * sizeof(char *));
-    ua[0] = "uv"; ua[1] = "run"; ua[2] = "--script"; ua[3] = path;
-    for (int i = 1; i < argc; i++) ua[i + 3] = argv[i];
-    ua[argc + 3] = NULL;
-    if (access(uv, X_OK) == 0) { ua[0] = uv; execv(uv, ua); }
-    execvp("uv", ua);
-    /* fallback: venv python, then system python3 */
-    char vpy[P]; snprintf(vpy, P, "%s/venv/bin/python", AROOT);
-    char **na = ua; na[0] = "python"; na[1] = path;
-    for (int i = 1; i < argc; i++) na[i + 1] = argv[i];
-    na[argc + 1] = NULL;
-    if (access(vpy, X_OK) == 0) execv(vpy, na);
-    na[0] = "python3"; execvp("python3", na);
-    perror("a: python3"); _exit(127);
+    char **a = malloc(((unsigned)argc + 5) * sizeof(char *));
+    {FILE *f=fopen(path,"r");char h[32]={0};
+    if(f){(void)!fgets(h,32,f);fclose(f);}
+    if(strstr(h,"/// script")){
+        char uv[P];snprintf(uv,P,"%s/.local/bin/uv",HOME);
+        a[0]="uv";a[1]="run";a[2]="--script";a[3]=path;
+        for(int i=1;i<argc;i++)a[i+3]=argv[i];a[argc+3]=NULL;
+        if(access(uv,X_OK)==0){a[0]=uv;execv(uv,a);}
+        execvp("uv",a);}}
+    a[0]="python3";a[1]=path;
+    for(int i=1;i<argc;i++)a[i+1]=argv[i];a[argc+1]=NULL;
+    execvp("python3",a);
+    perror("a: python3");_exit(127);
 }
 
 /* ═══ SESSION CREATE ═══ */

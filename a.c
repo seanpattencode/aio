@@ -385,10 +385,7 @@ exit 0
  *     jobs/                     saved prompts (.txt) + tmux visual logs (.log)
  *     context/                  agent context files (.txt, togglable)
  *     docs/                     user documents
- *   venv/                     Python venv fallback (if uv unavailable).
- *                               fallback_py() tries: uv run --script (preferred,
- *                               auto-installs deps via PEP 723), venv/bin/python,
- *                               then system python3.
+ *   venv/                     Python venv (install-time only, if no uv)
  *   sync/                     rclone copy <->, all devices, large files <5G
  *   vault/                    rclone copy on-demand, big devices, models
  *   backup/                   rclone move ->, all devices, logs+state
