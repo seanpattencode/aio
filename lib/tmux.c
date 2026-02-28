@@ -1,9 +1,9 @@
 /* ═══ TMUX HELPERS ═══ */
 static int tm_has(const char *s) {
-    /* direct fork/exec: no shell, no timeout wrapper — perf_arm is the guard */
+    char e[256];snprintf(e,256,"=%s",s); /* =exact: no prefix match */
     pid_t p=fork();if(p==0){int fd=open("/dev/null",O_WRONLY);
         if(fd>=0){dup2(fd,STDERR_FILENO);close(fd);}
-        execlp("tmux","tmux","has-session","-t",s,(char*)0);_exit(1);}
+        execlp("tmux","tmux","has-session","-t",e,(char*)0);_exit(1);}
     int st;waitpid(p,&st,0);return WIFEXITED(st)&&WEXITSTATUS(st)==0;
 }
 
