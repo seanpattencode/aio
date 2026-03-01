@@ -99,9 +99,13 @@ AFUNC
 _install_node() {
     mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"
     ARCH=$(uname -m); [[ "$ARCH" == "x86_64" ]] && ARCH="x64"; [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] && ARCH="arm64"
-    if [[ "$OSTYPE" == darwin* ]]; then curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-$ARCH.tar.gz" | tar -xzf - -C "$HOME/.local" --strip-components=1
-    else curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-$ARCH.tar.xz" | tar -xJf - -C "$HOME/.local" --strip-components=1; fi
-    command -v node &>/dev/null && ok "node $(node -v)" || warn "node install failed"
+    info "Installing node v22.12.0 ($ARCH) to ~/.local/bin ..."
+    if [[ "$OSTYPE" == darwin* ]]; then URL="https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-$ARCH.tar.gz"
+    else URL="https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-$ARCH.tar.xz"; fi
+    info "Downloading $URL"
+    if [[ "$URL" == *.gz ]]; then curl -fsSL "$URL" | tar -xzf - -C "$HOME/.local" --strip-components=1
+    else curl -fsSL "$URL" | tar -xJf - -C "$HOME/.local" --strip-components=1; fi
+    [[ -x "$HOME/.local/bin/node" ]] && ok "node $($HOME/.local/bin/node -v) installed at ~/.local/bin/node" || warn "node install failed"
 }
 
 case "${1:-build}" in
