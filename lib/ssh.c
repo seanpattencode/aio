@@ -46,7 +46,7 @@ static int cmd_ssh(int argc,char**argv){
         puts("\na ssh <#|name> [cmd]  add/self/start/stop/all/rm\n"
              "  setup/key/auth/os/info/pw/mv");return 0;}
     /* start/stop/status */
-    if(!strcmp(sub,"start")){int r=system("sshd 2>/dev/null||sudo service ssh start 2>/dev/null");puts(r?"x sshd":"\xe2\x9c\x93 sshd");return r!=0;}
+    if(!strcmp(sub,"start")){int r=system("sshd 2>/dev/null||service ssh start 2>/dev/null||sudo service ssh start 2>/dev/null||/usr/sbin/sshd 2>/dev/null||sudo /usr/sbin/sshd 2>/dev/null");puts(r?"x sshd":"\xe2\x9c\x93 sshd");return r!=0;}
     if(!strcmp(sub,"stop")){(void)!system("pkill -x sshd 2>/dev/null||sudo pkill -x sshd");puts("\xe2\x9c\x93");return 0;}
     if(!strcmp(sub,"status")||!strcmp(sub,"s")){
         int on=!system("pgrep -x sshd >/dev/null 2>&1");char ip[128];
