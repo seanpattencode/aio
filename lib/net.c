@@ -165,7 +165,7 @@ static int cmd_update(int argc, char **argv) {
         puts("\xe2\x9c\x93 Cache"); return 0;
     }
     /* Pull, rebuild, exec new */
-    {char g[P];snprintf(g,P,"%s/.git",SDIR);if(access(g,F_OK)!=0){puts("x Not in git repo");return 0;}}
+    {char g[P];snprintf(g,P,"%s/.git",SDIR);if(access(g,F_OK)!=0){puts("x Not in git repo");init_db();load_cfg();list_all(1,1);gen_icache();return 0;}}
     char c[B];snprintf(c, B, "git -C '%s' checkout -- a-i 2>/dev/null", SDIR); (void)!system(c);
     snprintf(c, B, "git -C '%s' fetch 2>/dev/null", SDIR); (void)!system(c);
     snprintf(c, B, "git -C '%s' status -uno 2>/dev/null", SDIR);
