@@ -38,8 +38,8 @@ static int cmd_deps(int argc, char **argv) { (void)argc;(void)argv;
     printf("%s node\n", system("which node >/dev/null 2>&1") == 0 ? "\xe2\x9c\x93" : "x");
     const char *tools[][2] = {{"codex","@openai/codex"},{"claude","@anthropic-ai/claude-code"},{"gemini","@google/gemini-cli"}};
     for (int i = 0; i < 3; i++) {
-        char c[256]; snprintf(c, 256, "which %s >/dev/null 2>&1 || sudo npm i -g %s 2>/dev/null", tools[i][0], tools[i][1]); (void)!system(c);
-        snprintf(c, 256, "which %s >/dev/null 2>&1", tools[i][0]);
+        char c[256]; snprintf(c, 256, "p=$(which %s 2>/dev/null);[ -n \"$p\" ] && [ \"${p:0:5}\" != /mnt/ ] || npm i -g %s 2>/dev/null", tools[i][0], tools[i][1]); (void)!system(c);
+        snprintf(c, 256, "p=$(which %s 2>/dev/null);[ -n \"$p\" ] && [ \"${p:0:5}\" != /mnt/ ]", tools[i][0]);
         printf("%s %s\n", system(c) == 0 ? "\xe2\x9c\x93" : "x", tools[i][0]);
     }
     return 0;

@@ -174,8 +174,9 @@ install)
     [[ -f "$E/e.c" ]] && sh "$E/e.c" install || :
     _shell_funcs
     install_cli() {
-        local pkg="$1" cmd="$2"; command -v "$cmd" &>/dev/null && { ok "$cmd (exists)"; return; }
-        info "Installing $cmd..."
+        local pkg="$1" cmd="$2" p=$(command -v "$cmd" 2>/dev/null)
+        [[ -n "$p" && "${p:0:5}" != "/mnt/" ]] && { ok "$cmd (exists)"; return; }
+        [[ -n "$p" ]] && warn "$cmd ($p) is Windows"; info "Installing $cmd..."
         if ! command -v npm &>/dev/null; then warn "$cmd skipped (npm not found)"
         elif [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then $SUDO npm install -g "$pkg" && ok "$cmd" || warn "$cmd failed"
         else mkdir -p "$HOME/.local/lib" && npm install -g --prefix="$HOME/.local" "$pkg" && ok "$cmd" || warn "$cmd failed"; fi
