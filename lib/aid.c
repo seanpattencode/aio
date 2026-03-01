@@ -131,7 +131,6 @@ static int run_tui(cache_t *c, char *result, int rsz) {
             snprintf(result, rsz, "%s", cmd);
             ret = 0; goto done;
         } else if (ch == '\x03' || ch == '\x04') break;
-        else if (ch == 'q' && !flen) break;
         else if ((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||(ch>='0'&&ch<='9')||ch=='-'||ch=='_'||ch==' ')
             { if (flen < 254) { filter[flen++] = ch; filter[flen] = 0; sel = 0; } }
         WRS("\033[J");

@@ -16,6 +16,7 @@ static const char *HELP_FULL =
     "  a add               Add current dir as project\n"
     "  a remove <#>        Remove project\n"
     "  a move <#> <#>      Reorder project\n"
+    "  a create <name>     New repo (default private, add 'public')\n"
     "  a scan              Add your repos fast\n\n"
     "GIT\n"
     "  a push [msg]        Commit and push\n"
@@ -175,8 +176,6 @@ static int cmd_web(int argc, char **argv) {
     return 0;
 }
 
-static int cmd_repo(int argc, char **argv) {
-    if (argc < 3) { puts("Usage: a repo <name>"); return 1; }
-    char c[B]; snprintf(c, B, "mkdir -p '%s' && cd '%s' && git init -q && gh repo create '%s' --public --source=.", argv[2], argv[2], argv[2]);
-    (void)!system(c); return 0;
-}
+/* cmd_create lives in config.c (after cmd_add) */
+static int cmd_create(int,char**);
+

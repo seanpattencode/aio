@@ -524,7 +524,7 @@ static const cmd_t CMDS[] = {
     {"a",cmd_all},{"adb",cmd_adb},{"add",cmd_add},{"agent",cmd_agent},{"ai",cmd_all},
     {"all",cmd_all},{"apk",cmd_apk},{"ask",cmd_ask},{"attach",cmd_attach},
     {"cat",cmd_cat},{"cleanup",cmd_cleanup},{"config",cmd_config},
-    {"copy",cmd_copy},{"dash",cmd_dash},{"deps",cmd_deps},
+    {"copy",cmd_copy},{"create",cmd_create},{"dash",cmd_dash},{"deps",cmd_deps},
     {"diff",cmd_diff},{"dir",cmd_dir},{"docs",cmd_docs},{"done",cmd_done},
     {"e",cmd_e},{"email",cmd_email},{"gdrive",cmd_gdrive},
     {"help",cmd_help_full},{"hi",cmd_hi},{"hub",cmd_hub},{"i",cmd_i},
@@ -534,7 +534,7 @@ static const cmd_t CMDS[] = {
     {"n",cmd_note},{"note",cmd_note},{"once",cmd_run_once},
     {"p",cmd_push},{"perf",cmd_perf},{"pr",cmd_pr},{"prompt",cmd_prompt},
     {"pull",cmd_pull},{"push",cmd_push},
-    {"remove",cmd_remove},{"repo",cmd_repo},{"revert",cmd_revert},{"review",cmd_review},
+    {"remove",cmd_remove},{"repo",cmd_create},{"revert",cmd_revert},{"review",cmd_review},
     {"rm",cmd_remove},{"run",cmd_run},{"scan",cmd_scan},{"send",cmd_send},
     {"set",cmd_set},{"settings",cmd_set},{"setup",cmd_setup},
     {"ssh",cmd_ssh},{"ssh add",cmd_ssh},{"ssh all",cmd_ssh},{"ssh rm",cmd_ssh},
@@ -556,7 +556,7 @@ __attribute__((noreturn)) static void perf_alarm(int sig) {
 static void perf_arm(const char *cmd) {
     if (getenv("A_BENCH")) return; /* bench children: parent handles timeout */
     if (isdigit(*cmd)) return;
-    static const char *skip[] = {"push","pull","sync","u","update","login","ssh","gdrive","mono","email","install","send","j","job","pr","hub",NULL};
+    static const char *skip[] = {"push","pull","sync","u","update","login","ssh","gdrive","mono","email","install","send","j","job","pr","hub","create","repo",NULL};
     for (const char **p = skip; *p; p++) if (!strcmp(cmd, *p)) return;
     unsigned secs = 1;
     /* per-device override: adata/git/perf/{DEV}.txt — command:us (microseconds) */

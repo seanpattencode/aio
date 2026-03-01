@@ -133,6 +133,16 @@ static int cmd_add(int argc, char **argv) {
     printf("\xe2\x9c\x93 Added: %s\n", name); list_all(1, 0); return 0;
 }
 
+static int cmd_create(int argc, char **argv) {
+    if (argc < 3) { puts("a create foo          private repo\na create foo public   public repo"); return 1; }
+    int pub=0; for(int i=3;i<argc;i++) if(strstr(argv[i],"pub")) pub=1;
+    char d[P]; snprintf(d,P,"%s/projects/%s",HOME,argv[2]);
+    char c[B]; snprintf(c,B,"mkdir -p '%s'&&cd '%s'&&git init -q&&gh repo create '%s' %s --source=.",d,d,argv[2],pub?"--public":"--private");
+    printf("> %s\n",d); if(system(c)!=0) return 1;
+    char*a[]={"a","add",d}; cmd_add(3,a);
+    return 0;
+}
+
 /* ── remove ── */
 static int cmd_remove(int argc, char **argv) {
     init_db(); load_cfg(); load_proj(); load_apps();

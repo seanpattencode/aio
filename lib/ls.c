@@ -198,7 +198,7 @@ static int cmd_jobs(int argc, char **argv) {
     if(!na&&!nr){puts("No jobs");return 0;}
     if(na){puts("ACTIVE");for(int i=0;i<na;i++)printf(" %d %-12s %-5s %-5s %s\n",i,A[i].sn,A[i].cmd,A[i].p,A[i].dev);}
     if(nr){if(na)puts("");puts("REVIEW");for(int i=0;i<nr;i++){
-        char*d=R[i].n,*s=strrchr(d,'-'),*s2=s?memrchr(d,'-',(size_t)(s-d)):NULL;
+        char*d=R[i].n,*s=strrchr(d,'-'),*s2=NULL;if(s){for(char*p=s-1;p>=d;p--)if(*p=='-'){s2=p;break;}}
         if(s2)printf("  %d  %-16.*s %s\n",na+i,(int)(s2-d),d,s2+1);
         else printf("  %d  %s\n",na+i,d);}}
     puts("\n  a j \"task\"           new worktree+window (cwd)\n  a j <#> \"task\"       new worktree+window (project #)\n  a job #              attach/cd\n  a job rm #           remove\n  a job rm all         clear review\n  a job <#> \"prompt\"   full lifecycle (worktree>agent>PR>email)");

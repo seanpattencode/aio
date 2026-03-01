@@ -53,7 +53,7 @@ def run():
             if not cmd: continue
             via_a = ' ' in buf or matches; print(f"\n\n\033[KRunning: {'a '+cmd if via_a else cmd}\n")
             __import__('subprocess').run([sys.executable,__file__.replace('i.py','../a.py')]+cmd.split() if via_a else cmd.split()); break
-        elif ch in ('\x03', '\x04') or (ch == 'q' and not buf): break  # Ctrl+C, Ctrl+D, q
+        elif ch in ('\x03', '\x04'): break  # Ctrl+C, Ctrl+D
         elif ch.isalnum() or ch in '-_ ': buf, sel = buf + ch, 0
 
         sys.stdout.write("\033[J")
