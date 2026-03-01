@@ -105,7 +105,7 @@ _install_node() {
 }
 
 case "${1:-build}" in
-node) command -v node &>/dev/null && [[ "$(node -v)" == v2[2-9]* || "$(node -v)" == v[3-9]* ]] && { ok "node $(node -v)"; exit 0; }; _install_node ;;
+node) N="$HOME/.local/bin/node"; [[ -x "$N" ]] && V="$("$N" -v)" && [[ "$V" == v2[2-9]* || "$V" == v[3-9]* ]] && { ok "node $V"; exit 0; }; _install_node ;;
 build)
     # LLMs: always "sh a.c && command a <args>" to test (see comment below)
     _ensure_cc
