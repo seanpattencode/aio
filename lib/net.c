@@ -191,6 +191,7 @@ static int cmd_update(int argc, char **argv) {
       }
     }
     snprintf(c, B, "bash '%s/a.c' shell 2>/dev/null", SDIR); (void)!system(c);
+    snprintf(c, B, "bash '%s/a.c' node 2>/dev/null", SDIR); (void)!system(c);
     /* Termux: ensure Claude Code sandbox dir + tmux env on update */
     if (access("/data/data/com.termux",F_OK)==0) {
         char td[P]; snprintf(td,P,"%s/.tmp",HOME); mkdirp(td);

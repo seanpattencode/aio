@@ -96,7 +96,16 @@ AFUNC
     ok "shell functions (bash + zsh)"
 }
 
+_install_node() {
+    mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"
+    ARCH=$(uname -m); [[ "$ARCH" == "x86_64" ]] && ARCH="x64"; [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] && ARCH="arm64"
+    if [[ "$OSTYPE" == darwin* ]]; then curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-$ARCH.tar.gz" | tar -xzf - -C "$HOME/.local" --strip-components=1
+    else curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-$ARCH.tar.xz" | tar -xJf - -C "$HOME/.local" --strip-components=1; fi
+    command -v node &>/dev/null && ok "node $(node -v)" || warn "node install failed"
+}
+
 case "${1:-build}" in
+node) command -v node &>/dev/null && [[ "$(node -v)" == v2[2-9]* || "$(node -v)" == v[3-9]* ]] && { ok "node $(node -v)"; exit 0; }; _install_node ;;
 build)
     # LLMs: always "sh a.c && command a <args>" to test (see comment below)
     _ensure_cc
@@ -145,19 +154,7 @@ install)
         elif [[ "$OS" == termux ]]; then ok "a.local (termux: use localhost:1111)"
         else warn "a.local: run 'echo 127.0.0.1 a.local | sudo tee -a /etc/hosts'"; fi
     else ok "a.local (exists)"; fi
-    install_node() {
-        command -v npm &>/dev/null && return 0
-        info "Installing node (user-level)..."
-        ARCH=$(uname -m)
-        [[ "$ARCH" == "x86_64" ]] && ARCH="x64"
-        [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] && ARCH="arm64"
-        if [[ "$OSTYPE" == darwin* ]]; then
-            curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-darwin-$ARCH.tar.gz" | tar -xzf - -C "$HOME/.local" --strip-components=1
-        else
-            curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-$ARCH.tar.xz" | tar -xJf - -C "$HOME/.local" --strip-components=1
-        fi
-        command -v node &>/dev/null && ok "node $(node -v)" || warn "node install failed"
-    }
+    install_node() { command -v node &>/dev/null && [[ "$(node -v)" == v2[2-9]* || "$(node -v)" == v[3-9]* ]] && return 0; _install_node; }
     case $OS in
         mac)
             command -v brew &>/dev/null || { info "Installing Homebrew..."; /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"; }
@@ -166,8 +163,8 @@ install)
             ok "tmux + node + gh + rclone" ;;
         debian)
             if [[ -n "$SUDO" ]]; then export DEBIAN_FRONTEND=noninteractive
-                $SUDO apt update -qq && $SUDO apt install -yqq clang tmux git curl nodejs npm python3-pip sshpass rclone gh 2>/dev/null || true; ok "pkgs"
-            else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo apt install tmux"; fi ;;
+                $SUDO apt update -qq && $SUDO apt install -yqq clang tmux git curl python3-pip sshpass rclone gh 2>/dev/null || true; ok "pkgs"
+            fi; install_node; [[ -z "$SUDO" ]] && { command -v tmux &>/dev/null || warn "tmux needs: sudo apt install tmux"; } ;;
         arch)
             if [[ -n "$SUDO" ]]; then $SUDO pacman -Sy --noconfirm clang tmux nodejs npm git python-pip sshpass rclone github-cli 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo pacman -S tmux"; fi ;;
