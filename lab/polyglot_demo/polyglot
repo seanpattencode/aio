@@ -1,0 +1,70 @@
+#if 0
+# ── polyglot — one file, three languages + LLM self-modification ──
+#
+# sh polyglot          → runs all three: bash, python, C
+# sh polyglot bash     → bash only
+# sh polyglot python   → python only
+# sh polyglot c        → C only
+# sh polyglot mutate   → LLM rewrites the C puts, then runs all three
+
+[ -z "$BASH_VERSION" ] && exec bash "$0" "$@"
+set -e
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+MODE="${1:-all}"
+
+run_bash() { echo "[bash] pid=$$ shell=$BASH_VERSION arch=$(uname -m)"; }
+
+run_python() {
+    python3 << 'PY'
+import sys, platform
+print(f"[python] {sys.version_info.major}.{sys.version_info.minor} arch={platform.machine()}")
+PY
+}
+
+run_c() {
+    local bin="/tmp/polyglot_bin"
+    cc -x c -O2 -o "$bin" "$SELF" 2>/dev/null || { echo "[c] ✗ no compiler"; return 1; }
+    "$bin"; rm -f "$bin"
+}
+
+run_mutate() {
+    source "$HOME/projects/a/adata/git/login/api_keys.env"
+    python3 - "$SELF" "$ANTHROPIC_API_KEY" << 'PYEND'
+import anthropic, re, sys
+path, key = sys.argv[1], sys.argv[2]
+lines = open(path).readlines()
+tag = "/" + "*CMSG*" + "/"  # split so this line doesn't match
+idx = next(i for i, l in enumerate(lines) if tag in l and l.strip().startswith("puts"))
+m = re.search(r'puts\("([^"]*)"\)', lines[idx])
+cur = m.group(1) if m else "hello"
+print(f"before: {lines[idx].rstrip()}")
+r = anthropic.Anthropic(api_key=key).messages.create(
+    model="claude-haiku-4-5-20251001", max_tokens=40,
+    messages=[{"role":"user","content":
+    f'Current message: "{cur}". Write a different short fun message about '
+    "self-modifying code. ONLY the message, under 50 chars, no quotes."}])
+new = r.content[0].text.strip().replace('"', "'").replace("\\", "")
+new = re.sub(r'[^\x20-\x7e]', '', new)[:50]
+lines[idx] = f'    puts("{new}"); {tag}\n'
+open(path, "w").writelines(lines)
+print(f"after:  {lines[idx].rstrip()}")
+PYEND
+    echo "running mutated file:"
+    run_bash; run_python; run_c
+}
+
+case "$MODE" in
+    bash)   run_bash ;;
+    python) run_python ;;
+    c)      run_c ;;
+    mutate) run_mutate ;;
+    *)      run_bash; run_python; run_c ;;
+esac
+exit 0
+#endif
+
+#include <stdio.h>
+int main(void) {
+    puts("compiled native, no extension needed"); /*CMSG*/
+    return 0;
+}
