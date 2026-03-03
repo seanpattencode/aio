@@ -19,18 +19,16 @@ __pycache__/
 .local/
 
 .aider*
+.a_job
 
 # User data — adata/ is a separate world from the code repo.
 # adata/git/ is its own independent git repo (not a submodule).
 # .gitignore makes the parent repo completely blind to it.
 adata/
 
-# C binaries
+# C binaries + build artifacts
 /a
 *.o
+*.plist
 /bench_dispatch
 /bench_real
-
-# Reference source trees
-experimental/git-src/
-experimental/linux-src/
