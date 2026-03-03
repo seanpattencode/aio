@@ -425,14 +425,14 @@ static int cmd_job(int c,char**v){
     if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     return cmd_j(c,v);}
 static int cmd_mono(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
-    size_t len=0;char*d=NULL;
-    {FILE*f=popen("git ls-files -z|xargs -0 grep -lIZ ''|xargs -0 tail -n+1","r");
-    if(f){char b[8192];size_t n;size_t cap=0;while((n=fread(b,1,8192,f))>0){
-        if(len+n>=cap){cap=(len+n)*2;d=realloc(d,cap+1);}memcpy(d+len,b,n);len+=n;}pclose(f);}
-    if(!d){puts("x No files");return 1;}d[len]=0;}
-    (void)!write(STDOUT_FILENO,d,len);
-    to_clip(d);fprintf(stderr,"✓ %zu bytes\n",len);
-    free(d);return 0;}
+    puts("1 all  2 core (no lab/)");printf("> ");fflush(stdout);
+    char ch[4];if(!fgets(ch,4,stdin))return 0;
+    char cm[B];snprintf(cm,B,"git ls-files -z%s|xargs -0 grep -lIZ ''|xargs -0 tail -n+1",ch[0]=='2'?" -- ':!lab/'":"");
+    size_t l=0;char*d=NULL,b[8192];size_t n,cap=0;int nf=0;
+    FILE*f=popen(cm,"r");if(f){while((n=fread(b,1,8192,f))>0){
+        if(l+n>=cap){cap=(l+n)*2;d=realloc(d,cap+1);}memcpy(d+l,b,n);l+=n;}pclose(f);}
+    if(!d)return 1;d[l]=0;for(char*p=d;(p=strstr(p,"==> "));p+=4)nf++;
+    (void)!write(1,d,l);to_clip(d);fprintf(stderr,"✓ %d files %zub\n",nf,l);free(d);return 0;}
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
