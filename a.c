@@ -424,7 +424,15 @@ static int cmd_j(int,char**);
 static int cmd_job(int c,char**v){
     if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     return cmd_j(c,v);}
-static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
+static int cmd_mono(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
+    size_t len=0;char*d=NULL;
+    {FILE*f=popen("git ls-files -z|xargs -0 grep -lIZ ''|xargs -0 tail -n+1","r");
+    if(f){char b[8192];size_t n;size_t cap=0;while((n=fread(b,1,8192,f))>0){
+        if(len+n>=cap){cap=(len+n)*2;d=realloc(d,cap+1);}memcpy(d+len,b,n);len+=n;}pclose(f);}
+    if(!d){puts("x No files");return 1;}d[len]=0;}
+    (void)!write(STDOUT_FILENO,d,len);
+    to_clip(d);fprintf(stderr,"✓ %zu bytes\n",len);
+    free(d);return 0;}
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
@@ -512,7 +520,7 @@ static const cmd_t CMDS[] = {
     {"help",cmd_help_full},{"hi",cmd_hi},{"hub",cmd_hub},{"i",cmd_i},
     {"install",cmd_install},{"j",cmd_j},{"job",cmd_job},{"jobs",cmd_job},
     {"kill",cmd_kill},{"log",cmd_log},{"login",cmd_login},{"ls",cmd_ls},
-    {"monolith",cmd_mono},{"move",cmd_move},
+    {"mono",cmd_mono},{"monolith",cmd_mono},{"move",cmd_move},
     {"n",cmd_note},{"note",cmd_note},{"once",cmd_run_once},
     {"p",cmd_push},{"perf",cmd_perf},{"pr",cmd_pr},{"prompt",cmd_prompt},
     {"pull",cmd_pull},{"push",cmd_push},
