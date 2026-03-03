@@ -26,8 +26,7 @@ __pycache__/
 # .gitignore makes the parent repo completely blind to it.
 adata/
 
-# C binaries + build artifacts
-/a
+# C build artifacts
 *.o
 *.plist
 /bench_dispatch

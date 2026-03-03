@@ -101,11 +101,13 @@ build)
     # LLMs: always "sh a.c && command a <args>" to test (see comment below)
     _ensure_cc
     _warn_flags
-    R="${D%%/adata/worktrees/*}"
+    # Binary goes in adata/local/ — all persistent data in one place
+    R="${D%%/adata/worktrees/*}"; ABIN="$R/adata/local"; mkdir -p "$ABIN"
+    BIN="$HOME/.local/bin"; mkdir -p "$BIN"
     $CC $WARN $HARDEN -DSRC="\"$D\"" -O3 -flto -fsyntax-only "$D/a.c" & P1=$!
-    $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$R/a" "$D/a.c" $LDFLAGS & P2=$!
+    $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$ABIN/a" "$D/a.c" $LDFLAGS & P2=$!
     wait $P1 && wait $P2
-    BIN="$HOME/.local/bin"; mkdir -p "$BIN"; ln -sf "$R/a" "$BIN/a"
+    ln -sf "$ABIN/a" "$BIN/a"
     ;;
 analyze)
     _ensure_cc
@@ -118,7 +120,7 @@ shell)
     _shell_funcs
     ;;
 clean)
-    rm -f "$D/a"
+    rm -f "$D/adata/local/a"
     ;;
 install)
     BIN="$HOME/.local/bin"; mkdir -p "$BIN"; export PATH="$BIN:$PATH"
@@ -164,8 +166,7 @@ install)
         *) install_node; warn "Unknown OS - install tmux manually" ;;
     esac
     _ensure_cc
-    sh "$D/a.c" && ok "a compiled ($CC, $(wc -c < "$D/a") bytes)" || warn "Build failed"
-    ln -sf "$D/a" "$BIN/a"
+    sh "$D/a.c" && ok "a compiled" || warn "Build failed"
     E="$HOME/projects/editor"
     [[ -f "$E/e.c" ]] || git clone https://github.com/seanpattencode/editor "$E" 2>/dev/null || :
     [[ -f "$E/e.c" ]] && sh "$E/e.c" install || :
@@ -366,7 +367,8 @@ exit 0
  *     {device}/               LOGDIR — session logs ({device}__{session}.log)
  *                             + claude JSONL transcripts (full conversation, 1-13MB)
  *                             (tmux visual logs are small, in git/jobs/ instead)
- * ~/.local/bin/a              symlink to compiled binary
+ *     a                         compiled binary (all persistent data in one place)
+ * ~/.local/bin/a              symlink → adata/local/a
  */
 
 #define P 1024
