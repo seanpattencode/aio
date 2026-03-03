@@ -36,6 +36,12 @@ Shows:
 
 ### Actions
 - **m (merge)**: merge worktree branch to main, delete worktree
+  1. Try `git merge` — clean merge completes instantly
+  2. If conflict → claude resolves automatically in the worktree
+  3. Human only involved if claude can't resolve (essentially never with small codebase)
+  - Risk is low: wrong merge = build fails or functionally broken = noticed immediately
+  - `a revert` is one command if anything slips through
+  - Enables parallel multi-machine workflow where jobs A B C merge as they finish out of order
 - **d (delete)**: delete worktree, discard work
 - **r (resume)**: resume conversation with the agent to request changes
   - Local session: `claude -r <session-id>` directly
