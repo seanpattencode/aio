@@ -1,34 +1,26 @@
-"""a apk - Build+install A android app"""
+"""a apk"""
 import os,subprocess as S,shutil,glob,sys
 P="com.aios.a"
 KT=r'''@file:Suppress("DEPRECATION","OVERRIDE_DEPRECATION")
 package com.aios.a
 import android.app.Activity;import android.content.*;import android.os.*;import android.webkit.*
-private const val U="http://localhost:1111"
-private const val T="com.termux"
-private fun pg(t:String,b:String)="<style>*{font:18px monospace}body{padding:40px;background:#111;color:#0f0}p{color:#ccc}button{padding:12px 24px;margin:8px;border:2px solid #0f0;background:#222;color:#0f0}code{color:#ff0}</style><h2>$t</h2><p>$b</p>"
+private const val U="http://localhost:1111";private const val T="com.termux"
 class M:Activity(){
 private lateinit var w:WebView;private val h=Handler(Looper.getMainLooper());private var n=0
 private fun tx(){try{startForegroundService(Intent().apply{setClassName(T,"$T.app.RunCommandService");action="$T.RUN_COMMAND";putExtra("$T.RUN_COMMAND_PATH","/data/data/$T/files/usr/bin/bash");putExtra("$T.RUN_COMMAND_ARGUMENTS",arrayOf("-l","-c","a ui on"));putExtra("$T.RUN_COMMAND_BACKGROUND",true)})}catch(_:Exception){}}
-private fun sh(s:String)=w.loadDataWithBaseURL(null,s,"text/html","utf-8",null)
-inner class B{
+private fun pg(s:String)=w.loadDataWithBaseURL(null,"<body style='font:18px monospace;padding:20px;background:#000;color:#0f0'>$s","text/html","utf-8",null)
 @JavascriptInterface fun copy(){(getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("","a ui on"))}
 @JavascriptInterface fun termux(){try{startActivity(Intent().apply{setClassName(T,"$T.app.TermuxActivity");addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)})}catch(_:Exception){}}
-@JavascriptInterface fun retry(){h.post{boot()}}}
-private fun ck():String?{if(checkSelfPermission("$T.permission.RUN_COMMAND")!=0)return pg("Permission needed","Settings→Apps→<b>a</b>→Permissions→enable <b>Run commands in Termux</b><br><br>In Termux:<br><code>echo 'allow-external-apps=true'>>~/.termux/termux.properties</code><br><br>Reopen app");tx();return null}
-override fun onBackPressed(){if(w.canGoBack())w.goBack() else super.onBackPressed()}
+@JavascriptInterface fun retry(){h.post{boot()}}
 override fun onResume(){super.onResume();boot()}
-private fun boot(){ck()?.let{sh(it);return};n=0;w.loadUrl(U)}
+private fun boot(){if(checkSelfPermission("$T.permission.RUN_COMMAND")!=0){pg("<h2>Permission needed</h2>Settings→Apps→a→enable Run commands in Termux<br><br>In Termux:<br><code style='color:#ff0'>echo 'allow-external-apps=true'>>~/.termux/termux.properties</code><br>Reopen app");return};tx();n=0;w.loadUrl(U)}
 override fun onCreate(b:Bundle?){super.onCreate(b)
-w=WebView(this).apply{settings.javaScriptEnabled=true;addJavascriptInterface(B(),"A")
-webViewClient=object:WebViewClient(){override fun onReceivedError(v:WebView,c:Int,d:String?,u:String?){
-if(n++<10){sh(pg("Starting...","attempt $n/10"));if(n%3==0)tx();h.postDelayed({v.loadUrl(U)},2000)
-}else sh(pg("Not responding","<button onclick='A.copy()'>Copy: a ui on</button><button onclick='A.termux()'>Open Termux</button><br><br><button onclick='A.retry()'>Retry</button>"))}}}
-setContentView(w)}}
+w=WebView(this).apply{settings.javaScriptEnabled=true;addJavascriptInterface(this@M,"A")
+webViewClient=object:WebViewClient(){override fun onReceivedError(v:WebView,r:WebResourceRequest,e:WebResourceError){if(r.isForMainFrame){if(n++<10){pg("<h2>Starting...</h2>attempt $n/10");if(n%3==0)tx();h.postDelayed({v.loadUrl(U)},2000)}else pg("<h2>Not responding</h2><button onclick='A.copy()'>Copy: a ui on</button> <button onclick='A.termux()'>Open Termux</button><br><br><button onclick='A.retry()'>Retry</button>")}}}};setContentView(w)}}
 '''
-MF=f'<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="com.termux.permission.RUN_COMMAND"/><application android:usesCleartextTraffic="true" android:label="a"><activity android:name=".M" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'
-GS='pluginManagement{repositories{google();mavenCentral();gradlePluginPortal()};plugins{id("com.android.application") version "8.2.0";id("org.jetbrains.kotlin.android") version "1.9.22"}}\ndependencyResolutionManagement{repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS);repositories{google();mavenCentral()}}\nrootProject.name="A"\ninclude(":app")\n'
-GB=f'plugins{{id("com.android.application");id("org.jetbrains.kotlin.android")}}\nandroid{{namespace="{P}";compileSdk=34;defaultConfig{{applicationId="{P}";minSdk=24;targetSdk=34;versionCode=200}}\ncompileOptions{{sourceCompatibility=JavaVersion.VERSION_11;targetCompatibility=JavaVersion.VERSION_11}}\nkotlinOptions{{jvmTarget="11"}}}}\n'
+MF='<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="com.termux.permission.RUN_COMMAND"/><application android:usesCleartextTraffic="true" android:label="a"><activity android:name=".M" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'
+GS='pluginManagement{repositories{google();mavenCentral()};plugins{id("com.android.application") version "8.2.0";id("org.jetbrains.kotlin.android") version "1.9.22"}}\ndependencyResolutionManagement{repositories{google();mavenCentral()}}\ninclude(":app")\n'
+GB=f'plugins{{id("com.android.application");id("org.jetbrains.kotlin.android")}}\nandroid{{namespace="{P}";compileSdk=34;defaultConfig{{applicationId="{P}";minSdk=24;targetSdk=34}}\ncompileOptions{{sourceCompatibility=JavaVersion.VERSION_11;targetCompatibility=JavaVersion.VERSION_11}}\nkotlinOptions{{jvmTarget="11"}}}}\n'
 H=os.path.expanduser("~");IT=os.path.exists("/data/data/com.termux")
 SDK="/data/data/com.termux/files/home/android-sdk" if IT else os.environ.get("ANDROID_HOME",H+"/Android/Sdk")
 R=os.path.dirname(os.path.dirname(os.path.abspath(__file__)));D=R+"/adata/_apk_build"
@@ -54,8 +46,7 @@ def run():
     os.chdir(D);S.run(["./gradlew","--no-configuration-cache","assembleDebug"],check=True)
     apk="app/build/outputs/apk/debug/app-debug.apk"
     if IT:
-        S.run(["cp",apk,"/storage/emulated/0/Download/a.apk"],check=True)
-        S.run(["am","start","-n","com.example.installer/.MainActivity","--es","apk_path","/storage/emulated/0/Download/a.apk"])
+        S.run(["cp",apk,"/storage/emulated/0/Download/a.apk"],check=True);S.run(["am","start","-n","com.example.installer/.MainActivity","--es","apk_path","/storage/emulated/0/Download/a.apk"])
     else:
         serial=sys.argv[2] if len(sys.argv)>2 and sys.argv[2]!="apk" else None
         if not serial:
@@ -66,8 +57,7 @@ def run():
                 for i,d in enumerate(devs):print(f"  {i}: {adb('-s',d,'shell','getprop','ro.product.model').stdout.strip() or d} ({d})")
                 serial=devs[int(input("#: "))]
         r=adb("install","-r",apk,serial=serial)
-        if "INSTALL_FAILED" in r.stdout+r.stderr:
-            print("Reinstalling...");adb("uninstall",P,serial=serial);r=adb("install",apk,serial=serial)
+        if "INSTALL_FAILED" in r.stdout+r.stderr:print("Reinstalling...");adb("uninstall",P,serial=serial);r=adb("install",apk,serial=serial)
         if r.returncode:print(r.stderr);sys.exit(1)
         adb("shell","am","start","-n",P+"/.M",serial=serial)
     print("✓ "+P)
