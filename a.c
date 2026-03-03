@@ -437,6 +437,8 @@ static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); 
 static int cmd_j(int c,char**v){
     if(c<3||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
     if(c==3&&v[2][0]>='0'&&v[2][0]<='9')return cmd_jobs(c,v);
+    if(c>2&&v[2][1]=='q'){char ln[B];for(fputs("j> ",stdout);fgets(ln,B,stdin);fputs("j> ",stdout)){
+        ln[strcspn(ln,"\n")]=0;if(!*ln)continue;char*a[]={"a","j","--no-wt",ln,0};cmd_j(4,a);}return 0;}
     /* limit concurrent jobs: each claude ~1.2GB RSS */
     {char nb[16]="";pcmd("pgrep -xc claude 2>/dev/null||echo 0",nb,16);
     int nj=atoi(nb)-1;if(nj<0)nj=0; /* -1 for this session */
