@@ -39,7 +39,8 @@ static const char *HELP_FULL =
     "  a log               View agent logs\n"
     "  a config            View/set settings\n"
     "  a update            Update a\n"
-    "  a mono              Generate monolith for reading\n\n"
+    "  a mono              Generate monolith for reading\n"
+    "  a apk               Build+install android app\n\n"
     "EXPERIMENTAL\n"
     "  a agent \"task\"      Spawn autonomous subagent\n"
     "  a hub               Scheduled jobs (systemd)\n"
@@ -87,7 +88,7 @@ static void gen_icache(void) {
     FILE *f = fopen(ic, "w"); if (!f) return;
     for (int i=0;i<NPJ;i++) fprintf(f, "%d: %s\tproject\n", i, PJ[i].name);
     for (int i=0;i<NAP;i++) fprintf(f, "%d: %s\tcmd\n", NPJ+i, AP[i].name);
-    fputs("add\tregister project\nagent\tai agent run\nall\tall ai sessions\n"
+    fputs("add\tregister project\nagent\tai agent run\nall\tall ai sessions\napk\tbuild android app\n"
     "ask\task ai question\nattach\tjoin tmux pane\n"
     "cleanup\trm dead sessions\nconfig\tedit config file\ncopy\tscp to hosts\n"
     "dash\tstatus overview\ndeps\tinstall pkg deps\ndiff\tgit diff main\n"
