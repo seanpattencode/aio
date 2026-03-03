@@ -179,7 +179,8 @@ static int cmd_jobs(int argc, char **argv) {
     if(dexists(wd)){DIR*d=opendir(wd);struct dirent*de;if(d){while((de=readdir(d))&&nr<32){
         if(de->d_name[0]=='.')continue;char fp[P];snprintf(fp,P,"%s/%s",wd,de->d_name);
         if(!dexists(fp))continue;
-        int act=0;for(int i=0;i<na;i++)if(A[i].pid[0]&&!strcmp(bname(fp),A[i].p)){act=1;break;}if(act)continue;
+        char df[P];snprintf(df,P,"%s/.a_done",fp);int done=fexists(df);
+        int act=0;if(!done)for(int i=0;i<na;i++)if(A[i].pid[0]&&!strcmp(bname(fp),A[i].p)){act=1;break;}if(act)continue;
         snprintf(R[nr].n,64,"%s",de->d_name);snprintf(R[nr].p,256,"%s",fp);
         struct stat st;R[nr].mt=(!stat(fp,&st))?st.st_mtime:0;
         nr++;}closedir(d);}

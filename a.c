@@ -420,9 +420,10 @@ static int cmd_apk(int argc, char **argv)    { fallback_py("apk", argc, argv); }
 static int cmd_gdrive(int argc, char **argv) { fallback_py("gdrive", argc, argv); }
 static int cmd_ask(int argc, char **argv)    { fallback_py("ask", argc, argv); }
 static int cmd_ui(int argc, char **argv)     { fallback_py("ui/__init__", argc, argv); }
+static int cmd_j(int,char**);
 static int cmd_job(int c,char**v){
     if(c<3||(*v[2]>='0'&&*v[2]<='9')||!strcmp(v[2],"rm")||!strcmp(v[2],"watch")||!strcmp(v[2],"-r"))return cmd_jobs(c,v);
-    fallback_py("job",c,v);}
+    return cmd_j(c,v);}
 static int cmd_mono(int argc, char **argv)   { fallback_py("mono", argc, argv); }
 static int cmd_work(int argc, char **argv)   { fallback_py("work", argc, argv); }
 static int cmd_j(int c,char**v){
@@ -431,7 +432,7 @@ static int cmd_j(int c,char**v){
     /* limit concurrent jobs: each claude ~1.2GB RSS */
     {char nb[16]="";pcmd("pgrep -xc claude 2>/dev/null||echo 0",nb,16);
     int nj=atoi(nb)-1;if(nj<0)nj=0; /* -1 for this session */
-    if(nj>=4&&!(c>2&&!strcmp(v[2],"--resume"))){printf("x %d/4 job slots full — use 'a job' to see running\n",nj);return 1;}}
+    if(nj>=100&&!(c>2&&!strcmp(v[2],"--resume"))){printf("x %d/100 job slots full — use 'a job' to see running\n",nj);return 1;}}
     init_db();load_cfg();load_proj();char wd[P];if(!getcwd(wd,P))snprintf(wd,P,"%s",HOME);
     /* resume: a j --resume <worktree-path> */
     if(c>3&&!strcmp(v[2],"--resume")){snprintf(wd,P,"%s",v[3]);
@@ -456,7 +457,7 @@ static int cmd_j(int c,char**v){
         if(!system(gc)){printf("+ %s\n",wp);snprintf(wd,P,"%s",wp);}
     }
     printf("+ job: %s\n  %.*s\n",bname(wd),80,pr);
-    if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, run: a done \"<summary>\"");
+    if(pr[0])pl+=snprintf(pr+pl,(size_t)(B-pl),"\n\nWhen done, write .a_done in the repo root with:\n- Summary of what changed\n- Shell commands to test/verify the changes");
     tm_ensure_conf();
     char jcmd[B];snprintf(jcmd,B,"while :;do claude --dangerously-skip-permissions;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
     if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",bname(wd));
