@@ -69,6 +69,13 @@ Shows:
 - Resume shows device origin, attempts SSH to remote if needed
 - Session IDs are device-local — fallback is new session in worktree with full context
 
+### Code quality criteria
+1. **Minimize length** — measurable, automatable (token gate)
+2. **Minimize execution time** — measurable, automatable (perf benchmarks)
+3. **Maximize value produced** — human judgment, not automatable
+
+The review system automates gates for 1 and 2. The review UI exists solely for 3 — glance at what it does, decide if you even want it.
+
 ### Why this is safe
 - Daily user and dev — bugs surface immediately through usage, not test suites
 - Tight feedback loop: bad merge → hit the bug same day → `a revert` → move on
