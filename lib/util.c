@@ -36,6 +36,17 @@ static int pcmd(const char *cmd, char *out, int sz) {
 
 static const char *bname(const char *p) { const char *s = strrchr(p, '/'); return s ? s + 1 : p; }
 
+/* rapid input loop — call fn(line) for each line, empty line exits */
+static void rapid(const char *prompt, void (*fn)(const char*)) {
+    if (!isatty(STDIN_FILENO)) return; perf_disarm();
+    char line[512];
+    while ((void)printf("%s", prompt), (void)fflush(stdout), fgets(line, 512, stdin)) {
+        line[strcspn(line, "\n")] = 0;
+        if (!line[0]) break;
+        fn(line);
+    }
+}
+
 static const char*clip_cmd(void){return getenv("TMUX")?"tmux load-buffer -":NULL;}
 static int to_clip(const char*d){const char*c=clip_cmd();
     FILE*f=c?popen(c,"w"):NULL;if(!f)return 1;fputs(d,f);return pclose(f);}

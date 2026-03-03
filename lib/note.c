@@ -10,6 +10,8 @@ static void note_save(const char *d, const char *t) {
     snprintf(fn,P,"%s/%08x_%s.%09ld.txt",d,(unsigned)(tp.tv_nsec^(unsigned)now),ts,tp.tv_nsec);
     snprintf(buf,B,"Text: %s\nStatus: pending\nDevice: %s\nCreated: %s\n",t,DEV,ts); writef(fn,buf);
 }
+static char rdir[P];
+static void rapid_note(const char*t){note_save(rdir,t);sync_bg();puts("\xe2\x9c\x93");}
 static char gnp[1024][P],gnt[1024][512];
 static int gn_archived;
 static int load_notes(const char *dir, const char *f) {
@@ -51,7 +53,8 @@ static int cmd_note(int argc, char **argv) {
             i++;
         } return 0;}
     {char t[B]="";for(int i=2,l=0;i<argc;i++) l+=snprintf(t+l,(size_t)(B-l),"%s%s",i>2?" ":"",argv[i]);
-        note_save(dir,t);sync_bg();puts("\xe2\x9c\x93");return 0;}
+        note_save(dir,t);sync_bg();puts("\xe2\x9c\x93");
+        snprintf(rdir,P,"%s",dir);rapid("n> ",rapid_note);return 0;}
 }
 /* ── task ── */
 typedef struct{char d[P],t[256],p[8];}Tk;
@@ -79,6 +82,7 @@ static void task_add(const char*dir,const char*t,int pri){
     snprintf(fn,P,"%s/task/%s.%09ld_%s.txt",td,ts,tp.tv_nsec,DEV);
     snprintf(buf,B,"Text: %s\nDevice: %s\nCreated: %s\n",t,DEV,ts);writef(fn,buf);
 }
+static void rapid_task(const char*t){task_add(rdir,t,50000);sync_bg();printf("\xe2\x9c\x93 P50000 %s\n",t);}
 static void task_printbody(const char*path){
     size_t l;char*r=readf(path,&l);if(!r)return;if(!strncmp(r,"Text: ",6))r+=6;
     for(char*p=r;;){char*nl=strchr(p,'\n');if(nl)*nl=0;
@@ -217,7 +221,9 @@ static int task_getkey(void){
 static int cmd_task(int argc,char**argv){
     perf_disarm();
     char dir[P];snprintf(dir,P,"%s/tasks",SROOT);mkdirp(dir);const char*sub=argc>2?argv[2]:NULL;
-    if(!sub||!strcmp(sub,"v")||!strcmp(sub,"vision")){
+    if(!sub){int n=load_tasks(dir);
+        printf("%d tasks\n  \033[90ml list  r review  add <t>  rank  d #  v vision  h help\033[0m\n",n);return 0;}
+    if(!strcmp(sub,"v")||!strcmp(sub,"vision")){
         char vf[P];snprintf(vf,P,"%s/vision.txt",SROOT);
         size_t vl;char*vc=readf(vf,&vl);
         static const char*vk[]={"Focus","Saves","Daily"};
@@ -226,24 +232,13 @@ static int cmd_task(int argc,char**argv){
         if(vkv.n){struct stat vs;if(!stat(vf,&vs)){char vd[16];strftime(vd,16,"%b %d",localtime(&vs.st_mtime));printf(" \033[90m(%s)\033[0m",vd);}}
         putchar('\n');
         for(int j=0;j<3;j++){const char*v=kvget(&vkv,vk[j]);printf("  \033[1m%-6s\033[0m %s\n",vk[j],v?v:"\033[90m-\033[0m");}
-        if(sub){/* a task v — edit vision fields */
-            printf("\n");for(int j=0;j<3;j++){const char*v=kvget(&vkv,vk[j]);
-                printf("  %s [%s]: ",vk[j],v?v:"");fflush(stdout);
-                char lb[512];if(fgets(lb,512,stdin)&&lb[0]!='\n'){lb[strcspn(lb,"\n")]=0;
-                    int found=0;for(int k=0;k<vkv.n;k++)if(!strcmp(vkv.i[k].k,vk[j])){snprintf(vkv.i[k].v,512,"%s",lb);found=1;break;}
-                    if(!found&&vkv.n<16){snprintf(vkv.i[vkv.n].k,32,"%s",vk[j]);snprintf(vkv.i[vkv.n].v,512,"%s",lb);vkv.n++;}}}
-            char wb[B]="";int wl=0;for(int j=0;j<vkv.n;j++)wl+=snprintf(wb+wl,(size_t)(B-wl),"%s: %s\n",vkv.i[j].k,vkv.i[j].v);
-            writef(vf,wb);sync_bg();puts("\xe2\x9c\x93");return 0;}
-        /* show top task + scream */
-        int n=load_tasks(dir);
-        if(n){printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 #1 [P%s] %.50s\033[0m\n",T[0].p,T[0].t);
-            struct stat ts;if(!stat(T[0].d,&ts)){int age=(int)((time(NULL)-ts.st_mtime)/86400);if(age>0)printf("  \033[90m%dd stale\033[0m\n",age);}}
-        if(!isatty(STDIN_FILENO))return 0;
-        printf("\n  Scream or [enter]work on #1: ");fflush(stdout);
-        char sb[B];if(fgets(sb,B,stdin)&&sb[0]!='\n'){sb[strcspn(sb,"\n")]=0;
-            task_add(dir,sb,100);printf("\xe2\x9c\x93 P00100 %s\n",sb);sync_bg();}
-        else if(n){sub="1";}
-        else return 0;}
+        printf("\n");for(int j=0;j<3;j++){const char*v=kvget(&vkv,vk[j]);
+            printf("  %s [%s]: ",vk[j],v?v:"");fflush(stdout);
+            char lb[512];if(fgets(lb,512,stdin)&&lb[0]!='\n'){lb[strcspn(lb,"\n")]=0;
+                int found=0;for(int k=0;k<vkv.n;k++)if(!strcmp(vkv.i[k].k,vk[j])){snprintf(vkv.i[k].v,512,"%s",lb);found=1;break;}
+                if(!found&&vkv.n<16){snprintf(vkv.i[vkv.n].k,32,"%s",vk[j]);snprintf(vkv.i[vkv.n].v,512,"%s",lb);vkv.n++;}}}
+        char wb[B]="";int wl=0;for(int j=0;j<vkv.n;j++)wl+=snprintf(wb+wl,(size_t)(B-wl),"%s: %s\n",vkv.i[j].k,vkv.i[j].v);
+        writef(vf,wb);sync_bg();puts("\xe2\x9c\x93");return 0;}
     int grn=0;
     if(!strcmp(sub,"help")||!strcmp(sub,"-h")||!strcmp(sub,"h")){
         puts("  a task          vision + scream + #1\n  a task v        edit vision\n  a task l        list\n  a task r        review (navigate)\n  a task rank     reprioritize walk-through\n  a task add <t>  add (prefix 5-digit pri)\n  a task d #      archive\n  a task pri # N  set priority\n  a task flag     AI triage\n  a task deadline # MM-DD\n  a task due      by deadline\n  a task sync     sync");
@@ -403,7 +398,8 @@ static int cmd_task(int argc,char**argv){
         if(strlen(argv[3])==5&&isdigit(argv[3][0])&&isdigit(argv[3][1])&&isdigit(argv[3][2])&&isdigit(argv[3][3])&&isdigit(argv[3][4])){
             pri=atoi(argv[3]);si=4;if(si>=argc){puts("a task add [PPPPP] <text>");return 1;}}
         char t[B]="";for(int i=si,l=0;i<argc;i++) l+=snprintf(t+l,(size_t)(B-l),"%s%s",i>si?" ":"",argv[i]);
-        task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();return 0;}
+        task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();
+        snprintf(rdir,P,"%s",dir);rapid("t> ",rapid_task);return 0;}
     if(*sub=='d'&&!sub[1]){if(argc<4){puts("a task d <#|name>...");return 1;}int n=load_tasks(dir);
         for(int j=3;j<argc;j++){int x=-1,v=atoi(argv[j]);if(v>0&&v<=n)x=v-1;
             else{for(int i=0;i<n;i++){char*b=strrchr(T[i].d,'/');if(b&&!strcmp(b+1,argv[j])){x=i;break;}}}
@@ -472,5 +468,6 @@ static int cmd_task(int argc,char**argv){
     if(argc>2&&strlen(argv[2])==5&&isdigit(argv[2][0])&&isdigit(argv[2][1])&&isdigit(argv[2][2])&&isdigit(argv[2][3])&&isdigit(argv[2][4])){
         pri=atoi(argv[2]);si=3;if(si>=argc){puts("a task [PPPPP] <text>");return 1;}}
     char t[B]="";for(int i=si,l=0;i<argc;i++) l+=snprintf(t+l,(size_t)(B-l),"%s%s",i>si?" ":"",argv[i]);
-    task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();return 0;}
+    task_add(dir,t,pri);printf("\xe2\x9c\x93 P%05d %s\n",pri,t);sync_bg();
+    snprintf(rdir,P,"%s",dir);rapid("t> ",rapid_task);return 0;}
 }
