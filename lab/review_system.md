@@ -62,6 +62,9 @@ Shows:
 - Cost of a bad merge is minutes, not days
 - Tests are a substitute for human attention in orgs where nobody touches code for weeks
 - Solo daily user already has the human attention — tests would just be overhead
+- Minimal diffs = minimal blast radius — a 3-line change has a 3-line traceback
+- `a diff` token counting is itself a safety mechanism: fewer tokens = fewer things that can break
+- Worst case: logic breaks, but error points straight at the small change
 
 ### What this replaces
 - Drop `a done` PR creation entirely
