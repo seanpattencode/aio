@@ -579,9 +579,9 @@ int main(int argc, char **argv) {
       const cmd_t *c = bsearch(&key, CMDS, NCMDS, sizeof(*CMDS), cmd_cmp);
       if (c) return c->fn(argc, argv); }
 
-    /* "a x.foo" — experimental Python modules */
+    /* "a x.foo" — lab Python modules */
     if (arg[0] == 'x' && arg[1] == '.')
-        { char mod[P]; snprintf(mod, P, "experimental/%s", arg + 2); fallback_py(mod, argc, argv); }
+        { char mod[P]; snprintf(mod, P, "lab/%s", arg + 2); fallback_py(mod, argc, argv); }
 
     /* "a c++" — create worktree for session key */
     { size_t l = strlen(arg);
