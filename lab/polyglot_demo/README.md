@@ -67,3 +67,15 @@ The move makes sense when the file stabilizes into infrastructure nobody reads.
 **Generic binary + recompile**: Ship a portable binary, run immediately, recompile natively in background. Not worth it for `a` — compile time is already <1s.
 
 **Binary shedding**: Ship fat multi-arch file, detect platform, delete unused binaries. Inverse of bundling. Not worth it at `a`'s current 16KB binary size — source distribution is smaller than any single binary.
+
+## Why This Matters
+
+A file without an extension is a **pure interface**. It promises nothing about implementation — the same property that makes good APIs. The caller doesn't know or care what's behind it.
+
+**For `a`:** This is a prototype of a universal bootstrap format. `a` wants to be the agent manager that works everywhere. Right now it requires a C compiler. The extensionless pattern means a single file could land on any machine — compiler or not, x86 or ARM — and figure out how to run. That's real distribution advantage.
+
+**For AI-modifiable software:** The LLM self-modification demo is the deeper result. A file that an AI agent can read, understand, modify, recompile, and run — all within itself — is a **minimal unit of AI-modifiable software**. The `/*CMSG*/` marker pattern is crude but the concept is sound: tagged regions that an LLM knows it can safely rewrite.
+
+Scale that up and you get programs that carry their own mutation policy — sections marked "LLM may modify", sections marked "frozen". Self-modifying code has existed forever but was always fragile because humans had to write the mutations. LLMs change that equation.
+
+**The combination is the point:** extensionless identity + multi-language fallback + self-modification = a file format that survives across environments AND evolves. Most software can do one or the other, not both.
