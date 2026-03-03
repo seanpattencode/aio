@@ -1,0 +1,4 @@
+Added joke.py — prints a random programming joke.
+
+Test:
+  python3 joke.py
