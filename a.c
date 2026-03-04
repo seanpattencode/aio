@@ -104,9 +104,10 @@ _install_node() {
 case "${1:-build}" in
 node) N="$HOME/.local/bin/node"; [[ -x "$N" ]] && V="$("$N" -v)" && [[ "$V" == v2[2-9]* || "$V" == v[3-9]* ]] && { ok "node $V"; exit 0; }; _install_node ;;
 build)
-    # Two-pass: strict checker (Weverything) enforces code quality at compile
-    # time; binary compiles with only optimization flags for max speed.
-    # Checker catches bugs, binary has zero diagnostic overhead.
+    # Two-pass parallel: checker (Weverything, ~55ms) + build (-O0, ~100ms).
+    # Checker is compile-time only — binary has zero diagnostic overhead.
+    # Runtime is identical across -O0/-O3/TCC/PGO (~0.7ms per invocation)
+    # because all time is in syscalls (fork/exec/IO), not C compute.
     # Binary goes in adata/local/, symlinked to ~/.local/bin/a.
     _ensure_cc
     _warn_flags
@@ -116,7 +117,6 @@ build)
     $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
     wait $P1 && wait $P2
     ln -sf "$ABIN/a" "$BIN/a"
-    (F="-DSRC=\"$D\" -O3 -march=native -flto -w" P=$ABIN/pgo A=$ABIN;$CC $F -fprofile-generate=$P -o $A/a.pg $D/a.c&&$A/a.pg help>&- 2>&-&&${CC/clang/llvm-profdata} merge $P -o $P/p 2>&-&&$CC $F -fprofile-use=$P/p -o $A/a.opt $D/a.c&&mv $A/a.opt $A/a;rm -rf $P $A/a.pg)&
     ;;
 analyze)
     _ensure_cc
