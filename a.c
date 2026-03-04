@@ -54,9 +54,7 @@ _ensure_cc() {
 
 _warn_flags() {
     if [[ "$CC" == *clang* ]]; then
-        WARN="-std=c17 -Werror -Weverything -Wno-padded -Wno-disabled-macro-expansion -Wno-reserved-id-macro -Wno-documentation -Wno-declaration-after-statement -Wno-unsafe-buffer-usage -Wno-used-but-marked-unused --system-header-prefix=/usr/include -isystem /usr/local/include"
-        for F in -Wno-pre-c11-compat -Wno-implicit-void-ptr-cast -Wno-nullable-to-nonnull-conversion -Wno-poison-system-directories; do
-            $CC -Werror $F -x c -c /dev/null -o /dev/null 2>/dev/null && WARN+=" $F" || :; done
+        WARN="-std=c17 -Werror -Wno-unknown-warning-option -Weverything -Wno-padded -Wno-disabled-macro-expansion -Wno-reserved-id-macro -Wno-documentation -Wno-declaration-after-statement -Wno-unsafe-buffer-usage -Wno-used-but-marked-unused -Wno-pre-c11-compat -Wno-implicit-void-ptr-cast -Wno-nullable-to-nonnull-conversion -Wno-poison-system-directories --system-header-prefix=/usr/include -isystem /usr/local/include"
     else WARN="-std=c17 -w"; fi
 }
 
