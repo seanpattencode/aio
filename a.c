@@ -112,7 +112,7 @@ build)
     # Binary goes in adata/local/ — all persistent data in one place
     R="${D%%/adata/worktrees/*}"; ABIN="$R/adata/local"; mkdir -p "$ABIN"
     BIN="$HOME/.local/bin"; mkdir -p "$BIN"
-    $CC $WARN $HARDEN -DSRC="\"$D\"" -O3 -flto -fsyntax-only "$D/a.c" & P1=$!
+    $CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" & P1=$!
     $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
     wait $P1 && wait $P2
     ln -sf "$ABIN/a" "$BIN/a"
