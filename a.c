@@ -113,9 +113,10 @@ build)
     R="${D%%/adata/worktrees/*}"; ABIN="$R/adata/local"; mkdir -p "$ABIN"
     BIN="$HOME/.local/bin"; mkdir -p "$BIN"
     $CC $WARN $HARDEN -DSRC="\"$D\"" -O3 -flto -fsyntax-only "$D/a.c" & P1=$!
-    $CC -DSRC="\"$D\"" -isystem "$HOME/micromamba/include" -O3 -march=native -flto -w -o "$ABIN/a" "$D/a.c" $LDFLAGS & P2=$!
+    $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
     wait $P1 && wait $P2
     ln -sf "$ABIN/a" "$BIN/a"
+    (F="-DSRC=\"$D\" -O3 -march=native -flto -w" P=$ABIN/pgo;$CC $F -fprofile-generate=$P -o $ABIN/a.pg $D/a.c&&$ABIN/a.pg help>&- 2>&-&&$CC $F -fprofile-use=$P -o $ABIN/a.opt $D/a.c&&mv $ABIN/a.opt $ABIN/a;rm -rf $P $ABIN/a.pg)&
     ;;
 analyze)
     _ensure_cc
