@@ -115,7 +115,7 @@ build)
     $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
     wait $P1 && wait $P2
     ln -sf "$ABIN/a" "$BIN/a"
-    ($CC -DSRC="\"$D\"" -O3 -march=native -flto -w -o "$ABIN/a.opt" "$D/a.c"&&mv "$ABIN/a.opt" "$ABIN/a") 2>/dev/null &
+    (F="-DSRC=\"$D\" -O3 -march=native -flto -w" A=$ABIN P=$A/pgo M=$(command -v llvm-profdata||command -v ${CC/clang/llvm-profdata});rm -rf $P;$CC $F -fprofile-generate=$P -o $A/a.pg $D/a.c&&$A/a.pg help>&- 2>&-&&$A/a.pg ls>&- 2>&-&&$A/a.pg i</dev/null>&- 2>&-&&$M merge $P -o $P/p 2>&-&&$CC $F -fprofile-use=$P/p -o $A/a.opt $D/a.c&&mv $A/a.opt $A/a;rm -rf $P $A/a.pg) 2>/dev/null &
     ;;
 analyze)
     _ensure_cc
