@@ -4,6 +4,8 @@
 # ///
 import sys, asyncio, os, pty, subprocess as S, struct, fcntl, termios, json, sqlite3; from html import escape as E; from aiohttp import web
 # UI calls CLI (a binary) — no business logic here. prerendered SPA, CSS toggle, tmux sessions.
+# curl-testable: all logic lives in CLI, HTML just calls it. curl POST/GET covers functionality.
+# visual bugs are faster for the user to spot — agent tests logic via curl, user eyeballs layout.
 _D = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 _A, _G = f'{_D}/adata/local/a', f'{_D}/adata/git'
 def _kv(p):
