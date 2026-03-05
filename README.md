@@ -66,8 +66,7 @@ Simple code — you can read all of it. Fork it, change it, make it yours.
 
 ## Depth
 
-Full explorations, experiments, and derivations: `adata/git/ideas/`
+Full framework: [RANKED_POINTS.md](RANKED_POINTS.md) — 79 points, ranked.
 
-These ideas are provisional. They are the best current understanding, not
-settled truth. The ability to correct quickly is more important than having
-the right answer initially.
+These ideas are provisional. The ability to correct quickly is more
+important than having the right answer initially.
