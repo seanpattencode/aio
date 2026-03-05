@@ -38,15 +38,11 @@ static void ensure_adata(void) {
 /* ═══ SYNC ═══ */
 /* bg syncs can crash/race leaving index.lock → all future syncs fail silently */
 static void sync_repo(void) {
-    char c[B*2];
-    snprintf(c, sizeof(c),
-        "rm -f '%s/.git/index.lock';"
-        "git -C '%s' add -A 2>/dev/null && git -C '%s' commit -qm sync 2>/dev/null;"
-        "git -C '%s' pull --no-rebase --no-edit -q origin main 2>/dev/null;"
-        "git -C '%s' push -q origin main 2>/dev/null", SROOT, SROOT, SROOT, SROOT, SROOT);
+    char c[B];
+    snprintf(c,B,"D='%s';rm -f $D/.git/index.lock;git -C $D add -A&&git -C $D commit -qm sync;git -C $D pull --no-rebase --no-edit -q origin main;git -C $D push -q origin main",SROOT);
     (void)!system(c);
 }
 static void sync_bg(void) {
     pid_t p=fork();if(p<0)return;if(p>0){waitpid(p,NULL,WNOHANG);return;}
-    if(fork()>0)_exit(0);setsid();sync_repo();_exit(0);
+    if(fork()>0)_exit(0);setsid();freopen("/dev/null","w",stdout);freopen("/dev/null","w",stderr);sync_repo();_exit(0);
 }
