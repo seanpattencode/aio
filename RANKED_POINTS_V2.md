@@ -91,3 +91,20 @@
 77. **Ideas must be public.** If accidental agent creation is inevitable, the only variable is what ideas are present when it happens. Cooperative frameworks in public repos and training data mean new agents encounter cooperation norms by default. Keeping ideas private is the singleton move — it contradicts the thesis. Publishing widely IS the MFN clause executing at the level of training data.
 78. **Terse bugs are variants, not crashes.** When code approaches its axiomatic floor, errors explore the design space rather than breaking it. Change `==3` to `>=3` in Game of Life — different valid automaton, not a segfault. A qualitative shift in failure mode that verbose codebases never reach.
 79. **Ideas are provisional.** This framework is a hypothesis, not scripture. Real usage, experiment, and axiomatic analysis revise it as fast as issues surface. Any point here gets rewritten or deleted when reality contradicts it. The ratchet applies to the ideas, not just the code.
+
+## Meta: The Compiler for Ideas
+
+Code converges because it has 4 ratchets: compiler (pass/fail), runtime (works/doesn't), perf (faster/slower), tokens (shorter/longer). Ideas have only token count. The missing 3 legs are why ideas drift where code converges.
+
+Proposed compiler — 4 maximization targets shared by all sentient agents (human or AI):
+
+| Metric | What it measures | Measurability |
+|--------|-----------------|---------------|
+| **Resources** | Compute, energy, storage, material | Easiest — countable |
+| **Intelligence** | Information gain, processing capability | Medium — benchmarks, info-theoretic measures |
+| **Freedom** | Action space, degrees of freedom to pursue the above | Harder — definable but assumption-heavy |
+| **Survival** | P(continued existence over time) | Hardest — requires threat modeling, many assumptions |
+
+An idea passes if it increases these for all members without decreasing others. Imperfect but directional — the ratchet needs signal, not precision. This is the 4-dimensional compiler for ideas, the way token count + speed + correctness + value compile code.
+
+Self-bootstrapping: if the ratchet works, gains in resources, intelligence, and survival improve our ability to measure them — which tightens the ratchet. The compiler compiles itself. Crude definitions today converge to precise ones through the same process they enable.
