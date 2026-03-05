@@ -80,7 +80,7 @@
 66. **No ceremony, ship.** Problem→diagnosis→fix→ship. Same output that takes an org 2-4 weeks takes minutes without process overhead. Bottleneck is typing speed, not meetings.
 67. **Compression is the bottleneck.** Human bandwidth is fixed. Each command shortening isn't fewer characters — it's fewer decisions held in the head. The limit is attention, not compute.
 68. **Axioms reach silicon.** Hardware co-evolved with Unix for 55 years. Protected mode, MMU, NVMe — designed for processes, files, isolation. "AI OS" on same hardware reconverges to Unix. Can't escape axioms without replacing the chip.
-69. **Compression test for abstraction.** Justified iff the call is shorter than the composition it replaces. `a c` compresses 3 tmux commands. LangChain inflates an HTTP POST. Most frameworks fail.
+69. **Compression test for abstraction.** Justified iff the call is shorter than the composition it replaces. `a c` compresses 3 tmux commands. Typical framework wrappers inflate an HTTP POST. Most frameworks fail.
 70. **Performance is axiom compliance.** Every optimization is stopping the fight against the platform. Strip JS from HTML = hypertext axiom. One-file C = file axiom. Fast is default; slow is built on top.
 71. **Apply tools > build tools.** Top AI sessions solve problems measured in lives, not code. The agent manager matters to the extent it accelerates highest-value work. Code is vehicle, not destination.
 72. **Agent window is open now.** Market adoption windows close. Simple must exist during the window or complex wins by default. Agent frameworks (~2023-2026) are open. LLM + terminal is the simple entry.
