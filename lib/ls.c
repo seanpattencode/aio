@@ -148,7 +148,7 @@ static int cmd_jobs(int argc, char **argv) {
                 snprintf(A[na].cmd,32,"%s",r1+1);snprintf(A[na].p,128,"%s",bname(r2+1));
                 snprintf(A[na].dev,32,"%s",rp);na++;}}
             if(re)rp=re+1;else break;}free(dat);}}
-    {pid_t bg=fork();if(bg==0){close(1);close(2);
+    {pid_t bg=fork();if(bg==0){close(0);close(1);close(2);
         char sdir[P];snprintf(sdir,P,"%s/ssh",SROOT);
         char hp[32][P];int nh=listdir(sdir,hp,32);
         struct{char hn[64];int fd;pid_t pid;}SP[16];int nsp=0;
@@ -201,31 +201,30 @@ static int cmd_jobs(int argc, char **argv) {
         else printf("  %d  %s\n",na+i,d);}}
     puts("\n  a j \"prompt\"       new job (cwd)    a j <#> \"prompt\"  (project #)\n  a job #            attach/cd        a job rm #|all    remove");
     if(!nr||!isatty(STDIN_FILENO))return 0;
-    raw_enter();for(int ri=0;ri>=0&&ri<nr;){
+    for(int ri=0;ri>=0&&ri<nr;){
         printf("\n\033[1m\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81 %d/%d %s\033[0m\n",ri+1,nr,R[ri].n);
-        {char c[B];snprintf(c,B,"cd '%s'&&a diff 2>/dev/null",R[ri].p);
-        {FILE*fp=popen(c,"r");if(fp){char ln[512];while(fgets(ln,512,fp))fputs(ln,stdout);pclose(fp);}}
+        {char c[B];snprintf(c,B,"cd '%s'&&a diff 2>/dev/null",R[ri].p);(void)!system(c);
         snprintf(c,B,"%s/.a_done",R[ri].p);char*d=readf(c,NULL);if(d){printf("%s\n",d);free(d);}}
-        printf("\n  [m]erge [r]esume [d]el [j/k/q]  ");fflush(stdout);
-        int k=raw_key();putchar('\n');char gd[B]="",c[B];
+        raw_enter();printf("\n  [m]erge [r]esume [d]el [j/k/q]  ");fflush(stdout);
+        int k=raw_key();raw_exit();putchar('\n');char gd[B]="",c[B];
         if(k=='m'||k=='d'){snprintf(c,B,"git -C '%s' rev-parse --show-toplevel 2>/dev/null",R[ri].p);pcmd(c,gd,B);gd[strcspn(gd,"\n")]=0;}
-        if(k=='m'&&gd[0]){raw_exit();
+        if(k=='m'&&gd[0]){
             snprintf(c,B,"cd '%s'&&git add -A&&git diff --cached --quiet||git commit -m 'job: auto-commit'",R[ri].p);pcmd(c,NULL,0);
             char o[B]="";snprintf(c,B,"cd '%s'&&git merge --no-edit 'j-%s' 2>&1",gd,R[ri].n);
             if(pcmd(c,o,B)){snprintf(c,B,"cd '%s'&&claude -p 'resolve merge conflicts, git add, git commit'",gd);(void)!system(c);}
             snprintf(c,B,"cd '%s'&&git rm -f .a_done 2>/dev/null&&git commit -m 'job: cleanup' 2>/dev/null",gd);pcmd(c,NULL,0);
             snprintf(c,B,"rm -rf '%s'&&git -C '%s' worktree prune&&git -C '%s' branch -d 'j-%s' 2>/dev/null",R[ri].p,gd,gd,R[ri].n);
-            (void)!system(c);puts("  \xe2\x9c\x93");raw_enter();}
+            (void)!system(c);puts("  \xe2\x9c\x93");}
         else if(k=='d'){snprintf(c,B,"rm -rf '%s'",R[ri].p);pcmd(c,NULL,0);
             if(gd[0]){snprintf(c,B,"(git -C '%s' worktree prune;git -C '%s' branch -D 'j-%s')>/dev/null 2>&1 &",gd,gd,R[ri].n);pcmd(c,NULL,0);}}
-        else if(k=='r'){raw_exit();char so[B]="";
+        else if(k=='r'){char so[B]="";
             snprintf(c,B,"ls -t '%s'/.claude/projects/*/sessions/*.jsonl 2>/dev/null|head -1",R[ri].p);pcmd(c,so,B);so[strcspn(so,"\n")]=0;
             if(so[0]){char*d=strrchr(so,'.');char*s=strrchr(so,'/');if(d&&s)snprintf(c,B,"cd '%s'&&claude -r %.*s",R[ri].p,(int)(d-s-1),s+1);}
             else snprintf(c,B,"cd '%s'&&claude",R[ri].p);
-            (void)!system(c);raw_enter();}
+            (void)!system(c);}
         if(k=='m'||k=='d'){nr--;memmove(R+ri,R+ri+1,(size_t)(nr-ri)*sizeof(R[0]));if(ri>=nr)ri=nr-1;}
         else if(k=='k'){if(ri>0)ri--;}else if(k=='q'||k==3||k==27)break;else if(k=='j')ri++;
-    }raw_exit();return 0;
+    }return 0;
 }
 
 /* ── cleanup ── */
