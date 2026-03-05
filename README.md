@@ -62,7 +62,7 @@ Auth syncs across devices:
 3. Now a handles that
 4. Repeat
 
-Simple code — you can read all of it. Fork it, change it, make it yours.
+Simple code — you can read all of it. Fork it, change it, make it yours. PRs are merged fast.
 
 ## Depth
 
