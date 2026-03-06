@@ -217,7 +217,9 @@ static int cmd_jobs(int argc, char **argv) {
             (void)!system(c);puts("  \xe2\x9c\x93");}
         else if(k=='d'){snprintf(c,B,"rm -rf '%s'",R[ri].p);pcmd(c,NULL,0);
             if(gd[0]){snprintf(c,B,"(git -C '%s' worktree prune;git -C '%s' branch -D 'j-%s')>/dev/null 2>&1 &",gd,gd,R[ri].n);pcmd(c,NULL,0);}}
-        else if(k=='r'){snprintf(c,B,"cd '%s'&&claude --continue",R[ri].p);(void)!system(c);}
+        else if(k=='r'){char jc[B];snprintf(jc,B,"while :;do claude --dangerously-skip-permissions --continue;e=$?;[ $e -eq 0 ]&&break;echo \"$(date) $e $(pwd)\">>%s/crashes.log;echo \"! crash $e, restarting..\";sleep 2;done",LOGDIR);
+            if(!getenv("TMUX")){char sn[64];snprintf(sn,64,"j-%s",R[ri].n);tm_new(sn,R[ri].p,jc);tm_go(sn);}
+            else{snprintf(c,B,"tmux new-window -n '%s' -c '%s' '%s'",R[ri].n,R[ri].p,jc);(void)!system(c);}}
         if(k=='m'||k=='d'){nr--;memmove(R+ri,R+ri+1,(size_t)(nr-ri)*sizeof(R[0]));if(ri>=nr)ri=nr-1;}
         else if(k=='k'){if(ri>0)ri--;}else if(k=='q'||k==3||k==27)break;else if(k=='j')ri++;
     }return 0;
