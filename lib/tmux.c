@@ -67,8 +67,8 @@ static void tm_ensure_conf(void) {
         "set -g status-right \"\"\n"
         "set -g status-format[0] \"#[align=left][#S]#[align=centre]#{W:#[range=window|#{window_index}]#I:#W#{?window_active,*,}#[norange] }\"\n"
         "set -g status-format[1] \"#[align=centre]#{?#{e|<:#{client_width},70},"
-        "#[range=user|agent]Agent#[norange] #[range=user|win]Win#[norange] #[range=user|new]Pane#[norange] #[range=user|side]Side#[norange] #[range=user|close]Close#[norange] #[range=user|edit]Edit#[norange] #[range=user|detach]Quit#[norange],"
-        "#[range=user|agent]Ctrl+A:Agent#[norange] #[range=user|win]Ctrl+N:Win#[norange] #[range=user|new]Ctrl+T:Pane#[norange] #[range=user|side]Ctrl+Y:Side#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|detach]Ctrl+Q:Quit#[norange]}\"\n"
+        "#[range=user|agent]Agent#[norange] #[range=user|win]Win#[norange] #[range=user|new]Pane#[norange] #[range=user|side]Side#[norange] #[range=user|close]Close#[norange] #[range=user|edit]Edit#[norange] #[range=user|kill]Kill#[norange] #[range=user|detach]Quit#[norange],"
+        "#[range=user|agent]Ctrl+A:Agent#[norange] #[range=user|win]Ctrl+N:Win#[norange] #[range=user|new]Ctrl+T:Pane#[norange] #[range=user|side]Ctrl+Y:Side#[norange] #[range=user|close]Ctrl+W:Close#[norange] #[range=user|edit]Ctrl+E:Edit#[norange] #[range=user|kill]Ctrl+X:Kill#[norange] #[range=user|detach]Ctrl+Q:Quit#[norange]}\"\n"
         "set -g status-format[2] \"#[align=left]#[range=user|esc]Esc#[norange]#[align=centre]#[range=user|kbd]Keyboard#[norange]\"\n"
         /* TODO: add -c '#{pane_current_path}' to splits/windows below + mouse handler
          * so new panes in worktrees open in worktree dir, not session start dir */
@@ -79,12 +79,13 @@ static void tm_ensure_conf(void) {
         "bind-key -n C-w kill-pane\n"
         "bind-key -n C-q detach\n"
         "bind-key -n C-x confirm-before -p \"Kill session? (y/n)\" kill-session\n"
-        "bind-key -n C-e split-window -fh -c '#{pane_current_path}' ~/.local/bin/e\n"
+        "bind-key -n C-e split-window -fh -c '#{pane_current_path}' e\n"
         "bind-key -T root MouseDown1Status if -F '#{==:#{mouse_status_range},window}' "
         "{ select-window } { run-shell 'r=\"#{mouse_status_range}\"; case \"$r\" in "
         "agent) tmux split-window -h \"claude --dangerously-skip-permissions\";; "
         "win) tmux new-window;; new) tmux split-window;; side) tmux split-window -fh;; "
-        "close) tmux kill-pane;; edit) tmux split-window -fh -c \"#{pane_current_path}\" ~/.local/bin/e;; "
+        "close) tmux kill-pane;; edit) tmux split-window -fh -c \"#{pane_current_path}\" e;; "
+        "kill) tmux confirm-before -p \"Kill session? (y/n)\" kill-session;; "
         "detach) tmux detach;; esc) tmux send-keys Escape;; "
         "kbd) tmux set -g mouse off; tmux display-message \"Mouse off 3s\"; "
         "(sleep 3; tmux set -g mouse on) &;; esac' }\n", f);

@@ -390,8 +390,8 @@ bind-key -n C-a split-window -h 'claude --dangerously-skip-permissions'
 bind-key -n C-w kill-pane
 bind-key -n C-q detach
 bind-key -n C-x confirm-before -p "Kill session? (y/n)" kill-session
-bind-key -n C-e split-window -fh -c '#{{pane_current_path}}' ~/.local/bin/e
-bind-key -T root MouseDown1Status if -F '#{{==:#{{mouse_status_range}},window}}' {{ select-window }} {{ run-shell 'r="#{{mouse_status_range}}"; case "$r" in agent) tmux split-window -h "claude --dangerously-skip-permissions";; win) tmux new-window;; new) tmux split-window;; side) tmux split-window -fh;; close) tmux kill-pane;; edit) tmux split-window -fh -c "#{{pane_current_path}}" ~/.local/bin/e;; detach) tmux detach;; esc) tmux send-keys Escape;; kbd) tmux set -g mouse off; tmux display-message "Mouse off 3s"; (sleep 3; tmux set -g mouse on) &;; esac' }}
+bind-key -n C-e split-window -fh -c '#{{pane_current_path}}' e
+bind-key -T root MouseDown1Status if -F '#{{==:#{{mouse_status_range}},window}}' {{ select-window }} {{ run-shell 'r="#{{mouse_status_range}}"; case "$r" in agent) tmux split-window -h "claude --dangerously-skip-permissions";; win) tmux new-window;; new) tmux split-window;; side) tmux split-window -fh;; close) tmux kill-pane;; edit) tmux split-window -fh -c "#{{pane_current_path}}" e;; detach) tmux detach;; esc) tmux send-keys Escape;; kbd) tmux set -g mouse off; tmux display-message "Mouse off 3s"; (sleep 3; tmux set -g mouse on) &;; esac' }}
 '''
     conf += f'set -s copy-command "{cc}"\n' if cc else ''; cq=f' "{cc}"'if cc else''
     conf += f'bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-and-cancel{cq}\nbind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel{cq}\n'
