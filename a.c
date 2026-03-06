@@ -113,19 +113,30 @@ build)
     
     TCC_BIN=$(command -v tcc 2>/dev/null || echo "")
     if [[ -n "$TCC_BIN" ]] && "$TCC_BIN" -DSRC="\"$D\"" -w -o "$ABIN/a" "$D/a.c" 2>/dev/null; then
-        # TCC succeeded (instant binary). Run strict checker in parallel.
-        $CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" & P1=$!
-        wait $P1 || { rm -f "$ABIN/a"; exit 1; }
+        : # TCC fast path succeeded (instant binary)
     else
-        # Fallback to Clang
-        $CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" & P1=$!
-        $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
-        wait $P1 || { rm -f "$ABIN/a"; exit 1; }
-        wait $P2 || exit 1
+        # Fallback to Clang -O0 (~90ms)
+        $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" || exit 1
     fi
-    
     ln -sf "$ABIN/a" "$BIN/a"
-    (F="-DSRC=\"$D\" -O3 -march=native -flto -w" A=$ABIN P=$A/pgo;rm -rf $P;$CC $F -fprofile-generate=$P -o $A/a.pg $D/a.c&&$A/a.pg i</dev/null;llvm-profdata merge $P -o $P/p&&$CC $F -fprofile-use=$P/p -o $A/a.opt $D/a.c||$CC $F -o $A/a.opt $D/a.c;[ "$(cat $A/.bld 2>&-)" = "$$" ]&&mv $A/a.opt $A/a 2>&-;rm -rf $P $A/a.pg $A/a.opt)>&- 2>&- &
+    
+    # Background strict checker and slow build
+    (
+        if ! OUT=$($CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" 2>&1); then
+            # Checker failed: poison the binary with the error output to hard-stop LLMs
+            echo "#!/bin/sh" > "$ABIN/a"
+            echo "printf '\033[31m[!] FATAL: a.c failed strict -Weverything checks.\033[0m\n' >&2" >> "$ABIN/a"
+            echo "printf '\033[33mFix the compiler errors below before testing again:\033[0m\n\n' >&2" >> "$ABIN/a"
+            echo "cat << 'ERR_EOF' >&2" >> "$ABIN/a"
+            echo "$OUT" >> "$ABIN/a"
+            echo "ERR_EOF" >> "$ABIN/a"
+            echo "exit 1" >> "$ABIN/a"
+            chmod +x "$ABIN/a"
+        else
+            # Checker passed: run slow O3 PGO build
+            F="-DSRC=\"$D\" -O3 -march=native -flto -w" A=$ABIN P=$A/pgo;rm -rf $P;$CC $F -fprofile-generate=$P -o $A/a.pg $D/a.c&&$A/a.pg i</dev/null;llvm-profdata merge $P -o $P/p&&$CC $F -fprofile-use=$P/p -o $A/a.opt $D/a.c||$CC $F -o $A/a.opt $D/a.c;[ "$(cat $A/.bld 2>&-)" = "$$" ]&&mv $A/a.opt $A/a 2>&-;rm -rf $P $A/a.pg $A/a.opt
+        fi
+    ) >&- 2>&- &
     ;;
 analyze)
     _ensure_cc
