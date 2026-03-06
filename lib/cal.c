@@ -1,7 +1,8 @@
 /* ── cal ── */
 static int cmd_cal(int c,char**v){
     char dir[P]; snprintf(dir,P,"%s/cal",SROOT); mkdirp(dir);
-    if(c>2&&!strcmp(v[2],"add")){ /* one timestamped file per add */
+    if(c>2&&!strcmp(v[2],"add")){
+        if(c<4){puts("missing event text");return 1;}
         struct timespec ts;clock_gettime(CLOCK_REALTIME,&ts);struct tm*tm=localtime(&ts.tv_sec);
         char tf[64];strftime(tf,64,"%Y%m%dT%H%M%S",tm);
         char f[P]; snprintf(f,P,"%s/%s.%09ld_%s.txt",dir,tf,ts.tv_nsec,DEV);
@@ -54,6 +55,6 @@ static int cmd_cal(int c,char**v){
     if(!ne) puts("no events");
     printf("\n%s/\n",dir);
     for(int i=0;i<n;i++) printf("  %s\n",bname(paths[i]));
-    puts("\nusage:\n  a cal            list events\n  a cal add <event> add directly\n  a cal ai <prompt> ai-assisted add\n  a cal <name>      edit file");
+    puts("\nusage:\n  a cal add \"2026-03-06 09:00 standup\"\n  a cal ai <prompt> ai-assisted add\n  a cal <name>      edit file");
     return 0;
 }
