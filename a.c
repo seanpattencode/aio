@@ -408,12 +408,12 @@ static void perf_disarm(void);
 #include "lib/ssh.c"      /* ssh connect/add/broadcast */
 #include "lib/hub.c"      /* hub: scheduled jobs */
 #include "lib/net.c"      /* sync, update, log, login */
+#include "lib/cal.c"      /* calendar events */
 #include "lib/agent.c"    /* autonomous agent + multi-run */
 #include "lib/perf.c"     /* benchmark + timing display */
 #include "lib/sess.c"     /* session dispatch (c/g/co/etc) */
 
 /* ═══ PY-ONLY WRAPPERS — C entry points for commands still in Python ═══ */
-static int cmd_cal(int c,char**v){(void)c;(void)v;puts("cal: to be added");return 0;}
 static int cmd_cat(int c,char**v){if(c>2&&chdir(v[2]))return 1;perf_disarm();
     const char*cc=clip_cmd();if(!cc){puts("x Needs tmux");return 1;}
     char cm[B];snprintf(cm,B,"git ls-files -z|xargs -0 grep -lIZ ''|xargs -0 tail -n+1|%s&&echo >&2 '✓ copied'",cc);

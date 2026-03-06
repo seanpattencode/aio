@@ -134,8 +134,8 @@ static int cmd_sync(int argc, char **argv) {
     else if (!t[0]) status = "empty (no commits yet)";
     printf("  %s\n  Last: %s\n  Status: %s\n", out[0] ? out : "(no remote)", t[0] ? t : "(none)", status);
     /* Count files per folder */
-    const char *folders[] = {"common","ssh","login","agents","notes","workspace","adocs","tasks"};
-    for (int i = 0; i < 8; i++) {
+    const char *folders[] = {"common","ssh","login","agents","notes","workspace","adocs","tasks","cal"};
+    for (int i = 0; i < 9; i++) {
         char d[P]; snprintf(d, P, "%s/%s", SROOT, folders[i]);
         if (!dexists(d)) continue;
         char cnt_cmd[P]; snprintf(cnt_cmd, P, "find '%s' -name '*.txt' -maxdepth 2 2>/dev/null | wc -l", d);
