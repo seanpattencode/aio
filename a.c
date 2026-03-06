@@ -174,7 +174,7 @@ install)
         fedora)
             if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi ;;
-        termux) pkg update -y && pkg upgrade -y -o Dpkg::Options::=--force-confold && pkg install -y clang tmux nodejs git python openssh sshpass gh rclone cronie termux-services && ok "pkgs" ;;
+        termux) pkg update -y && pkg upgrade -y -o Dpkg::Options::=--force-confold && pkg install -y build-essential tmux nodejs git python openssh sshpass gh rclone cronie termux-services && mkdir -p ~/.gyp && echo "{'variables':{'android_ndk_path':''}}" > ~/.gyp/include.gypi && ok "pkgs" ;;
         *) install_node; warn "Unknown OS - install tmux manually" ;;
     esac
     _ensure_cc
@@ -187,7 +187,7 @@ install)
         local pkg="$1" cmd="$2" p=$(command -v "$cmd" 2>/dev/null)
         [[ -n "$p" && "${p:0:5}" != "/mnt/" ]] && { ok "$cmd (exists)"; return; }
         [[ -n "$p" ]] && warn "$cmd ($p) is Windows"; info "Installing $cmd..."
-        local ns=""; [[ "$OS" == termux ]] && ns="--ignore-scripts"
+        local ns=""; [[ "$OS" == termux && -z "$3" ]] && ns="--ignore-scripts"
         if ! command -v npm &>/dev/null; then warn "$cmd skipped (npm not found)"
         elif [[ -n "$SUDO" ]] || [[ $EUID -eq 0 ]]; then $SUDO npm install -g $ns "$pkg" && ok "$cmd" || warn "$cmd failed"
         else mkdir -p "$HOME/.local/lib" && npm install -g $ns --prefix="$HOME/.local" "$pkg" && ok "$cmd" || warn "$cmd failed"; fi
@@ -197,7 +197,8 @@ install)
         curl -fsSL https://claude.ai/install.sh | bash && ok "claude" || warn "claude install failed"
     else ok "claude (exists)"; fi
     install_cli "@openai/codex" "codex"
-    install_cli "@google/gemini-cli" "gemini"
+    install_cli "@google/gemini-cli" "gemini" scripts
+    [[ "$OS" == termux ]] && info "Gemini auth: NO_BROWSER=true gemini"
     # uv — preferred python env. auto-installs deps from PEP 723 metadata.
     # fallback_py() tries uv run --script first, then venv, then system python3.
     if ! command -v uv &>/dev/null; then
