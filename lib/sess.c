@@ -177,7 +177,8 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
             if(has_sub){snprintf(prefix,256,"%s ",cmd);buf[0]=0;blen=0;sel=0;printf("\033[J");continue;}
             tcsetattr(STDIN_FILENO, TCSANOW, &old);
             write(STDOUT_FILENO,"\033[?1000l\033[?1006l",16);
-            printf("\n\n\033[KRunning: a %s\n", cmd);
+            (void)!system("clear");
+            printf("Running: a %s\n", cmd);
             char *args[32]; int ac=0; args[ac++]="a";
             char *p=cmd; while(*p&&ac<31) { while(*p==' ')p++; if(!*p)break; args[ac++]=p; while(*p&&*p!=' ')p++; if(*p)*p++=0; }
             args[ac]=NULL;
