@@ -102,19 +102,26 @@ _install_node() {
 case "${1:-build}" in
 node) N="$HOME/.local/bin/node"; [[ -x "$N" ]] && V="$("$N" -v)" && [[ "$V" == v2[2-9]* || "$V" == v[3-9]* ]] && { ok "node $V"; exit 0; }; _install_node ;;
 build)
-    # Two-pass parallel: checker (Weverything, ~55ms) + build (-O0, ~100ms).
-    # Checker is compile-time only — binary has zero diagnostic overhead.
-    # On fast devices runtime is syscall-bound (-O0≈O3). On weak devices
-    # (Termux) C compute matters — bg -O3 replaces -O0 binary when ready.
-    # Binary goes in adata/local/, symlinked to ~/.local/bin/a.
+    # Fast path: TCC (~10ms) with fallback to Clang -O0 (~90ms).
+    # Background: Clang -O3 (~600ms) with PGO/LTO overwrites binary when done.
+    # Checker (Weverything) runs in parallel if Clang is used.
     _ensure_cc
     _warn_flags
     R="${D%%/adata/worktrees/*}"; ABIN="$R/adata/local"; mkdir -p "$ABIN"
     BIN="$HOME/.local/bin"; mkdir -p "$BIN"
     echo $$ > "$ABIN/.bld"
-    $CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" & P1=$!
-    $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
-    wait $P1 && wait $P2
+    
+    TCC_BIN=$(command -v tcc 2>/dev/null || echo "")
+    if [[ -n "$TCC_BIN" ]] && "$TCC_BIN" -DSRC="\"$D\"" -w -o "$ABIN/a" "$D/a.c" 2>/dev/null; then
+        # TCC succeeded (instant binary)
+        $CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" &
+    else
+        # Fallback to Clang
+        $CC $WARN -DSRC="\"$D\"" -fsyntax-only "$D/a.c" & P1=$!
+        $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" & P2=$!
+        wait $P1 && wait $P2
+    fi
+    
     ln -sf "$ABIN/a" "$BIN/a"
     (F="-DSRC=\"$D\" -O3 -march=native -flto -w" A=$ABIN P=$A/pgo;rm -rf $P;$CC $F -fprofile-generate=$P -o $A/a.pg $D/a.c&&$A/a.pg i</dev/null;llvm-profdata merge $P -o $P/p&&$CC $F -fprofile-use=$P/p -o $A/a.opt $D/a.c||$CC $F -o $A/a.opt $D/a.c;[ "$(cat $A/.bld 2>&-)" = "$$" ]&&mv $A/a.opt $A/a 2>&-;rm -rf $P $A/a.pg $A/a.opt)>&- 2>&- &
     ;;
