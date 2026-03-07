@@ -121,8 +121,9 @@ build)
         _c 4 gcc -std=c17 -Werror -Wlogical-op -Wduplicated-cond -Wduplicated-branches -Wtrampolines $A -fsyntax-only "$F" &
         { ! command -v gcc &>/dev/null||{ gcc -fanalyzer $A -fsyntax-only "$F" >"$T/5" 2>&1;! grep -q '\-Wanalyzer' "$T/5";};}||touch "$T/5.f" &
         _c 6 cppcheck --error-exitcode=1 --quiet $A "$F" & _c 7 frama-c -eva -eva-no-print -no-unicode "$F" $A & _c 8 cbmc --function main "$F" $A &
+        { $CC $A -fsanitize=undefined,address -fno-omit-frame-pointer -w -o "$T/a.san" "$F"&&"$T/a.san" help >"$T/9" 2>&1;! grep -q 'runtime error\|SUMMARY:.*Sanitizer' "$T/9";}||touch "$T/9.f" &
         wait
-        if ls "$T"/[1-8].f &>/dev/null;then cat "$T"/[1-8] >"$ABIN/.chk" 2>/dev/null
+        if ls "$T"/[1-9].f &>/dev/null;then cat "$T"/[1-9] >"$ABIN/.chk" 2>/dev/null
             [ "$(cat "$ABIN/.bld" 2>&-)" = "$$" ]&&printf '#!/bin/sh\nhead -80 %s/.chk;exit 1' "$ABIN">"$ABIN/a"&&chmod +x "$ABIN/a"
         else $CC $A -O3 -march=native -flto -w -o "$ABIN/a.opt" "$F"&&[ "$(cat "$ABIN/.bld" 2>&-)" = "$$" ]&&mv "$ABIN/a.opt" "$ABIN/a" 2>&-;rm -f "$ABIN/a.opt"
         fi
@@ -168,18 +169,18 @@ install)
     case $OS in
         mac)
             command -v brew &>/dev/null || { info "Installing Homebrew..."; /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"; }
-            brew install tmux node gh sshpass rclone cppcheck 2>/dev/null || brew upgrade tmux node gh sshpass rclone cppcheck 2>/dev/null; brew tap hudochenkov/sshpass 2>/dev/null
+            brew install tmux node gh sshpass rclone cppcheck cbmc frama-c tcc gcc 2>/dev/null || brew upgrade tmux node gh sshpass rclone cppcheck cbmc frama-c tcc gcc 2>/dev/null; brew tap hudochenkov/sshpass 2>/dev/null
             command -v clang &>/dev/null || { xcode-select --install 2>/dev/null; warn "Run 'xcode-select --install' then retry"; }
             ok "tmux + node + gh + rclone" ;;
         debian)
             if [[ -n "$SUDO" ]]; then export DEBIAN_FRONTEND=noninteractive
-                $SUDO apt update -qq && $SUDO apt install -yqq clang tmux git curl python3-pip sshpass rclone gh cppcheck 2>/dev/null || true; ok "pkgs"
+                $SUDO apt update -qq && $SUDO apt install -yqq clang tmux git curl python3-pip sshpass rclone gh tcc gcc cppcheck cbmc frama-c-base 2>/dev/null || true; ok "pkgs"
             fi; install_node; [[ -z "$SUDO" ]] && { command -v tmux &>/dev/null || warn "tmux needs: sudo apt install tmux"; } ;;
         arch)
-            if [[ -n "$SUDO" ]]; then $SUDO pacman -Sy --noconfirm clang tmux nodejs npm git python-pip sshpass rclone github-cli cppcheck 2>/dev/null && ok "pkgs"
+            if [[ -n "$SUDO" ]]; then $SUDO pacman -Sy --noconfirm clang tmux nodejs npm git python-pip sshpass rclone github-cli tcc gcc cppcheck cbmc frama-c 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo pacman -S tmux"; fi ;;
         fedora)
-            if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh cppcheck 2>/dev/null && ok "pkgs"
+            if [[ -n "$SUDO" ]]; then $SUDO dnf install -y clang tmux nodejs npm git python3-pip sshpass rclone gh tcc gcc cppcheck cbmc frama-c 2>/dev/null && ok "pkgs"
             else install_node; command -v tmux &>/dev/null || warn "tmux needs: sudo dnf install tmux"; fi ;;
         termux) pkg update -y && pkg upgrade -y -o Dpkg::Options::=--force-confold && pkg install -y build-essential tmux nodejs git python openssh sshpass gh rclone cronie termux-services && mkdir -p ~/.gyp && echo "{'variables':{'android_ndk_path':''}}" > ~/.gyp/include.gypi && ok "pkgs" ;;
         *) install_node; warn "Unknown OS - install tmux manually" ;;
