@@ -54,7 +54,7 @@ static int cmd_note(int argc, char **argv) {
 /* ── task ── */
 typedef struct{char d[P],t[256],p[8];}Tk;
 static Tk T[256];
-static int tcmp(const void*a,const void*b){int c=strcmp(((const Tk*)a)->p,((const Tk*)b)->p);return c?c:strcmp(((const Tk*)a)->d,((const Tk*)b)->d);}
+static int tcmp(const void*a,const void*b){int c=strcmp(((const Tk*)a)->p,((const Tk*)b)->p);return c?c:strcmp(strrchr(((const Tk*)a)->d,'_'),strrchr(((const Tk*)b)->d,'_'));}
 static int load_tasks(const char*dir){
     DIR*d=opendir(dir);if(!d)return 0;struct dirent*e;int n=0;
     while((e=readdir(d))&&n<256){
