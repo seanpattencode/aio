@@ -111,7 +111,6 @@ build)
     BIN="$HOME/.local/bin"; mkdir -p "$BIN"
     echo $$ > "$ABIN/.bld"
     
-    echo '[{"directory":"'"$D"'","file":"a.c","command":"cc a.c"}]'>"$D/compile_commands.json"
     command -v tcc >/dev/null && tcc -DSRC="\"$D\"" -w -o "$ABIN/a" "$D/a.c" 2>/dev/null || $CC -DSRC="\"$D\"" -w -O0 -o "$ABIN/a" "$D/a.c" || exit 1
     ln -sf "$ABIN/a" "$BIN/a"
     (
@@ -392,10 +391,10 @@ exit 0
 #define MA 64
 #define MS 48
 
+/* ═══ AMALGAMATION ═══ */
 static void alog(const char *cmd, const char *cwd, const char *extra);
 static void perf_disarm(void);
 
-/* ═══ AMALGAMATION ═══ */
 #include "lib/globals.c"  /* state: paths, projects, sessions */
 #include "lib/init.c"     /* resolve paths + device id */
 #include "lib/util.c"     /* file/string/exec helpers */

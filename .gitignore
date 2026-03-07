@@ -30,5 +30,4 @@ adata/
 # C build artifacts
 *.o
 *.plist
-compile_commands.json
 a
