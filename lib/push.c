@@ -146,9 +146,9 @@ static int cmd_diff(int argc, char **argv) {
         else if(_l[0]=='+'&&_l[1]!='+'){printf("  \033[48;2;26;84;42m+ %s\033[0m\n",_l+1);if(cf>=0){fs[cf].al++;fs[cf].ab+=(int)strlen(_l)-1;}} \
         else if(_l[0]=='-'&&_l[1]!='-'){printf("  \033[48;2;117;34;27m- %s\033[0m\n",_l+1);if(cf>=0){fs[cf].dl++;fs[cf].db+=(int)strlen(_l)-1;}}} \
         pclose(_f);}}while(0)
-    {char c[B];snprintf(c,B,"git diff '%s..HEAD' 2>/dev/null",tgt);DS(c);}
-    {char c[B];snprintf(c,B,"git diff HEAD 2>/dev/null");DS(c);}
-    char ut[B]; pcmd("git ls-files --others --exclude-standard 2>/dev/null",ut,B); int nut=0;
+    {char c[B];snprintf(c,B,"git diff '%s..HEAD' -- ':!.a_done' 2>/dev/null",tgt);DS(c);}
+    {char c[B];snprintf(c,B,"git diff HEAD -- ':!.a_done' 2>/dev/null");DS(c);}
+    char ut[B]; pcmd("git ls-files --others --exclude-standard -- ':!.a_done' 2>/dev/null",ut,B); int nut=0;
     if(ut[0]){printf("\nUntracked:\n");char*p=ut;while(*p){char*e=strchr(p,'\n');if(e)*e=0;if(*p){
         printf("  \033[48;2;26;84;42m+ %s\033[0m\n",p);nut++;size_t sz;char*d=readf(p,&sz);
         if(d){int nl=1;for(size_t j=0;j<sz;j++)if(d[j]=='\n')nl++;FS(p);if(cf>=0){fs[cf].al=nl;fs[cf].ab=(int)sz;}free(d);}
