@@ -52,9 +52,10 @@ static int cmd_kill(int argc, char **argv) {
     puts("\nSelect:\n  a kill 0\n  a kill all"); return 0;
 }
 
-static int cmd_copy(int c,char**v){(void)c;(void)v;char o[B];int ol=0;
-    if(!isatty(0)){ssize_t n;while((n=read(0,o+ol,(size_t)(B-ol-1)))>0)ol+=(int)n;}
-    else if(getenv("TMUX")){pcmd("tmux capture-pane -pJ -S-99|awk '/[$@].*[$@]|❯/{b=s;s=\"\";next}{s=s?s\"\\n\"$0:$0}END{printf\"%s\",b}'",o,B);ol=(int)strlen(o);}
+static int cmd_copy(int c,char**v){char o[B];int ol=0;const char*k=clip_cmd();if(!k){puts("x No clipboard");return 1;}   /* a copy FILE | cmd|a copy | a copy (in tmux: last output) */
+    if(c>2||!isatty(0)){int fd=c>2?open(v[2],O_RDONLY):0;if(fd<0){printf("x no file %s\n",v[2]);return 1;}   /* file|pipe: fd -> clip tool, detached: wl-copy needs ~60ms, the perf gate 1.9 */
+        if(!fork()){setsid();dup2(fd,0);execl("/bin/sh","sh","-c",k,(char*)0);_exit(127);}printf("✓ %s → %s\n",c>2?v[2]:"stdin",k);return 0;}
+    if(getenv("TMUX")){pcmd("tmux capture-pane -pJ -S-99|awk '/[$@].*[$@]|❯/{b=s;s=\"\";next}{s=s?s\"\\n\"$0:$0}END{printf\"%s\",b}'",o,B);ol=(int)strlen(o);}
     else{puts("x Pipe or tmux");return 1;}
     if(ol<1){puts("x No output");return 0;}o[ol]=0;if(to_clip(o)){puts("x Needs tmux");return 1;}printf("✓ %.50s\n",o);return 0;}
 
