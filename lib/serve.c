@@ -675,6 +675,58 @@ static void handle(int c){
                 hl+=snprintf(h+hl,(size_t)(cap-hl),"<div style=\"margin-top:8px\"><button class=op onpointerdown=\"dv(this)\" data-u=\"/review/doc?n=%zu&amp;k=%d\" data-n=\"%s\">view document: %s</button></div>",rs[i].i,k,sn,sn);}
             hl+=snprintf(h+hl,(size_t)(cap-hl),"</div>");}
         free(rs);free(rl);sdoc(c,h,hl);free(h);return;}
+    if(!strncmp(req,"GET /music",10)){char mc[P],rel[P]="";snprintf(mc,P,"%s/music",DDIR);setenv("MC",mc,1);   /* a music web (page: adata/git/common/music.html, cli: adata/git/my/music.c — restored from the 5ad00bca cut, Sean 2026-09-10): /music page · /musics?f=q rows (empty q = cache) · /musicf?f=name stream · /musicg?f=id = a music get → stream */
+        if(req[10]=='s'){docrel(req,rel);setenv("Q",rel,1);char b[8192];   /* cache matches, then 5 YouTube hits via ONE InnerTube call (0.45s; yt-dlp ytsearch was 9s) */
+            FILE*p=popen(rel[0]?"ls \"$MC\"|grep -v '\\.part$'|grep -iF -- \"$Q\";jq -cn --arg q \"$Q\" '{context:{client:{clientName:\"WEB\",clientVersion:\"2.20250101.00.00\"}},query:$q,params:\"EgIQAQ%3D%3D\"}'|curl -s -m6 -d @- -H content-type:application/json 'https://www.youtube.com/youtubei/v1/search?prettyPrint=false'|jq -r '[..|.videoRenderer?|select(.)|\"\\(.videoId)\\t\\(.title.runs[0].text) \\(.lengthText.simpleText//\"\")\"]|.[:5][]'":"ls \"$MC\"|grep -v '\\.part$'","r");
+            size_t n=p?fread(b,1,8191,p):0;if(p)pclose(p);sresp(c,200,"text/plain; charset=utf-8",b,(int)n);b[n]=0;
+            char*ar[16];int an=0;ar[an++]="a";ar[an++]="music";ar[an++]="pre";   /* prefetch every hit at once (first first) so a tap plays instantly; ids come off the network → argv, never a shell, and only [A-Za-z0-9_-] */
+            for(char*ln=b;*ln&&an<15;){char*e=strchr(ln,'\n'),*t=strchr(ln,'\t');
+                if(t&&(!e||t<e)&&t-ln<16){int ok=1;for(char*z=ln;z<t;z++)if(!isalnum((unsigned char)*z)&&*z!='-'&&*z!='_')ok=0;
+                    if(ok){*t=0;ar[an++]=ln;}}
+                if(!e)break;ln=e+1;}
+            ar[an]=0;if(an>3&&!fork()){close(c);execvp("a",ar);_exit(0);}
+            return;}
+        if(req[10]&&strchr("ctr",req[10])){docrel(req,rel);setenv("K",rel,1);char b[256],cm[32];   /* one shape, three subs — c=cfg "<cap-GB> <clip> <MB-now>" (?f=cap-8/trim-0 sets) · t=trim "<skip-in> <stop-at>" · r=rm one track's local bytes (.index keeps the how-to-get) */
+            snprintf(cm,32,"a music %s \"$K\"",req[10]=='c'?"cfg":req[10]=='t'?"trim":"rm");
+            FILE*p=popen(cm,"r");size_t n=p?fread(b,1,255,p):0;if(p)pclose(p);
+            sresp(c,200,"text/plain",b,(int)n);return;}
+        if(req[10]=='g'){char id[32];qp(req,"?f=",id,32);setenv("I",id,1);
+            #define MIDX "sed -n \"s|^$I  ||p\" \"$MC/.index\" 2>&-|sed q"
+            FILE*ip=popen(MIDX,"r");   /* the 10s head prefetch recorded the name */
+            if(ip){if(fgets(rel,P,ip))rel[strcspn(rel,"\n")]=0;pclose(ip);}
+            char fl[P+300],pt[P+308];snprintf(fl,sizeof fl,"%s/%s",mc,rel);snprintf(pt,sizeof pt,"%s.part",fl);
+            if(!rel[0]||access(fl,F_OK)){   /* not complete on disk: stream as it downloads — was a blocking whole-file get when no .part (1hr track = minutes of dead air, Sean 2026-09-01) */
+                pid_t sf=fork();if(sf)return;
+                if(!rel[0]){if(!fork()){execlp("a","a","music","pre",id,(char*)0);_exit(0);}   /* head: resolves name -> .index row (written AFTER its 160KB curl, so get can't race the .part) */
+                    for(int w=0;w<600&&!rel[0];w++){usleep(100000);FILE*p2=popen(MIDX,"r");if(p2){if(fgets(rel,P,p2))rel[strcspn(rel,"\n")]=0;pclose(p2);}}
+                    if(!rel[0])_exit(0);
+                    snprintf(fl,sizeof fl,"%s/%s",mc,rel);snprintf(pt,sizeof pt,"%s.part",fl);}
+                if(!fork()){execlp("a","a","music","get",id,(char*)0);_exit(0);}
+                char h[200];int hl=snprintf(h,200,"HTTP/1.1 200 OK\r\nContent-Type:%s\r\nConnection:close\r\nCache-Control:no-store\r\n\r\n",strstr(rel,".m4a")?"audio/mp4":strstr(rel,".opus")?"audio/ogg":"audio/webm");
+                if(write(c,h,(size_t)hl)!=hl)_exit(0);
+                off_t off=0;struct stat st;
+                for(int idle=0;idle<600;idle++){int fd=open(access(fl,F_OK)?pt:fl,O_RDONLY);
+                    if(fd>=0){char bu[65536];ssize_t r;
+                        if(!fstat(fd,&st)&&st.st_size>off&&lseek(fd,off,SEEK_SET)>=0)
+                            while((r=read(fd,bu,65536))>0){if(write(c,bu,(size_t)r)!=r)_exit(0);off+=r;idle=0;}
+                        close(fd);}
+                    if(!stat(fl,&st)&&off>=st.st_size)_exit(0);   /* renamed by yt-dlp + fully sent = done */
+                    usleep(100000);}
+                _exit(0);}
+            #undef MIDX
+            }
+        else if(req[10]=='f')docrel(req,rel);
+        else{char tf[P];snprintf(tf,P,"%s/common/music.html",SROOT);size_t tl=0;char*th=readf(tf,&tl);if(th){sdoc(c,th,(int)tl);free(th);}else sresp(c,404,"text/plain","x",1);return;}
+        char fp[P];snprintf(fp,P,"%s/%s",mc,rel);size_t n=0;char*d=readf(fp,&n);
+        if(d){const char*mt=strstr(rel,".m4a")?"audio/mp4":strstr(rel,".opus")?"audio/ogg":"audio/webm";   /* Range support: without Accept-Ranges/206 Chrome marks audio unseekable (seekable=0-0) — trim skip and the seek bar both clamp to 0 */
+            char*rg=strstr(req,"Range: bytes=");size_t s0=0,e0=n?n-1:0;
+            if(rg){s0=(size_t)atoll(rg+13);char*dh=strchr(rg+13,'-');if(dh&&isdigit((unsigned char)dh[1])){e0=(size_t)atoll(dh+1);if(e0>=n)e0=n?n-1:0;}}
+            char h[256];int hl;
+            if(rg&&s0<n){hl=snprintf(h,256,"HTTP/1.1 206 OK\r\nContent-Type:%s\r\nAccept-Ranges:bytes\r\nContent-Range:bytes %zu-%zu/%zu\r\nContent-Length:%zu\r\nConnection:close\r\n\r\n",mt,s0,e0,n,e0-s0+1);
+                if(write(c,h,(size_t)hl)==hl)(void)!write(c,d+s0,e0-s0+1);}
+            else{hl=snprintf(h,256,"HTTP/1.1 200 OK\r\nContent-Type:%s\r\nAccept-Ranges:bytes\r\nContent-Length:%zu\r\nConnection:close\r\n\r\n",mt,n);
+                if(write(c,h,(size_t)hl)==hl)(void)!write(c,d,n);}
+            free(d);}else sresp(c,404,"text/plain","x",1);return;}
     if(!strncmp(req,"GET /fw",7)&&(req[7]==' '||req[7]=='?'||req[7]=='\r')){   /* unified fleet tmux view: all devices' windows in one list, one inline terminal that re-points */
         char tf[P];snprintf(tf,P,"%s/lib/fleetview.html",SDIR);size_t tl=0;char*th=readf(tf,&tl);
         if(th){siso(c,th,(int)tl);free(th);}else sresp(c,404,"text/plain","no fleetview.html",16);return;}

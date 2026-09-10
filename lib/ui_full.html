@@ -61,7 +61,7 @@ window.onfocus=function(){omni.style.borderColor='#555'};window.onblur=function(
 var _cmds=[__CMDS__],_cs=0;
 _cmds.sort(function(a,b){function h(c){return c[1]==='page'||views['/'+c[0]]?1:0}return h(b)-h(a)});
 // web interfaces = the primary launchables: prepopulated (freq-sorted) by default, favored on type
-var PAGES=[['/bm','a bm'],['/review','a review'],['/op','a op'],['/fw','a fleet'],['/note','a note'],['/tasks','a tasks'],['/flow','flow'],['#clock','a clock'],['/term','a term'],['/book','a book'],['/book?sort=author','authors'],['/docs','a docs']];
+var PAGES=[['/bm','a bm'],['/review','a review'],['/op','a op'],['/fw','a fleet'],['/music','a music'],['/note','a note'],['/tasks','a tasks'],['/flow','flow'],['#clock','a clock'],['/term','a term'],['/book','a book'],['/book?sort=author','authors'],['/docs','a docs']];
 /* agent/type picker: own PAGE (v_ag), not a dropdown — go('/ag') is a DOM toggle, <1ms like all nav */
 var AGO=[['c','claude'],['co','codex'],['g','gemini'],['grok','grok'],['note','note'],['task','task']],AG=0;
 try{for(var _ai=0;_ai<AGO.length;_ai++)if(AGO[_ai][0]===localStorage.agm)AG=_ai}catch(e){}
