@@ -7,7 +7,7 @@ static void m_fresh(char*fn){strftime(fn,128,"%y%m%d-%H%M%S",localtime(&(time_t)
 #define MCF "claude -p --tools '' --model '%s' --effort '%s'"
 static void m_cmdstr(char*o,size_t n){const char*mc=cfget("m_cmd");if(*mc){snprintf(o,n,"%s",mc);return;}
     const char*md=cfget("m_model"),*ef=cfget("m_effort");
-    snprintf(o,n,MCF,*md?md:"opus",*ef?ef:"max");}
+    snprintf(o,n,MCF,*md?md:"claude-fable-5",*ef?ef:"max");}
 static int m_splice(char*o,size_t n,const char*fl,const char*v){  /* swap --<fl> '<v>' in the live cmd, keep the rest; 0 = no such flag */
     char c[B];m_cmdstr(c,B);char f[24];int fn=snprintf(f,24,"--%s '",fl);
     char*p=strstr(c,f),*q=p?strchr(p+fn,'\''):0;if(!q)return 0;
@@ -64,7 +64,7 @@ static int m_resume(char*m,size_t sz){  /* saved convos (adata/git/m/agents/) ne
 static int m_slash(char *m,size_t sz){
     static char ib[32][96];const char*it[32];int n=0;
     static const char*cl[]={"resume\topen saved conversation","new\tfresh agent","cmd\ttype raw model cmd","q\tquit",  /* every word you'd filter by is IN the row: 'claude' must reach efforts too (m_pick greps whole row) */
-        "fable\tclaude model","opus\tclaude model","sonnet\tclaude model","haiku\tclaude model",
+        "claude-fable-5\tfable claude model","opus\tclaude model","sonnet\tclaude model","haiku\tclaude model",  /* exact fable id: bare 'fable' alias = 5.1 = regression */
         "max\tclaude effort","xhigh\tclaude effort","high\tclaude effort","medium\tclaude effort","low\tclaude effort",0};
     for(int k=0;cl[k];k++)it[n++]=cl[k];
     char ol[4096];{char gc[B];snprintf(gc,B,"awk -F'\t' '!/^#/&&NF>1{print $1\"\tserver\"}' '%s/m/models.txt' 2>/dev/null;ollama list 2>/dev/null|awk 'NR>1{print $1\"\tollama local\"}'",SROOT);pcmd(gc,ol,sizeof ol);}  /* models.txt label\tcmd rows; servers first — locals flood the cap */

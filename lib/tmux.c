@@ -78,7 +78,7 @@ static void jcmd_fill(char*b,int cont,const char*wd,const char*extra){
     if(strstr(ag,"codex"))snprintf(run,B,"codex -c model_reasoning_effort=\"%s\" --model %s --dangerously-bypass-approvals-and-sandbox%s",*ef?ef:"xhigh",*md?md:"gpt-5.5",xsuf);
     else if(strstr(ag,"gemini"))snprintf(run,B,"gemini --yolo%s",xsuf);
     else{const char*sid=getenv("SID");char sp[96]="";if(sid&&*sid)snprintf(sp,96,"--session-id %s ",sid);
-        snprintf(run,B,ACAT " >>%s 2>/dev/null;claude %s--dangerously-skip-permissions --model %s --effort %s --append-system-prompt-file %s%s%s",ctxf,sp,*md?md:"opus",*ef?ef:"max",ctxf,cont?" --continue":"",xsuf);}
+        snprintf(run,B,ACAT " >>%s 2>/dev/null;claude %s--dangerously-skip-permissions --model %s --effort %s --append-system-prompt-file %s%s%s",ctxf,sp,*md?md:"claude-fable-5",*ef?ef:"max",ctxf,cont?" --continue":"",xsuf);}
     snprintf(b,B,"tmux splitw -vd -p50 -t $TMUX_PANE;%s;e=$?;[ $e -ne 0 ]&&echo \"$(date) $e $(pwd)\">>%s/crashes.log;exec bash",run,LOGDIR);}
 
 static void tm_ensure_conf(void) {

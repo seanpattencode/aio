@@ -24,7 +24,7 @@ ID = re.compile(r"--(?:resume|session-id)[ =]+([0-9a-f-]{36})")   # session id o
 try: C = dict(re.findall(r"^m_(\w+): *(.*)", open(f"{GIT}/workspace/config.txt").read(), re.M))
 except OSError: C = {}
 MF = "".join(f" --{k} {C[k]}" for k in ("model", "effort") if C.get(k)) if C.get("agent", "claude") == "claude" else ""
-RESUME = {"claude": f"claude --dangerously-skip-permissions{MF} --resume %s; exec bash",  # %s=sid; no MF → opus/xhigh
+RESUME = {"claude": f"claude --dangerously-skip-permissions{MF} --resume %s; exec bash",  # %s=sid; no MF → settings.json default
           "codex": "codex resume --last; exec bash", "gemini": "gemini --yolo --resume latest; exec bash",
           "grok": "grok --always-approve --continue; exec bash"}   # --continue = cwd's newest session
 HOST = f"{GIT}/ssh/%s.txt"                            # a ssh host registry

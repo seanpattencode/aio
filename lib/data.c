@@ -36,9 +36,9 @@ static void init_db(void) {
     }
     snprintf(p, P, "%s/workspace/sessions.txt", SROOT);
     if (!fexists(p)) {
-        /* c/claude sessions hardcode opus 4.8 max: fable is better but political issues temporarily mean it must switch off (https://www.anthropic.com/news/fable-mythos-access). l/o stay plain = follow the claude default. */
+        /* c/claude pin the EXACT id claude-fable-5 max: Fable 5.1 = regression in real use (confirmed 2026-09-09), and the bare 'fable' alias now resolves to 5.1 — never alias, always exact. l/o stay plain = follow the claude default. */
         const char *C = "claude --dangerously-skip-permissions";
-        const char *CM = "claude --dangerously-skip-permissions --model opus --effort max";
+        const char *CM = "claude --dangerously-skip-permissions --model claude-fable-5 --effort max";
         const char *X = "codex --dangerously-bypass-approvals-and-sandbox"; /* ~/.codex/config.toml owns model/effort — pins here go stale */
         char buf[B*4]; snprintf(buf, sizeof(buf),
             "g|gemini|gemini --yolo\ngemini|gemini|gemini --yolo\n"

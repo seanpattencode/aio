@@ -14,7 +14,7 @@ static int cmd_op(int c,char**v){(void)c;(void)v;perf_disarm();
     snprintf(ctx,P,"%s/operator_ctx_%d.txt",TMP,(int)getpid());
     FILE*f=fopen(ctx,"w");if(f){char*s=access(ov,R_OK)==0?readf(ov,NULL):NULL;
         fputs(s?s:OPERATOR_PROMPT,f);free(s);fclose(f);}
-    char cmd[B];snprintf(cmd,B,ACAT " >>%s 2>/dev/null;claude --model opus --dangerously-skip-permissions --effort max --append-system-prompt-file %s",ctx,ctx);
+    char cmd[B];snprintf(cmd,B,ACAT " >>%s 2>/dev/null;claude --model claude-fable-5 --dangerously-skip-permissions --effort max --append-system-prompt-file %s",ctx,ctx);
     const char*sn=tm_name("op",bname(wd),time(0));
     create_sess(sn,wd,cmd,NULL);
     tm_go(sn);return 0;}

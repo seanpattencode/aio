@@ -170,7 +170,7 @@ static int cmd_i(int argc, char **argv) { (void)argc; (void)argv;
             if(L2){if(!tl1){tl1=p2;ll1=L2;}else{tl2=p2;ll2=L2;}}if(!e2)break;p2=e2+1;}}
         int xtra=na?(tl2?2:(tl1||fresh)?1:0):0;  /* receipt rows under the switch row (snippet rides the row itself) */
         int hdr_rows=0;char hl[2048];int hll=0,Wc=ws.ws_col?ws.ws_col:80;
-        if(m_mode){load_cfg();const char*cm=cfget("m_model");if(!*cm)cm="opus";
+        if(m_mode){load_cfg();const char*cm=cfget("m_model");if(!*cm)cm="claude-fable-5";
             const char*cg=cfget("m_agent");if(!*cg)cg="claude";
             const char*cf=cfget("m_effort");if(!*cf)cf="low";
             struct stat st;long tsz=0;char hp[P];

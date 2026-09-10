@@ -531,7 +531,7 @@ static int cmd_j(int c,char**v){
         char*ap=readf(pr,NULL);snprintf(pr,B,"%s\nContext: cat %s",ap?ap:"Ask what to work on. cat a.c for source.",cf);if(ap)free(ap);
         {char ctxf[P];snprintf(ctxf,P,"%s/a_ctx_%d.txt",TMP,(int)getpid());
         write_prompt_file(ctxf,SDIR,pr);
-        snprintf(cm,B,"tmux split-window -fhP -F '#{pane_id}' -c '%s' '" ACAT " >>%s 2>/dev/null;claude --dangerously-skip-permissions --effort max --append-system-prompt-file %s'",SDIR,ctxf,ctxf);
+        snprintf(cm,B,"tmux split-window -fhP -F '#{pane_id}' -c '%s' '" ACAT " >>%s 2>/dev/null;claude --dangerously-skip-permissions --model claude-fable-5 --effort max --append-system-prompt-file %s'",SDIR,ctxf,ctxf);
         pcmd(cm,pid,64);}return 0;}
     {char nb[16]="";pcmd("pgrep -xc claude 2>/dev/null||echo 0",nb,16);
     int nj=atoi(nb)-1;if(nj<0)nj=0;
