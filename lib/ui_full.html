@@ -19,6 +19,7 @@ c.onclick=()=>{o=!o;p.style.display=o?'block':'none';if(o)fetch('/api/omni',{met
 <div id=v_term class=v>
   <iframe id=tif style="flex:1;width:100%;border:0;background:#000"></iframe>
 </div>
+<iframe id=v_tasks class=v style="width:100%;border:0"></iframe>
 <div id=v_note class=v style="padding-top:20px;align-items:center">
   <form id=nf style="display:flex;flex-direction:column;gap:10px;width:95vw">
     <textarea id=nc autofocus rows=1 placeholder="note — type, enter to save (shift-enter newline)" class=f style="width:100%;font-size:16px;padding:22px;box-sizing:border-box;resize:none;overflow:hidden" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();nf.requestSubmit()}"></textarea>
@@ -32,10 +33,9 @@ c.onclick=()=>{o=!o;p.style.display=o?'block':'none';if(o)fetch('/api/omni',{met
   <div id=nl style="width:95vw;overflow-y:auto;flex:1;margin-top:10px">__NO__</div>
 </div>
 <script>
-var views={'/':'v_index','/term':'v_term','/note':'v_note','/ag':'v_ag','#clock':'v_clock'};
-// 1ms mandate: action times shown LIVE (pms corner) — keep. go() must stay <1ms; show() is DOM toggle only, no network.
-function _pm(t,l){pms.textContent=l+' '+(performance.now()-t).toFixed(3)+'ms'}
-function go(p){var t=performance.now();history.pushState(null,'',p);show(p);_pm(t,'nav '+p);}
+var views={'/':'v_index','/term':'v_term','/note':'v_note','/tasks':'v_tasks','/ag':'v_ag','#clock':'v_clock'};
+function _pm(t,l){pms.textContent=l+' DOM '+(performance.now()-t).toFixed(3)+'ms'}
+function go(p,t=performance.now()){history.pushState(null,'',p);show(p);_pm(t,'nav '+p)}
 /* clock: wake 8ms early + spin to the boundary (jitter < quantum; only while view on + tab visible — hidden throttles → 'bg untimed'); quantum = browser clamp, measured, shown */
 var _ckQ=(function(){var a=performance.now(),b=a;while(b===a&&performance.now()-a<6)b=performance.now();return b>a?b-a:.001})(),_ckTg=0;
 function _ckP(x){return String(x).padStart(2,'0')}
@@ -46,15 +46,15 @@ ckt.textContent=(h%12||12)+':'+_ckP(d.getMinutes())+':'+_ckP(d.getSeconds())+' '
 ckd.textContent=d.toDateString().slice(0,3)+' '+d.getFullYear()+'-'+_ckP(d.getMonth()+1)+'-'+_ckP(d.getDate());
 ckl.textContent='transition +'+late.toFixed(3)+'ms · clock step '+_ckQ.toFixed(3)+'ms'+(on?'':' · bg untimed');
 var w=1000-Date.now()%1000;_ckTg=performance.now()+w;setTimeout(_ck,Math.max(0,w-8));}_ck();
-function show(p){for(var k in views)window[views[k]].classList.toggle('on',k===p);if(p==='/term'){if(!tif.src)tif.src='/op';setTimeout(function(){try{tif.contentWindow.focus()}catch(e){}},50);}if(p==='/note'){setTimeout(function(){nc.focus()},0);fetch('/note-list').then(r=>r.text()).then(h=>nl.innerHTML=h);}if(p==='/')qi.oninput()}
+function show(p){for(var k in views)window[views[k]].classList.toggle('on',k===p);if(p==='/term'){if(!tif.src)tif.src='/op';setTimeout(function(){try{tif.contentWindow.focus()}catch(e){}},50);}if(p==='/note'){setTimeout(function(){nc.focus()},0);fetch('/note-list').then(r=>r.text()).then(h=>nl.innerHTML=h);}if(p==='/'){qi.oninput();v_tasks.src='/tasks'}}
 function arcn(f,el){fetch('/api/note/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({f:f})});el.parentElement.remove();}
 window.onpopstate=function(){show(views[location.hash]?location.hash:location.pathname);}; /* hash views (#clock) reload/back clean — /clock would 404 (no C route) */
 nf.onsubmit=function(e){e.preventDefault();var c=nc.value.trim();if(!c)return;nc.value='';nc.style.height='auto';ns.innerHTML='<span style="color:#ccc">⟳ syncing… </span>'+c;fetch('/note',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+encodeURIComponent(c)}).then(function(r){if(!r.ok)throw 0;return r.text()}).then(function(t){var m=t.match(/https?:\/\/\S+/);if(m)ns.innerHTML='<span style="color:#ccc">saved → </span><a href="'+m[0]+'" target=_blank style="color:#fff">'+m[0]+'</a>';else ns.textContent=t.split('\n').filter(function(l){return l.trim().indexOf('saved')===0})[0]||'saved ✓';fetch('/note-list').then(function(r){return r.text()}).then(function(h){nl.innerHTML=h})}).catch(function(){ns.innerHTML='<span style="color:#fff">save FAILED</span>'});};
-// press-to-act: fire on pointerdown (mouse+touch), not lift-off — matches native depress-instant. inputs/selects keep focus; modifier-clicks pass through.
+// Navigate on press, retaining the input timestamp.
 var _act='[data-go],.pg,button,a[href],[onclick]',_in='input,select,textarea';
 addEventListener('pointerdown',function(e){if(e.button||e.metaKey||e.ctrlKey||e.shiftKey)return;
   var t=e.target.closest(_act);if(!t||e.target.closest(_in))return;
-  e.preventDefault();var g=t.closest('[data-go]');g?go(g.dataset.go):t.click();},true);
+  e.preventDefault();var g=t.closest('[data-go],[data-p]');g?navpage(g.dataset.go||g.dataset.p,e.timeStamp):t.click();},true);
 addEventListener('click',function(e){if(!e.isTrusted)return;if(e.target.closest(_act)&&!e.target.closest(_in)){e.stopImmediatePropagation();e.preventDefault();}},true);
 qi.onblur=function(){setTimeout(function(){if(document.activeElement===document.body)qi.focus()},0)};
 window.onfocus=function(){omni.style.borderColor='#555'};window.onblur=function(){omni.style.borderColor='#333'};
@@ -77,7 +77,7 @@ function gsearch(){var q=qi.value.trim();if(q)window.open('https://www.google.co
 function sav(k,t){qi.value='';qi.style.height='auto';qo.innerHTML='<div style="padding:10px 16px;color:#ccc;font-size:17px">⟳ '+k+'… '+t.slice(0,120).replace(/</g,'&lt;')+'</div>';
   fetch(k=='note'?'/note':'/api/omni',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:k=='note'?'c='+encodeURIComponent(t):'q='+encodeURIComponent('task add '+t)}).then(function(r){return r.text()}).then(function(x){var m=x.match(/https?:\/\/[^\s<]+/);qo.innerHTML='<div style="padding:10px 16px;color:#ccc;font-size:17px">✓ '+k+' saved'+(m?' → <a href="'+m[0]+'" target=_blank style=color:#fff>'+m[0]+'</a>':'')+'</div>';qi.focus()}).catch(function(){qo.innerHTML='<div style="padding:10px 16px;color:#fff;font-size:16px">✗ '+k+' failed</div>'})}
 function pfreq(r){try{return +(localStorage['pf'+r]||0)}catch(e){return 0}}
-function navpage(r){try{localStorage['pf'+r]=pfreq(r)+1}catch(e){}if(views[r])go(r);else location.href=r}
+function navpage(r,t){try{localStorage['pf'+r]=pfreq(r)+1}catch(e){}if(views[r])go(r,t);else location.href=r}
 function _sg(){return qo.querySelectorAll('[data-p],[data-c],[data-a],[data-g],[data-n]')}
 function hl(){var it=_sg();it.forEach(function(el,i){var s=i===_cs;el.style.background=s?'#fff':'';el.style.color=s?'#000':el.dataset.c?'#555':el.dataset.a?'#fff':el.dataset.g?'#aaa':el.dataset.n?'#999':''})}
 qi.oninput=function(){var _t=performance.now(),v=qi.value.toLowerCase();_cs=0;qi.style.height='auto';qi.style.height=qi.scrollHeight+'px';
