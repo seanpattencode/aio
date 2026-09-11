@@ -31,11 +31,11 @@ body{background:#000;color:#eee;font:14px system-ui;display:flex;flex-direction:
 <div id=nav><button class=nb id=tg>☰</button><input id=q placeholder="find any session"><button class=nb id=pv>◀</button><button class=nb id=nx>▶</button></div>
 <script>
 var S=document.getElementById('s'),Q=document.getElementById('q'),BAG={},lq='',fms='',TW=document.getElementById('tw'),MS=document.getElementById('ms');
-var cur='',sel=localStorage.fwsel||'',rows=[],ci=0;   /* cur = what's SHOWN (starts empty so the boot open_ actually attaches) · sel = list highlight */
+var cur='',sel='',rows=[],ci=0;   /* cur = what's SHOWN (starts empty so the boot open_ actually attaches) · sel = list highlight */
 /* prerender +4 ahead +1 behind as hidden full-size iframes so switching is as instant as possible — a visibility swap, not a reconnect */
 var FR={},V=null;
 function frameFor(tg){if(FR[tg])return FR[tg];
-  var f=document.createElement('iframe');f.className='tf';f.dataset.t=tg;
+  var f=document.createElement('iframe');f.className='tf';
   f.src='/op?w='+(tg==='@'?'':encodeURIComponent(tg))+'&all';   /* '@' = bare local attach: empty w execs plain `a tmux` (active window; bash if none) */
   f.onload=()=>{hook(f.contentWindow);if(document.activeElement!==Q&&(f===V||document.activeElement===f))foc();};
   TW.appendChild(f);FR[tg]=f;return f;}
@@ -52,24 +52,22 @@ onfocus=claimAll;document.onvisibilitychange=()=>{document.hidden||claimAll()};
 var swms='',inms='',rtms='',wn2=0,krt=0;   /* header meters: sw=switch · in=keypress delivery lag · rtt=key echo round-trip */
 function hdr(){MS.textContent=(wn2?wn2+' win':'')+(fms?' · find '+fms:'')+(swms?' · sw '+swms:'')+(inms?' · in '+inms:'')+(rtms?' · rtt '+rtms:'')+'ms';}
 function readr(){try{var m=V.contentDocument.getElementById('sb').textContent.match(/r([\d.]+)/);if(m){rtms=m[1];hdr();}}catch(e){}}
-function open_(tg){if(!tg)return;var t0=performance.now();
+function open_(tg){var t0=performance.now();
   if(tg!==cur){cur=tg;if(V)V.classList.remove('on');V=frameFor(tg);V.classList.add('on');foc();
     swms=(performance.now()-t0).toFixed(2);hdr();}
   setsel(tg);ensure();}
-function setsel(tg){if(!tg)return;sel=tg;localStorage.fwsel=tg;hl();}
+function setsel(tg){sel=localStorage.fwsel=tg;hl();}
 function hl(){rows.forEach((r,i)=>{var s=r.dataset.t===sel;r.classList.toggle('sel',s);
   if(s){ci=i;var g=r.previousElementSibling;while(g&&g.className!=='g')g=g.previousElementSibling;
     document.getElementById('cur').textContent=(g?g.textContent+' · ':'')+r.firstChild.textContent;}});}
-/* window switched from INSIDE the terminal (C-j/C-k, M-←/→, C-PgUp/PgDn): follow it, never re-attach.
-   the attached tmux paints its window list in the last status row; the active entry is the highlighted
-   "3:name" cell — same marker `a fl` greps server-side (48;2;255;255;255). Works local + remote, no config. */
+/* window switched INSIDE the terminal (C-j/C-k, M-←/→, C-PgUp/PgDn): the highlighted "3:name" status cell says which (the `a fl` marker). Re-key the frame to it — filed as 1 while showing 0, ▶ hit the frame already on screen = no-op (Sean 2026-09-09, a app) */
 function sync(){var ae=document.activeElement;
   if(ae&&ae.className==='tf')foc();   /* focus drifted to a hidden frame: reclaim */
   try{var d=V&&V.contentDocument;if(!d)return;var rs=d.querySelectorAll('#scr>div');
   for(var i=rs.length-1;i>=0&&i>=rs.length-2;i--){var sp=rs[i].children;
     for(var j=0;j<sp.length;j++){var bg=sp[j].style.background,m=sp[j].textContent.match(/^\s*(\d+):/);
       if(m&&bg&&bg!=='rgb(0, 0, 0)'){var p=cur.match(/^(ssh:[^:]+:)/),tg=(p?p[1]:'')+m[1];
-        if(tg!==sel)setsel(tg);return;}}}}catch(e){}}
+        if(tg!==cur){if(FR[tg])FR[tg].remove();delete FR[cur];FR[cur=tg]=V;setsel(tg);ensure();}return;}}}}catch(e){}}
 setInterval(sync,600);
 /* claude code pane bottoms are UI chrome, not content: cut at the LAST footer-mode phrase + trim its
    dangling ⏵⏵/⏸ marker (box chars appear in real content — unsafe anchor), collapse ─── input-box rules
@@ -125,6 +123,6 @@ hook(window);
 pv.onpointerdown=e=>{e.preventDefault();move(-1);};   /* act on press, and don't steal focus */
 nx.onpointerdown=e=>{e.preventDefault();move(1);};
 function setlist(on){localStorage.fwlist=on?'1':'0';filt();}   /* ☰ = list collapsed (all tmux), persisted; small screens start collapsed; a live find shows it */
-setlist(localStorage.fwlist?localStorage.fwlist==='1':innerWidth>640);   /* small screen: collapsed unless user chose */
-tg.onpointerdown=e=>{e.preventDefault();setlist(S.hidden);};
+setlist(localStorage.fwlist?localStorage.fwlist==='1':innerWidth>640);
+tg.onpointerdown=e=>{e.preventDefault();Q.value='';setlist(S.hidden);};   /* ☰ mid-find = clear + close (q forces the list open, so it must go) */
 </script>
